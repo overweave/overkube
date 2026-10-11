@@ -359,6 +359,29 @@ describe('the navigation', () => {
     expect(page.container.querySelector('.uk-navlist')).toBeNull();
   });
 
+  it('keeps a kind gone to open as a tab till it is closed, as a browser does; closed where the page is, to its neighbour', () => {
+    const page = renderRoute(world(), '/k/events.v1');
+    page.navigate('/k/secrets.v1');
+    page.navigate('/k/pods.v1');
+    expect(page.links('Kinds').slice(-2)).toEqual(['Events', 'Secrets']);
+    const close = (id: string) => page.act(() => (page.container.querySelector(`nav [data-key="${id}"] .uk-tab-close`) as HTMLElement).click());
+    close('v1/Event');
+    expect([page.path, page.links('Kinds').slice(-2)]).toEqual(['/k/pods.v1', ['Namespaces', 'Secrets']]);
+    page.navigate('/k/secrets.v1');
+    close('v1/Secret');
+    expect([page.path, page.links('Kinds').includes('Secrets')]).toEqual(['/k/namespaces.v1', false]);
+  });
+
+  it('unpins a tab by its pin; moves one into the pinned (Alt and an arrow, as a drag), pinning it', async () => {
+    const page = renderRoute(world(), '/k/events.v1');
+    page.act(() => (page.container.querySelector('nav [data-key="apps/v1/Deployment"] .uk-tab-pin') as HTMLElement).click());
+    expect(page.links('Kinds')).not.toContain('Deployments');
+    const events = page.container.querySelector('nav [data-key="v1/Event"]') as HTMLElement;
+    page.act(() => void events.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true })));
+    await vi.waitFor(() => expect(page.container.querySelector('nav [data-key="v1/Event"]')?.hasAttribute('data-transient')).toBe(false));
+    expect(page.links('Kinds').at(-1)).toBe('Events');
+  });
+
   it('opens the kinds’ picker from the tabs’ +: every kind, filtered as typed; one chosen goes there', () => {
     const page = renderRoute(world(), '/k/pods.v1');
     page.act(() => (page.container.querySelector('button[aria-label="All kinds"]') as HTMLButtonElement).click());

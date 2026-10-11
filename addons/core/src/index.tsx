@@ -1,9 +1,10 @@
 import { type KindInfo, type KubeObject, kinds } from '@overkube/kube-types';
 import { column, defineAddon, type KindViewSpec, type Label, section, slots } from '@overkube/sdk';
 import { Age } from '@overkube/uikit';
+import { signal } from '@preact/signals';
 import { Home, KindPage, NameCell, TablePage } from './KindPage.tsx';
 import { titleOf } from './kinds.ts';
-import { NavSide, NavTabs } from './Nav.tsx';
+import { NavSide, NavTabs, type TabsKept } from './Nav.tsx';
 import { ObjectView, YamlSection } from './ObjectView.tsx';
 import { Toasts } from './Toasts.tsx';
 import { T } from './texts.ts';
@@ -94,7 +95,9 @@ export default defineAddon({
 
     // The navigation: tabs, or the menu — as the NavView says (one setting, the user's to patch).
     c.add('NavView', 'default', { mode: 'tabs' }, fallback);
-    c.add('Fill', 'core.nav.tabs', { slot: slots.nav.top.name, render: NavTabs });
+    // The tabs as the user made them (pinned, moved, opened, closed): while the page runs — the user's layer's, once there is one.
+    const tabs = signal<TabsKept>({ open: [] });
+    c.add('Fill', 'core.nav.tabs', { slot: slots.nav.top.name, render: () => <NavTabs tabs={tabs} /> });
     c.add('Fill', 'core.nav.side', { slot: slots.nav.side.name, render: NavSide });
     c.add('Fill', 'core.toasts', { slot: slots.notifications.name, render: Toasts });
 
@@ -110,5 +113,5 @@ export default defineAddon({
   },
 });
 
-export { KindPicker, NavSide, NavTabs } from './Nav.tsx';
+export { KindPicker, NavSide, NavTabs, type TabsKept } from './Nav.tsx';
 export { currentOf, type Nav, type NavEntry, type NavGroup, navOf, useNav } from './nav.ts';

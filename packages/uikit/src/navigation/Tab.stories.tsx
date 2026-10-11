@@ -5,8 +5,8 @@ import { Tab, type TabItem } from './Tab';
 
 /*
  * One tab, each state of it side by side: as it is drawn alone, in a tab
- * list of its own. Each is live: a click selects it, its × closes it;
- * on the focused tab P pins or unpins it, Delete closes it.
+ * list of its own. Each is live: a click selects it, its × closes it (Delete
+ * too, focused), its pin unpins it.
  */
 
 const STATES: { name: string; tab: TabItem; selected?: boolean }[] = [
@@ -40,7 +40,7 @@ function Live({ tab: first, selected: on = false }: { tab: TabItem; selected?: b
           tab={tab}
           selected={selected}
           stop
-          labels={{ close: (t) => `Close ${t}`, pin: (t) => `Pin ${t}`, unpin: (t) => `Unpin ${t}`, dot: (l) => (l === 'error' ? 'failing' : 'needs a look') }}
+          labels={{ close: (t) => `Close ${t}`, unpin: (t) => `Unpin ${t}`, dot: (l) => (l === 'error' ? 'failing' : 'needs a look') }}
           onSelect={() => setSelected(!selected)}
           onClose={first.closable ? () => setClosed(true) : undefined}
           onPin={first.pinned !== undefined ? (_, pin) => setTab({ ...tab, pinned: pin, transient: !pin, closable: !pin }) : undefined}
@@ -67,5 +67,5 @@ const meta = { title: 'Navigation/Tab', component: States, parameters: { control
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Every state; each live (a click, the ×; P and Delete when focused). */
+/** Every state; each live (a click, the ×, the pin; Delete when focused). */
 export const AllStates: Story = {};

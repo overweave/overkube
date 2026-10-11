@@ -65,9 +65,9 @@ describe('Tab: what it says', () => {
   });
 
   it('says its keys: its own, and those it is given', () => {
-    expect(mount(OPEN).el.getAttribute('aria-keyshortcuts')).toBe('Delete P');
+    expect(mount(OPEN).el.getAttribute('aria-keyshortcuts')).toBe('Delete');
     cleanup();
-    expect(mount(PINNED, { 'aria-keyshortcuts': 'Alt+ArrowLeft Alt+ArrowRight' }).el.getAttribute('aria-keyshortcuts')).toBe('P Alt+ArrowLeft Alt+ArrowRight');
+    expect(mount(PINNED, { 'aria-keyshortcuts': 'Alt+ArrowLeft Alt+ArrowRight' }).el.getAttribute('aria-keyshortcuts')).toBe('Alt+ArrowLeft Alt+ArrowRight');
     cleanup();
     expect(mount(PAGE).el.hasAttribute('aria-keyshortcuts')).toBe(false);
   });
@@ -88,7 +88,7 @@ describe('Tab: its dot', () => {
     const quiet = mount({ ...PINNED, dot: 'warn' }).el.querySelector('.uk-dot');
     expect(quiet?.getAttribute('aria-hidden')).toBe('true');
     cleanup();
-    const { getByRole } = mount({ ...PINNED, dot: 'warn' }, { labels: { close: (t) => t, pin: (t) => t, unpin: (t) => t, dot: (l) => `level ${l}` } });
+    const { getByRole } = mount({ ...PINNED, dot: 'warn' }, { labels: { close: (t) => t, unpin: (t) => t, dot: (l) => `level ${l}` } });
     expect(getByRole('img', { name: 'level warn' })).toBeTruthy();
   });
 });
@@ -161,21 +161,14 @@ describe('Tab: what it does', () => {
     expect(told).toEqual([]);
   });
 
-  it('pins or unpins by P, not by a shortcut of the page’s', () => {
+  it('pins nor unpins by a key (P is the page’s)', () => {
     const open = mount(OPEN);
     fireEvent.keyDown(open.el, { key: 'p' });
-    fireEvent.keyDown(open.el, { key: 'p', ctrlKey: true });
-    fireEvent.keyDown(open.el, { key: 'p', metaKey: true });
-    fireEvent.keyDown(open.el, { key: 'p', altKey: true });
-    expect(open.told).toEqual(['pin kind/v1/Node']);
+    expect(open.told).toEqual([]);
     cleanup();
     const pinned = mount(PINNED);
     fireEvent.keyDown(pinned.el, { key: 'P' });
-    expect(pinned.told).toEqual(['unpin kind/v1/Pod']);
-    cleanup();
-    const page = mount(PAGE);
-    fireEvent.keyDown(page.el, { key: 'p' });
-    expect(page.told).toEqual([]);
+    expect(pinned.told).toEqual([]);
   });
 
   it('lets a key it is given go first: one it takes is not its own', () => {

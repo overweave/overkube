@@ -34,6 +34,10 @@ export interface SortableOptions {
   disabled?: boolean;
   /** Where an item may go (first and last place, inclusive): one kept in its group. */
   bounds?: (id: string) => readonly [number, number] | undefined;
+  /** When one passed moves aside: the dragged one's middle past its middle, or its edge a little into it. */
+  swap?: 'center' | 'edge';
+  /** The dragged one leans as it is moved, by how fast (--uk-sort-tilt on the root). */
+  tilt?: boolean;
 }
 
 interface Drag {
@@ -51,15 +55,27 @@ interface Drag {
   frame?: number;
   /** How far the scroller could scroll when it was taken hold of: no further (what is dragged, moved, makes it wider). */
   reach?: number;
+  /** How fast it moves (px/ms, smoothed), where the pointer was last and when; leaning back when it stops. */
+  speed?: number;
+  last?: number;
+  at?: number;
+  still?: ReturnType<typeof setTimeout>;
 }
 
 /** How near an edge of the scroller the pointer scrolls it, and how fast at the edge (px a frame). */
 const EDGE = 40;
 const SPEED = 14;
+/** How far the dragged one's edge goes into one before it moves aside (swap: 'edge'), at most. */
+const INTO = 24;
+/** The most it leans (deg), and by how much a px/ms. */
+const LEAN = 1;
+const LEAN_BY = 0.8;
 
 export function useSortable(options: SortableOptions) {
   const { axis = 'x', threshold = 4, duration = 200 } = options;
   const [active, setActive] = useState<string>();
+  /** Where the one moving would land now (its place in the order): drawn as it will be there, before it is dropped. */
+  const [over, setOver] = useState<number>();
   const root = useRef<HTMLElement | null>(null);
   const opts = useRef(options);
   opts.current = options;
@@ -116,6 +132,7 @@ export function useSortable(options: SortableOptions) {
     el.setAttribute('data-sorting', axis);
     busy.current = true;
     setActive(d.id);
+    setOver(d.to);
   };
 
   /** Moved to `to` (the drop, or back where it was): it goes there, then the order is given and the moving is taken away. */
@@ -126,15 +143,24 @@ export function useSortable(options: SortableOptions) {
       return;
     }
     const to = commit ? d.to : d.from;
-    set(d.from, place({ ...d, to }));
+    // Drawn as it will be where it goes now (put back: as it was), not where it was over.
+    setOver(to);
+    clearTimeout(d.still);
+    el.style.setProperty('--uk-sort-tilt', '0deg');
+    const land = place({ ...d, to });
+    el.style.setProperty('--uk-sort-land', `${land}px`);
+    set(d.from, land);
     el.setAttribute('data-sort-drop', '');
     setTimeout(() => {
       // In one task with the new order drawn (Preact draws before the page is painted again): no frame of the old.
       for (let i = 0; i < d.boxes.length; i++) el.style.removeProperty(`--uk-sort-${i}`);
+      el.style.removeProperty('--uk-sort-land');
+      el.style.removeProperty('--uk-sort-tilt');
       el.removeAttribute('data-sorting');
       el.removeAttribute('data-sort-drop');
       busy.current = false;
       setActive(undefined);
+      setOver(undefined);
       if (to !== d.from) {
         const ids = [...opts.current.ids];
         const [moved] = ids.splice(d.from, 1);
@@ -155,11 +181,33 @@ export function useSortable(options: SortableOptions) {
   const follow = (d: Drag) => {
     const delta = d.pointer - d.origin + scrollOf() - d.scrolled;
     const center = d.boxes[d.from].start + d.boxes[d.from].size / 2 + delta;
-    const to = d.boxes.filter((b, i) => i !== d.from && b.start + b.size / 2 < center).length;
+    const f = d.boxes[d.from];
+    const [startsAt, endsAt] = [f.start + delta, f.start + f.size + delta];
+    const into = (b: { size: number }) => Math.min(INTO, b.size / 2);
+    const to =
+      opts.current.swap === 'edge'
+        ? d.from + d.boxes.filter((b, i) => i > d.from && endsAt > b.start + into(b)).length - d.boxes.filter((b, i) => i < d.from && startsAt < b.start + b.size - into(b)).length
+        : d.boxes.filter((b, i) => i !== d.from && b.start + b.size / 2 < center).length;
     const [lo, hi] = opts.current.bounds?.(d.id) ?? [0, d.boxes.length - 1];
     d.to = Math.min(hi, Math.max(lo, to));
-    place(d);
+    setOver(d.to);
+    root.current?.style.setProperty('--uk-sort-land', `${place(d)}px`);
     set(d.from, delta);
+  };
+
+  /** Leaning by how fast it moves; upright again once it stops. */
+  const lean = (d: Drag, t: number) => {
+    const dt = t - (d.at ?? t);
+    if (dt > 0) d.speed = (d.speed ?? 0) * 0.6 + ((d.pointer - (d.last ?? d.pointer)) / dt) * 0.4;
+    d.last = d.pointer;
+    d.at = t;
+    const tilt = (s: number) => root.current?.style.setProperty('--uk-sort-tilt', `${Math.max(-LEAN, Math.min(LEAN, s * LEAN_BY))}deg`);
+    tilt(d.speed ?? 0);
+    clearTimeout(d.still);
+    d.still = setTimeout(() => {
+      d.speed = 0;
+      tilt(0);
+    }, 90);
   };
 
   /** Near an edge of the scroller: scrolled, and followed again, every frame. */
@@ -184,6 +232,9 @@ export function useSortable(options: SortableOptions) {
     if (from < 0) return;
     const d: Drag = { id, from, to: from, boxes: [], gap: 0, origin: at(e), scrolled: scrollOf(), pointer: at(e), started: false };
     drag.current = d;
+    // Held (before it is a drag): the kit's CSS may lift it a little.
+    const held = e.currentTarget as HTMLElement;
+    held.setAttribute('data-sort-pressing', '');
     // The click a drag ends with is not a click (a header's sort).
     const swallow = (c: Event) => {
       c.stopPropagation();
@@ -205,6 +256,7 @@ export function useSortable(options: SortableOptions) {
       if (d.frame) cancelAnimationFrame(d.frame);
       d.frame = undefined;
       follow(d);
+      if (opts.current.tilt && axis === 'x' && ms()) lean(d, m.timeStamp);
       edge(d);
     };
     const finish = (commit: boolean) => {
@@ -213,12 +265,14 @@ export function useSortable(options: SortableOptions) {
       window.removeEventListener('pointercancel', cancel);
       window.removeEventListener('keydown', key, true);
       if (d.frame) cancelAnimationFrame(d.frame);
+      held.removeAttribute('data-sort-pressing');
       drag.current = undefined;
       stop.current = undefined;
       if (!d.started) return;
-      // The click comes with the button let go (after Escape, later): swallowed till then.
+      // The click comes with the button let go (after Escape, later): swallowed till then. A pointer cancelled lets go of nothing: no click comes of it.
       const unswallow = () => setTimeout(() => window.removeEventListener('click', swallow, true));
-      if (released) unswallow();
+      if (cancelled) window.removeEventListener('click', swallow, true);
+      else if (released) unswallow();
       else window.addEventListener('pointerup', unswallow, { once: true });
       end(d, commit);
     };
@@ -227,7 +281,11 @@ export function useSortable(options: SortableOptions) {
       released = true;
       finish(true);
     };
-    const cancel = () => finish(false);
+    let cancelled = false;
+    const cancel = () => {
+      cancelled = true;
+      finish(false);
+    };
     const key = (k: KeyboardEvent) => {
       if (k.key !== 'Escape' || !d.started) return;
       k.stopPropagation();
@@ -260,6 +318,8 @@ export function useSortable(options: SortableOptions) {
   return {
     /** The one being dragged (or moved by the keyboard). */
     active,
+    /** Where it would land now: its place in the order. */
+    over,
     /** The ref for the element holding them all: the moving is set there. */
     root,
     /** Each element an item is drawn as. */
@@ -274,6 +334,8 @@ export function useSortable(options: SortableOptions) {
       'aria-keyshortcuts': axis === 'x' ? 'Alt+ArrowLeft Alt+ArrowRight' : 'Alt+ArrowUp Alt+ArrowDown',
       onPointerDown: press(id),
       onKeyDown: nudge(id),
+      // Not the browser's own drag (a link's, an image's, text's): it would take the pointer away (pointercancel).
+      ondragstart: (e: DragEvent) => e.preventDefault(),
     }),
   };
 }

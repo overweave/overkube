@@ -121,7 +121,7 @@ describe('Tabs: the strip', () => {
   });
 
   it('gives the tabs its words for their tools', () => {
-    const { container } = mount({ labels: { close: (t) => `shut ${t}`, pin: (t) => `keep ${t}`, unpin: (t) => `drop ${t}` } });
+    const { container } = mount({ labels: { close: (t) => `shut ${t}`, unpin: (t) => `drop ${t}` } });
     expect(container.querySelector('[data-tab="nodes"] .uk-tab-close')?.getAttribute('title')).toBe('shut nodes');
     expect(container.querySelector('[data-tab="pods"] .uk-tab-pin')?.getAttribute('title')).toBe('drop pods');
   });
@@ -152,7 +152,7 @@ describe('Tabs: the keyboard', () => {
     expect(document.activeElement).toBe(tab('Nodes'));
   });
 
-  it('keeps focus on a tab pinned or unpinned by P, moved to the other section', async () => {
+  it('keeps focus on a tab unpinned by its pin, moved to the other section', async () => {
     // A page keeping its lists, by the strip's rules.
     function Page() {
       const [lists, setLists] = useState<TabLists>({ pinned: ['pods'], open: ['nodes'] });
@@ -174,12 +174,12 @@ describe('Tabs: the keyboard', () => {
     const view = render(<Page />);
     const user = userEvent.setup();
     const tab = (name: string) => view.getByRole('tab', { name }) as HTMLElement;
-    tab('nodes').focus();
-    await user.keyboard('p');
-    await waitFor(() => expect(tab('nodes').querySelector('.uk-tab-pin')).not.toBeNull());
-    expect(document.activeElement).toBe(tab('nodes'));
-    await user.keyboard('p');
-    await waitFor(() => expect(view.queryByRole('tab', { name: 'nodes' })).toBeNull());
+    tab('pods').focus();
+    await user.click(tab('pods').querySelector('.uk-tab-pin') as HTMLElement);
+    // The one shown: unpinned, it stays, first of the open.
+    await waitFor(() => expect(tab('pods').querySelector('.uk-tab-pin')).toBeNull());
+    expect(tab('pods').getAttribute('data-transient')).toBe('');
+    expect(document.activeElement).toBe(tab('pods'));
   });
 
   it('gives focus to the neighbour of a tab closed by its × too (the press focused the tab), not to the page', async () => {
@@ -194,23 +194,41 @@ describe('Tabs: the keyboard', () => {
 describe('Tabs: dragging', () => {
   it('moves a tab within its section', async () => {
     const { drag, told } = mount();
-    // Pods (middle 160) to 290: past Deploys' middle (270), not the divider's (380).
+    // Pods (110–210) to 240–340: its end into Deploys (from 220), not into the divider (from 330).
     await drag('Pods', 130);
     await waitFor(() => expect(told).toEqual(['move pods pinned 2']));
   });
 
   it('pins a tab dragged into the pinned', async () => {
     const { drag, told } = mount();
-    // Nodes (middle 490) to 240: past the divider and Deploys, not Pods.
+    // Nodes (440–540) to 190–290: its start into Deploys (to 320) and past the divider, not into Pods (to 210).
     await drag('Nodes', -250);
     await waitFor(() => expect(told).toEqual(['move nodes pinned 2']));
   });
 
   it('unpins a tab dragged into the open', async () => {
     const { drag, told } = mount();
-    // Deploys (middle 270) to 430: past the divider's middle (380), not Nodes' (490).
-    await drag('Deploys', 160);
+    // Deploys (220–320) to 320–420: its end into the divider (from 330), not into Nodes (from 440).
+    await drag('Deploys', 100);
     await waitFor(() => expect(told).toEqual(['move deploys open 0']));
+  });
+
+  it('draws the one dragged as it will be in the section it is over, before it is dropped', async () => {
+    const { tab, user } = mount();
+    const from = tab('Deploys').getBoundingClientRect().left + SIZE / 2;
+    await user.pointer({ keys: '[MouseLeft>]', target: tab('Deploys'), coords: { clientX: from, clientY: 20 } });
+    // Over the open: its pin gone, its × there.
+    await user.pointer({ coords: { clientX: from + 100, clientY: 20 } });
+    expect([
+      tab('Deploys').getAttribute('data-into'),
+      tab('Deploys').hasAttribute('data-transient'),
+      !!tab('Deploys').querySelector('.uk-tab-pin'),
+      !!tab('Deploys').querySelector('.uk-tab-close'),
+    ]).toEqual(['open', true, false, true]);
+    // Back over its own: as it was.
+    await user.pointer({ coords: { clientX: from, clientY: 20 } });
+    expect([tab('Deploys').hasAttribute('data-into'), !!tab('Deploys').querySelector('.uk-tab-pin')]).toEqual([false, true]);
+    await user.pointer({ keys: '[/MouseLeft]' });
   });
 
   it('keeps one that stays in its section, however far it is dragged', async () => {

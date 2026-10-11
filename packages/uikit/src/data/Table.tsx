@@ -11,7 +11,8 @@ import { useSortable } from '../lib/sortable';
  * the rows. A click on a header sorts by it (again: the other way); a
  * header's right edge drags its column wider or narrower (arrows too, a
  * double click gives it back); a header dragged moves its column elsewhere
- * (Alt and the arrows too), the others moving aside as it passes. Rows are as high as their cells: one line,
+ * (Alt and the arrows too): lifted on a card, leaning as it moves, the
+ * others moving aside as its edge comes into them, a slot where it lands. Rows are as high as their cells: one line,
  * or more in a column that wraps; each is measured as it is drawn. Rows
  * may be picked (a check each, one for all of them, Shift for a run).
  */
@@ -152,6 +153,9 @@ export function Table<T>({
     ids: columns.map((c) => c.id),
     scroller,
     disabled: !reorderable,
+    swap: 'edge',
+    tilt: true,
+    duration: 420,
     onMove: (ids) => {
       setOrder(ids);
       onReorder?.(ids);
@@ -458,6 +462,30 @@ export function Table<T>({
     };
   });
 
+  // The column dragged, lifted: a card under its cells, its header on the card's cap, a slot where it lands.
+  // Placed after each draw while it is (rows drawn meanwhile, scrolled to or new; the table's height changed).
+  const card = useRef<HTMLDivElement>(null);
+  const cap = useRef<HTMLDivElement>(null);
+  const slot = useRef<HTMLDivElement>(null);
+  const lifted = columns.find((c) => c.id === sortable.active);
+  useLayoutEffect(() => {
+    const s = scroller.current;
+    const th = lifted && head.current?.querySelector<HTMLElement>(`[data-sort-id="${CSS.escape(lifted.id)}"]`);
+    if (!s || !th || !lifted) return;
+    const at = (el: HTMLElement | null, left: number, width: number, top: number, height: number) =>
+      el && Object.assign(el.style, { left: `${left}px`, width: `${width}px`, top: `${top}px`, height: `${height}px` });
+    const h = head.current?.offsetHeight ?? HEAD_HEIGHT;
+    at(card.current, th.offsetLeft - 10, th.offsetWidth + 20, s.scrollTop, s.clientHeight);
+    at(cap.current, th.offsetLeft - 10, th.offsetWidth + 20, s.scrollTop, h);
+    at(slot.current, th.offsetLeft - 6, th.offsetWidth + 12, s.scrollTop + h + 4, s.clientHeight - h - 8);
+    if (cap.current) cap.current.style.transformOrigin = `50% ${s.clientHeight / 2}px`;
+    // Its cells turn and grow about the card's middle, as the card does.
+    const middle = s.getBoundingClientRect().top + s.clientHeight / 2;
+    for (const el of sortable.root.current?.querySelectorAll<HTMLElement>('.uk-table-row > [data-sort-active]') ?? [])
+      el.style.transformOrigin = `50% ${middle - el.getBoundingClientRect().top}px`;
+  });
+  const liftedShift = lifted && { '--uk-drag-x': `var(--uk-sort-${columns.indexOf(lifted)}, 0px)` };
+
   const lastColumn = columns.length - 1;
   return (
     <div
@@ -533,6 +561,15 @@ export function Table<T>({
               );
             })}
           </div>
+          {lifted && (
+            <>
+              <div class="uk-table-slot" ref={slot} aria-hidden="true" />
+              <div class="uk-table-card" ref={card} aria-hidden="true" style={liftedShift} />
+              <div class="uk-table-card-cap" ref={cap} aria-hidden="true" style={liftedShift}>
+                <span class="uk-table-title">{lifted.header}</span>
+              </div>
+            </>
+          )}
           {waiting ? (
             <div role="rowgroup">{Array.from({ length: shown ? PLACEHOLDERS : 0 }, (_, i) => placeholder(i))}</div>
           ) : sorted.length === 0 ? (

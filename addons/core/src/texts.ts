@@ -28,6 +28,8 @@ export const T = {
     find: t('core.nav.find', 'Find a kind'),
     nothingLike: t('core.nav.nothing-like', 'Nothing like “{query}”'),
     pages: t('core.nav.pages', 'Pages'),
+    close: t('core.nav.close', 'Close {title}'),
+    unpin: t('core.nav.unpin', 'Unpin {title}'),
   },
   discovery: {
     asking: t('core.discovery.asking', 'Asking the cluster what it serves…'),

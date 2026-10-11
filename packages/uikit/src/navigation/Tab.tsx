@@ -8,7 +8,7 @@ import type { Level } from '../lib/level';
  * it); and the × of a closable one, in room kept for it, shown under the
  * pointer and on the selected tab. ARIA allows nothing interactive in a
  * tab: the pin and the × are the pointer's (a tooltip names them); the
- * keyboard closes by Delete, pins or unpins by P. Enter or Space selects it; a middle click closes it.
+ * keyboard closes by Delete. Enter or Space selects it; a middle click closes it.
  */
 
 export interface TabItem {
@@ -20,7 +20,7 @@ export interface TabItem {
   /** Shown as not kept (an open tab, not pinned). */
   transient?: boolean;
   closable?: boolean;
-  /** Offers to pin (false) or unpin (true) it; neither when undefined. */
+  /** Pinned by the user: its pin unpins it (pinned: dragged into the pinned). */
   pinned?: boolean;
   /** Dragged, it stays in its section (a page's own: pinned for good). */
   stays?: boolean;
@@ -29,13 +29,12 @@ export interface TabItem {
 /** The names of a tab's tools and dot, for those who cannot see them. */
 export interface TabLabels {
   close: (title: string) => string;
-  pin: (title: string) => string;
   unpin: (title: string) => string;
   /** How it is, by its dot ("needs a look"); without, the dot is not said. */
   dot?: (level: Level) => string;
 }
 
-export const TAB_LABELS: TabLabels = { close: (t) => `Close ${t}`, pin: (t) => `Pin ${t}`, unpin: (t) => `Unpin ${t}` };
+export const TAB_LABELS: TabLabels = { close: (t) => `Close ${t}`, unpin: (t) => `Unpin ${t}` };
 
 export type TabProps = {
   tab: TabItem;
@@ -53,11 +52,10 @@ export type TabProps = {
 export function Tab({ tab, selected = false, stop = selected, panel, labels = TAB_LABELS, onSelect, onClose, onPin, onKeyDown, ...rest }: TabProps) {
   const name = tab.title ?? tab.key;
   const closes = tab.closable && onClose;
-  const pins = tab.pinned !== undefined && onPin;
   // Pinned by the user (not one that closes, not a page's own): its pin, to unpin it.
   const unpins = !closes && tab.pinned === true && onPin;
   // Its own keys, and those it is given (moving it: Alt and the arrows).
-  const keys = [closes && 'Delete', pins && 'P', rest['aria-keyshortcuts']].filter(Boolean).join(' ');
+  const keys = [closes && 'Delete', rest['aria-keyshortcuts']].filter(Boolean).join(' ');
   return (
     <div
       {...rest}
@@ -81,7 +79,6 @@ export function Tab({ tab, selected = false, stop = selected, panel, labels = TA
         if (e.defaultPrevented) return;
         if (e.key === 'Enter' || e.key === ' ') onSelect(tab.key);
         else if ((e.key === 'Delete' || e.key === 'Backspace') && closes) onClose(tab.key);
-        else if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey && pins) onPin(tab.key, !tab.pinned);
         else return;
         e.preventDefault();
       }}

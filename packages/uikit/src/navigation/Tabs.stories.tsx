@@ -9,9 +9,8 @@ import { closeTab, moveTab, nextTab, openTab, pinTab } from './tabState';
  * The strip as a page has it, two sections: pinned — the pages' own
  * (pinned for good, no tool) and those the user pinned (each with its
  * unpin), in any order — and open (each with its ×). Every callback wired:
- * select, close (×, Delete, a middle click), unpin (its pin, P: it goes, or
- * stays open if it is the one shown), pin an open one (P), drag within a
- * section or across it (into the pinned: pinned; into the open: unpinned —
+ * select, close (×, Delete, a middle click), unpin (its pin: it goes, or
+ * stays open if it is the one shown), drag within a section or across it (into the pinned: pinned; into the open: unpinned —
  * a page's own stays in the pinned), Alt and the arrows, a + adding an
  * open tab.
  */
@@ -105,7 +104,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Select; close (×, Delete, a middle click); unpin (its pin, P), pin (P); drag within and across (pinning, unpinning); add with +. */
+/** Select; close (×, Delete, a middle click); unpin (its pin); drag within and across (pinning, unpinning); add with +. */
 export const Playing: Story = {
   args: {
     initial: { own: ['overview', 'extensions'], pinned: ['overview', 'extensions', 'pods', 'deployments', 'services'], open: ['nodes', 'configmaps'] },

@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 /** A row of items a, b, c, d, each its own handle; every order it told, and every click on an item. */
-function mount({ axis = 'x' as 'x' | 'y', duration = 0, disabled = false } = {}) {
+function mount({ axis = 'x' as 'x' | 'y', duration = 0, disabled = false, swap = undefined as 'center' | 'edge' | undefined, tilt = false } = {}) {
   const moves: string[][] = [];
   const clicks: string[] = [];
   const scroller = { current: null as HTMLElement | null };
@@ -52,6 +52,8 @@ function mount({ axis = 'x' as 'x' | 'y', duration = 0, disabled = false } = {})
       duration,
       disabled,
       scroller,
+      swap,
+      tilt,
       onMove: (next) => {
         moves.push(next);
         setIds(next);
@@ -207,6 +209,18 @@ describe('useSortable: dragging', () => {
     fireEvent.pointerCancel(window);
     await waitFor(() => expect(root.hasAttribute('data-sorting')).toBe(false));
     expect(moves).toEqual([]);
+  });
+
+  it('swallows no click after a cancelled pointer (none comes of it): the next press is a click', async () => {
+    const { press, move, clicks, item, root } = mount();
+    await press('a', 50);
+    await move(300);
+    fireEvent.pointerCancel(window);
+    await waitFor(() => expect(root.hasAttribute('data-sorting')).toBe(false));
+    // The next press: its button let go, its click at once.
+    fireEvent.pointerUp(item('b'));
+    fireEvent.click(item('b'));
+    expect(clicks).toEqual(['b']);
   });
 
   it('works down a column the same', async () => {
@@ -418,5 +432,81 @@ describe('useSortable: groups', () => {
     await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
     await new Promise((r) => setTimeout(r, 20));
     expect(moves.map(([ids]) => ids)).toEqual([['b', 'a', '|', 'c', 'd']]);
+  });
+});
+
+describe('useSortable: lifted (swap edge, tilt)', () => {
+  it('moves one aside as soon as the dragged one’s edge is a little into it, not its middle', async () => {
+    const center = mount();
+    await center.press('a', 50);
+    await center.move(85);
+    expect(center.shift(1)).toBe('0px');
+    cleanup();
+    const { press, move, shift } = mount({ swap: 'edge' });
+    await press('a', 50);
+    // a's end at 135: 25px into b (from 110).
+    await move(85);
+    expect(shift(1)).toBe('-110px');
+    await move(80);
+    expect(shift(1)).toBe('0px');
+  });
+
+  it('the same dragged back: its start into the one before', async () => {
+    const { press, move, shift } = mount({ swap: 'edge' });
+    await press('d', 380);
+    // d's start at 295: 25px into c (ending at 320).
+    await move(345);
+    expect([shift(2), shift(1)]).toEqual(['110px', '0px']);
+  });
+
+  it('says where it would land (--uk-sort-land), and lands there', async () => {
+    const { press, move, release, root, moves } = mount({ swap: 'edge' });
+    await press('a', 50);
+    await move(85);
+    expect(root.style.getPropertyValue('--uk-sort-land')).toBe('110px');
+    await release();
+    await waitFor(() => expect(moves).toEqual([['b', 'a', 'c', 'd']]));
+    expect(root.style.getPropertyValue('--uk-sort-land')).toBe('');
+  });
+
+  it('leans as it moves, a degree at most, and none once dropped', async () => {
+    const { press, move, release, root } = mount({ swap: 'edge', tilt: true, duration: 50 });
+    await press('a', 50);
+    for (const x of [60, 200, 400]) await move(x);
+    const tilt = Number.parseFloat(root.style.getPropertyValue('--uk-sort-tilt'));
+    expect(Math.abs(tilt)).toBeLessThanOrEqual(1);
+    await release();
+    await waitFor(() => expect(root.style.getPropertyValue('--uk-sort-tilt')).toBe(''));
+  });
+
+  it('does not lean with no motion (prefers-reduced-motion, a duration of none)', async () => {
+    const { press, move, root } = mount({ swap: 'edge', tilt: true, duration: 0 });
+    await press('a', 50);
+    for (const x of [60, 200, 400]) await move(x);
+    expect(root.style.getPropertyValue('--uk-sort-tilt')).toBe('');
+  });
+
+  it('put back (Escape), is drawn where it goes back to, not where it was over', async () => {
+    const { press, move, user, api } = mount({ swap: 'edge', duration: 50 });
+    await press('a', 50);
+    await move(85);
+    expect(api().over).toBe(1);
+    await user.keyboard('{Escape}');
+    expect(api().over).toBe(0);
+  });
+
+  it('keeps the browser’s own drag (a link’s) from taking the pointer away', () => {
+    const { item } = mount();
+    const start = new Event('dragstart', { bubbles: true, cancelable: true });
+    item('a').dispatchEvent(start);
+    expect(start.defaultPrevented).toBe(true);
+  });
+
+  it('marks the one held, before it is a drag', async () => {
+    const { press, release, item } = mount();
+    await press('b', 150);
+    expect(item('b').hasAttribute('data-sort-pressing')).toBe(true);
+    await release();
+    expect(item('b').hasAttribute('data-sort-pressing')).toBe(false);
   });
 });

@@ -12,6 +12,7 @@
  * - Opened: one in neither is open, last.
  * - Closed: an open one goes; the one shown next is its right neighbour,
  *   else its left.
+ * - Dragged over a section: looks as it will there (lookIn).
  */
 
 export interface TabLists {
@@ -51,4 +52,10 @@ export function nextTab(tabs: TabLists, key: string): string | undefined {
   const at = all.indexOf(key);
   if (at < 0) return undefined;
   return all[at + 1] ?? all[at - 1];
+}
+
+/** A tab as it will be in the section it is dragged over: the pinned (its pin), or the open (its ×). */
+export function lookIn<T extends { pinned?: boolean; closable?: boolean; transient?: boolean }>(tab: T, section: string): T {
+  const pinned = section === 'pinned';
+  return { ...tab, pinned, closable: !pinned, transient: !pinned };
 }

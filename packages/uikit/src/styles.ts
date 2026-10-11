@@ -152,12 +152,15 @@ export const css = `
 @keyframes uk-modal-to-bottom { to { transform: translateY(100%); } }
 .uk-section > h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--uk-muted); font-weight: 600; }
 
-[data-sorting] { user-select: none; cursor: grabbing; }
-[data-sorting] [data-sort-id] { transition: transform var(--uk-sort-ms, 200ms) cubic-bezier(.2, 0, 0, 1); }
-[data-sorting='x'] [data-sort-id] { transform: translate3d(var(--uk-sort-shift), 0, 0); }
-[data-sorting='y'] [data-sort-id] { transform: translate3d(0, var(--uk-sort-shift), 0); }
-[data-sorting]:not([data-sort-drop]) [data-sort-active] { transition: none; }
-[data-sorting] [data-sort-active] { position: relative; z-index: 3; }
+/* Things dragged into another order (useSortable): the one held lifted (a little larger, leaning as it moves, following the pointer a moment behind), the others moving aside on springs; dropped, it settles where it lands. */
+[data-sorting] { user-select: none; cursor: grabbing; --uk-sort-ease: linear(0, 0.104, 0.314, 0.533, 0.715, 0.847, 0.934, 0.984, 1.009, 1.019, 1.02, 1.016, 1.012, 1.008, 1.004, 1.002, 1.001, 1); --uk-sort-follow: 70ms; --uk-lift: 1.03; }
+[data-sort-drop] { --uk-lift: 1; }
+[data-sorting] [data-sort-id] { transition: translate var(--uk-sort-ms, 200ms) var(--uk-sort-ease); }
+[data-sorting='x'] [data-sort-id] { translate: var(--uk-sort-shift) 0; }
+[data-sorting='y'] [data-sort-id] { translate: 0 var(--uk-sort-shift); }
+[data-sorting] [data-sort-active] { position: relative; z-index: 3; scale: var(--uk-lift); rotate: var(--uk-sort-tilt, 0deg); transition: translate var(--uk-sort-follow) linear, scale .18s ease-out, rotate .2s ease-out, box-shadow .2s ease-out; }
+[data-sort-drop] [data-sort-active] { transition: translate var(--uk-sort-ms) var(--uk-sort-ease), scale var(--uk-sort-ms) ease-out, rotate .2s ease-out, box-shadow var(--uk-sort-ms) ease-out; }
+@media (prefers-reduced-motion: reduce) { [data-sorting], .uk-table[data-sorting] { --uk-sort-follow: 0s; --uk-lift: 1; } }
 .uk-table { border: 1px solid var(--uk-border); border-radius: var(--uk-radius); overflow: hidden; background: var(--uk-panel); }
 .uk-table[data-resizing] { cursor: col-resize; user-select: none; }
 .uk-table-body { overflow: auto; position: relative; }
@@ -169,9 +172,22 @@ export const css = `
 .uk-table-th > button:focus-visible { outline: 2px solid var(--uk-focus); outline-offset: 2px; border-radius: 2px; }
 .uk-table-th > button[data-sorted] { color: var(--uk-text); }
 .uk-table-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.uk-table-th[data-sort-active] { background: var(--uk-panel-2); box-shadow: 0 0 0 1px var(--uk-border); border-radius: var(--uk-radius-sm) var(--uk-radius-sm) 0 0; }
-.uk-table-row > [data-sort-active] { background: var(--uk-panel-2); }
-[data-sorting] .uk-table-th[data-sort-active] .uk-table-resize { visibility: hidden; }
+/* A column dragged: lifted on a card (leaning as it moves), its cap over the head, a slot where it lands; the rest moving aside on springs. */
+.uk-table[data-sorting] { --uk-lift: 1.02; }
+.uk-table[data-sort-drop] { --uk-lift: 1; }
+.uk-table-inner { position: relative; }
+.uk-table-card, .uk-table-card-cap { position: absolute; pointer-events: none; background: var(--uk-panel); translate: var(--uk-drag-x) 0; scale: var(--uk-lift, 1); rotate: var(--uk-sort-tilt, 0deg); transition: translate var(--uk-sort-follow) linear, scale .18s ease-out, rotate .2s ease-out, box-shadow .2s ease-out; }
+.uk-table[data-sort-drop] .uk-table-card, .uk-table[data-sort-drop] .uk-table-card-cap { transition: translate var(--uk-sort-ms) var(--uk-sort-ease), scale var(--uk-sort-ms) ease-out, rotate .2s ease-out, box-shadow var(--uk-sort-ms) ease-out; }
+.uk-table .uk-table-row > [data-sort-active] { background: none; }
+.uk-table .uk-table-th[data-sort-active] > button > * { opacity: 0; }
+.uk-table .uk-table-th > button { transition: translate .1s ease-out, color .1s; }
+.uk-table .uk-table-th > button[data-sort-pressing] { translate: 0 -1px; color: var(--uk-text); cursor: grabbing; }
+.uk-table-card { z-index: 2; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); box-shadow: 0 18px 40px color-mix(in srgb, var(--uk-shadow) 40%, transparent), 0 2px 6px color-mix(in srgb, var(--uk-shadow) 20%, transparent); animation: uk-card-lift .18s ease-out; }
+.uk-table[data-sort-drop] .uk-table-card { box-shadow: 0 0 0 transparent, 0 0 0 transparent; }
+.uk-table-card-cap { z-index: 4; display: flex; align-items: center; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--uk-border); border-radius: var(--uk-radius) var(--uk-radius) 0 0; color: var(--uk-text); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.uk-table-slot { position: absolute; z-index: 0; pointer-events: none; border-radius: var(--uk-radius-sm); background: color-mix(in srgb, var(--uk-bg) 70%, var(--uk-panel)); box-shadow: inset 0 1px 3px color-mix(in srgb, var(--uk-shadow) 35%, transparent); translate: var(--uk-sort-land, 0px) 0; transition: translate var(--uk-sort-ms) var(--uk-sort-ease); animation: uk-fade-in .15s ease-out; }
+@keyframes uk-card-lift { from { scale: 1; box-shadow: 0 0 0 transparent, 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .uk-table-card, .uk-table-slot { animation: none; } }
 .uk-table-sort { display: inline-flex; color: var(--uk-accent); }
 .uk-table-sort .uk-icon { width: 12px; height: 12px; stroke-width: 2.5; }
 .uk-table-sort[data-dir='asc'] .uk-icon { transform: rotate(180deg); }
@@ -298,19 +314,18 @@ export const css = `
 .uk-tab { all: unset; position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 6px; padding: 10px 12px; cursor: pointer; user-select: none; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; font-weight: 600; color: var(--uk-muted); transition: color .15s; }
 .uk-tab::before { content: ''; position: absolute; inset: 5px 2px; z-index: -1; border-radius: var(--uk-radius); transition: background .15s, box-shadow .15s; }
 .uk-tab:hover, .uk-tab[aria-selected='true'], .uk-tab[aria-current='page'] { color: var(--uk-text); }
-.uk-tab[aria-current='page']::after { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; border-radius: 2px; background: var(--uk-text); }
 .uk-tab:hover::before { background: var(--uk-panel-2); }
 .uk-tab:focus-visible { outline: none; }
 .uk-tab:focus-visible::before { box-shadow: inset 0 0 0 2px var(--uk-focus); }
 .uk-tab[data-transient] .uk-tab-label { font-style: italic; }
-/* A tab with a tool keeps room for it: it comes without the tab growing. */
-.uk-tab[data-tool] { padding-right: 30px; }
+/* A tab with a tool keeps room for it (it comes without the tab growing), as much as a pin takes: dragged from the open to the pinned (or back), it keeps its width. */
+.uk-tab[data-tool] { padding-right: 28.5px; }
 .uk-tab-close { position: absolute; right: 7px; top: 50%; margin-top: -10px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--uk-radius-sm); color: var(--uk-muted); opacity: 0; pointer-events: none; transition: opacity .12s, color .12s, background .12s; }
-.uk-tab:hover .uk-tab-close, .uk-tab:focus-visible .uk-tab-close, .uk-tab[aria-selected='true'] .uk-tab-close { opacity: 1; pointer-events: auto; }
+.uk-tab:hover .uk-tab-close, .uk-tab:focus-visible .uk-tab-close, .uk-tab[aria-selected='true'] .uk-tab-close, .uk-tab[aria-current='page'] .uk-tab-close, .uk-tab[data-sort-active] .uk-tab-close { opacity: 1; pointer-events: auto; }
 .uk-tab-close:hover { color: var(--uk-text); background: var(--uk-border); }
 .uk-tab-close .uk-icon { width: 13px; height: 13px; }
 /* A tab the user pinned: a small pin before its name, always there; a click unpins it. */
-.uk-tab-pin { display: inline-flex; margin: 0 -2px 0 -4px; padding: 2px; border-radius: 3px; color: var(--uk-muted); transition: color .12s, background .12s; }
+.uk-tab-pin { display: inline-flex; margin: 0 -.5px 0 -4px; padding: 2px; border-radius: 3px; color: var(--uk-muted); transition: color .12s, background .12s; }
 .uk-tab-pin .uk-icon { width: 11px; height: 11px; transform: rotate(35deg); }
 .uk-tab-pin:hover { color: var(--uk-text); background: var(--uk-border); }
 .uk-tab-sep { flex: none; width: 1px; align-self: center; height: 16px; margin: 0 10px; border-radius: 1px; background: var(--uk-muted); opacity: .4; }
@@ -318,8 +333,13 @@ export const css = `
 .uk-tab-list[data-sorting] .uk-tab-sep { visibility: visible; }
 /* The tab dragged: lifted. The bar waits for it to land. */
 .uk-tab[data-sort-active] { color: var(--uk-text); cursor: grabbing; }
-.uk-tab[data-sort-active]::before { background: var(--uk-panel-2); box-shadow: 0 4px 14px color-mix(in srgb, var(--uk-shadow) 35%, transparent); }
+.uk-tab[data-sort-active]::before { background: var(--uk-panel-2); box-shadow: 0 8px 22px color-mix(in srgb, var(--uk-shadow) 40%, transparent), 0 1px 3px color-mix(in srgb, var(--uk-shadow) 25%, transparent); transition: box-shadow .2s ease-out, background .15s; }
+[data-sort-drop] .uk-tab[data-sort-active]::before { box-shadow: 0 0 0 transparent, 0 0 0 transparent; }
 .uk-tab-list[data-sorting] .uk-tab-bar { opacity: 0; }
+/* The tab dragged into another section: as it will be there at once — its pin, its × appearing. */
+.uk-tab[data-into] .uk-tab-pin, .uk-tab[data-into] .uk-tab-close { animation: uk-tab-tool-in .18s cubic-bezier(.2, 0, 0, 1); }
+@keyframes uk-tab-tool-in { from { opacity: 0; scale: .4; } }
+@media (prefers-reduced-motion: reduce) { .uk-tab[data-into] .uk-tab-pin, .uk-tab[data-into] .uk-tab-close { animation: none; } }
 .uk-tab-bar[data-instant] { transition: none; }
 .uk-tab-bar { position: absolute; left: 0; top: -1px; height: 2px; background: var(--uk-text); border-radius: 2px; transition: transform .28s cubic-bezier(.4, 0, .2, 1), width .28s cubic-bezier(.4, 0, .2, 1), opacity .15s; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .uk-tab-bar { transition: none; } }
