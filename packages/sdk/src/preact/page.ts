@@ -18,6 +18,20 @@ export interface Shown extends Notification {
   from?: string;
 }
 
+/** A context menu open: on what (its subject, and what is said of it), where, how. */
+export interface OpenMenu {
+  /** A new one each time one opens. */
+  id: number;
+  on: string;
+  subject: unknown;
+  /** Where (the window's coordinates): the pointer, or under the element (above: its top, where it opens up from). */
+  at: { x: number; y: number; above?: number };
+  /** Opened by the keyboard: its first item taken at once. */
+  keyboard: boolean;
+  /** What it is on, at its top ("Pods"). */
+  title?: string;
+}
+
 export interface PageValue {
   /** Where the page is: a path ('/k/pods.v1'). */
   readonly path: ReadonlySignal<string>;
@@ -33,6 +47,10 @@ export interface PageValue {
   dismiss(id: string): void;
   /** A notification's time stopped (the pointer on it) or let run again. */
   hold(id: string, held: boolean): void;
+  /** The context menu open, if one is (one at a time; closed as the page goes elsewhere). */
+  readonly menu: ReadonlySignal<OpenMenu | null>;
+  openMenu(menu: Omit<OpenMenu, 'id'>): void;
+  closeMenu(): void;
   /** A definition's function failed (a column's value, a filter): told as whoever says that field — once the drawing is done, each once. */
   report(definition: { kind: string; name: string }, field: string, error: unknown): void;
 }

@@ -215,6 +215,68 @@ export const Action = defineKind<ActionSpec>()('Action', {
   patchRights: { target: behaviour, title: configure, icon: configure, order: configure, dangerous: behaviour, when: behaviour, run: behaviour },
 });
 
+/**
+ * What a context menu is opened on (its subject), and what its items are
+ * given about it. An addon may say one of its own (an interface merged into
+ * this one: declare module '@overkube/sdk').
+ */
+export interface MenuSubjects {
+  /** A tab of the navigation: where it leads, whether it is pinned, whether the page is there. */
+  'nav.tab': { key: string; title: string; path: string; kind?: KindInfo; pinned: boolean; current: boolean };
+}
+export type MenuSubject = keyof MenuSubjects & string;
+
+/**
+ * An item of the context menu of a subject: shown where when says (none:
+ * always), in its group — open, state, copy, one of its own (after those),
+ * danger last whatever it says. Its title, icon, order, group, keys and
+ * whether it is hidden are anyone's to change; what it does, the addon's.
+ */
+export interface MenuItemSpec {
+  on: string;
+  title: Label;
+  icon?: string;
+  /** Its group: open (to go somewhere), state (a thing's state: pinned), copy, or one of its own. */
+  group?: string;
+  order?: number;
+  /** Its keys, shown at its end ("delete"). */
+  keys?: string;
+  /** What it does cannot be taken back: last, apart. */
+  danger?: boolean;
+  hidden?: boolean;
+  // biome-ignore lint/suspicious/noExplicitAny: given its subject's (menuItem() types it).
+  when?: (subject: any) => boolean;
+  // biome-ignore lint/suspicious/noExplicitAny: given its subject's (menuItem() types it).
+  run: (subject: any) => Promise<unknown> | unknown;
+}
+
+export const MenuItem = defineKind<MenuItemSpec>()('MenuItem', {
+  required: ['on', 'title', 'run'],
+  createRight: behaviour,
+  validate: fields({
+    ...looks,
+    on: [text, 'notText'],
+    group: [text, 'notText'],
+    keys: [text, 'notText'],
+    danger: [flag, 'notAFlag'],
+    hidden: [flag, 'notAFlag'],
+    when: [fn, 'notAFunction'],
+    run: [fn, 'notAFunction'],
+  }),
+  patchRights: {
+    on: behaviour,
+    title: configure,
+    icon: configure,
+    group: configure,
+    order: configure,
+    keys: configure,
+    hidden: configure,
+    danger: behaviour,
+    when: behaviour,
+    run: behaviour,
+  },
+});
+
 /** How the page's navigation is drawn: as tabs across the top, or a menu down the side. One, named 'default'. */
 export interface NavViewSpec {
   mode?: 'tabs' | 'side';
@@ -323,7 +385,7 @@ export const Language = defineKind<LanguageSpec>()('Language', {
 });
 
 /** The dashboard's own kinds (the UI's beside them). */
-export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, Route, NavView, Theme, Appearance, Messages, Language] as const;
+export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, MenuItem, Route, NavView, Theme, Appearance, Messages, Language] as const;
 
 /** Every kind the dashboard has: its registry is made of them. */
 export const kubeKinds = [ui.Slot, ui.Fill, ui.Wrap, ...kubeOwnKinds] as const;

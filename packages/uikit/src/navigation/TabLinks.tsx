@@ -11,7 +11,7 @@ import { lookIn } from './tabState';
  * at marked (aria-current), not a tablist (no panel of its own: the page
  * is). The strip is Tabs' (TabStrip): sections, the bar, dragging (into the
  * pinned: pinned; into the open: unpinned). An open one's × closes it (Delete
- * too), a pinned one's pin unpins it. What follows them (a +) at their end.
+ * too). What follows them (a +) at their end.
  */
 
 export interface TabLink {
@@ -23,8 +23,6 @@ export interface TabLink {
   /** Shown as not kept (one open, not pinned). */
   transient?: boolean;
   closable?: boolean;
-  /** Pinned by the user: its pin unpins it. */
-  pinned?: boolean;
   /** Dragged, it stays in its section. */
   stays?: boolean;
 }
@@ -38,15 +36,16 @@ export interface TabLinksProps {
   /** A link chosen (none: it is followed). */
   onOpen?: (link: TabLink, event: MouseEvent) => void;
   onClose?: (key: string) => void;
-  onPin?: (key: string, pin: boolean) => void;
+  /** A link's context menu asked for (a right click, the menu key): the page's to open, or not (the browser's then). */
+  onMenu?: (key: string, event: MouseEvent | KeyboardEvent) => void;
   /** A link dragged to another place: into section, at index (among its links, as they will be). */
   onMove?: (key: string, section: string, index: number) => void;
-  /** The names of its tools ("Close Pods", "Unpin Pods"). */
-  labels?: Pick<TabLabels, 'close' | 'unpin'>;
+  /** The name of its × ("Close Pods"). */
+  labels?: Pick<TabLabels, 'close'>;
   end?: ComponentChildren;
 }
 
-export function TabLinks({ sections, current, label, onOpen, onClose: onCloseGiven, onPin, onMove, labels = TAB_LABELS, end }: TabLinksProps) {
+export function TabLinks({ sections, current, label, onOpen, onClose: onCloseGiven, onMenu, onMove, labels = TAB_LABELS, end }: TabLinksProps) {
   const strip = useRef<HTMLDivElement | null>(null);
   const onClose = onCloseGiven && ((key: string) => closeFocused(strip.current, key, onCloseGiven));
   /** A tool's click: its own, not the link's. */
@@ -66,7 +65,6 @@ export function TabLinks({ sections, current, label, onOpen, onClose: onCloseGiv
           const link = into ? lookIn(given, into) : given;
           const name = link.title ?? link.key;
           const closes = link.closable && onClose;
-          const unpins = !closes && link.pinned && onPin;
           return (
             <a
               {...drag}
@@ -80,18 +78,15 @@ export function TabLinks({ sections, current, label, onOpen, onClose: onCloseGiv
               aria-current={current === link.key ? 'page' : undefined}
               aria-keyshortcuts={[closes && 'Delete', drag['aria-keyshortcuts']].filter(Boolean).join(' ') || undefined}
               onClick={onOpen ? (e) => onOpen(link, e) : undefined}
+              onContextMenu={onMenu && ((e) => onMenu(link.key, e))}
               onKeyDown={(e) => {
                 (drag.onKeyDown as ((e: KeyboardEvent) => void) | undefined)?.(e);
+                onMenu?.(link.key, e);
                 if (e.defaultPrevented || !closes || (e.key !== 'Delete' && e.key !== 'Backspace')) return;
                 e.preventDefault();
                 onClose(link.key);
               }}
             >
-              {unpins && (
-                <span class="uk-tab-pin" aria-hidden="true" title={labels.unpin(name)} onClick={tool(() => onPin(link.key, false))}>
-                  <Icon name="pin-filled" />
-                </span>
-              )}
               <span class="uk-tab-label">{link.label}</span>
               {closes && (
                 <span class="uk-tab-close" aria-hidden="true" title={labels.close(name)} onClick={tool(() => onClose(link.key))}>

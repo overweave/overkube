@@ -5,27 +5,21 @@ import { Tab, type TabItem, type TabProps } from './Tab';
 
 /*
  * One tab as a user has it (user-event): what it says (role, name, ARIA
- * states), what it shows (its pin, its ×, its dot), what it does by the
+ * states), what it shows (its ×, its dot), what it does by the
  * pointer and the keyboard.
  */
 
 afterEach(cleanup);
 
 const PAGE: TabItem = { key: 'page/overview', label: 'Overview', title: 'Overview' };
-const PINNED: TabItem = { key: 'kind/v1/Pod', label: 'Pods', title: 'Pods (v1/Pod)', pinned: true };
-const OPEN: TabItem = { key: 'kind/v1/Node', label: 'Nodes', title: 'Nodes (v1/Node)', transient: true, closable: true, pinned: false };
+const PINNED: TabItem = { key: 'kind/v1/Pod', label: 'Pods', title: 'Pods (v1/Pod)' };
+const OPEN: TabItem = { key: 'kind/v1/Node', label: 'Nodes', title: 'Nodes (v1/Node)', transient: true, closable: true };
 
 function mount(tab: TabItem, props: Partial<TabProps> = {}) {
   const told: string[] = [];
   const view = render(
     <div role="tablist">
-      <Tab
-        tab={tab}
-        onSelect={(k) => told.push(`select ${k}`)}
-        onClose={(k) => told.push(`close ${k}`)}
-        onPin={(k, pin) => told.push(`${pin ? 'pin' : 'unpin'} ${k}`)}
-        {...props}
-      />
+      <Tab tab={tab} onSelect={(k) => told.push(`select ${k}`)} onClose={(k) => told.push(`close ${k}`)} {...props} />
     </div>,
   );
   const el = view.getByRole('tab');
@@ -34,7 +28,6 @@ function mount(tab: TabItem, props: Partial<TabProps> = {}) {
     told,
     el,
     user: userEvent.setup(),
-    pin: () => el.querySelector('.uk-tab-pin') as HTMLElement | null,
     close: () => el.querySelector('.uk-tab-close') as HTMLElement | null,
   };
 }
@@ -88,43 +81,31 @@ describe('Tab: its dot', () => {
     const quiet = mount({ ...PINNED, dot: 'warn' }).el.querySelector('.uk-dot');
     expect(quiet?.getAttribute('aria-hidden')).toBe('true');
     cleanup();
-    const { getByRole } = mount({ ...PINNED, dot: 'warn' }, { labels: { close: (t) => t, unpin: (t) => t, dot: (l) => `level ${l}` } });
+    const { getByRole } = mount({ ...PINNED, dot: 'warn' }, { labels: { close: (t) => t, dot: (l) => `level ${l}` } });
     expect(getByRole('img', { name: 'level warn' })).toBeTruthy();
   });
 });
 
-describe('Tab: its pin and its ×', () => {
-  it('a page’s own has neither', () => {
-    const { pin, close, el } = mount(PAGE);
-    expect(pin()).toBeNull();
+describe('Tab: its ×', () => {
+  it('a page’s own, a pinned one have none', () => {
+    const { close, el } = mount(PAGE);
     expect(close()).toBeNull();
+    expect(el.hasAttribute('data-tool')).toBe(false);
+    cleanup();
+    expect(mount(PINNED).close()).toBeNull();
     expect(el.hasAttribute('data-tool')).toBe(false);
   });
 
-  it('a pinned one has its pin before its name, which unpins it (not selecting it)', async () => {
-    const { pin, close, el, user, told } = mount(PINNED);
-    expect(close()).toBeNull();
-    expect(el.firstElementChild).toBe(pin());
-    expect(pin()?.getAttribute('title')).toBe('Unpin Pods (v1/Pod)');
-    expect(pin()?.getAttribute('aria-hidden')).toBe('true');
-    await user.click(pin() as HTMLElement);
-    expect(told).toEqual(['unpin kind/v1/Pod']);
-  });
-
   it('an open one has its ×, in room kept for it, which closes it (not selecting it)', async () => {
-    const { pin, close, el, user, told } = mount(OPEN);
-    expect(pin()).toBeNull();
+    const { close, el, user, told } = mount(OPEN);
     expect(el.getAttribute('data-tool')).toBe('close');
     expect(close()?.getAttribute('title')).toBe('Close Nodes (v1/Node)');
     await user.click(close() as HTMLElement);
     expect(told).toEqual(['close kind/v1/Node']);
   });
 
-  it('has no × nor pin with nobody to tell', () => {
-    const { close } = mount(OPEN, { onClose: undefined });
-    expect(close()).toBeNull();
-    cleanup();
-    expect(mount(PINNED, { onPin: undefined }).pin()).toBeNull();
+  it('has no × with nobody to tell', () => {
+    expect(mount(OPEN, { onClose: undefined }).close()).toBeNull();
   });
 
   it('names its tools by its key when it has no title', () => {
@@ -159,16 +140,6 @@ describe('Tab: what it does', () => {
     fireEvent.keyDown(el, { key: 'Delete' });
     fireEvent(el, new MouseEvent('auxclick', { button: 1, bubbles: true }));
     expect(told).toEqual([]);
-  });
-
-  it('pins nor unpins by a key (P is the page’s)', () => {
-    const open = mount(OPEN);
-    fireEvent.keyDown(open.el, { key: 'p' });
-    expect(open.told).toEqual([]);
-    cleanup();
-    const pinned = mount(PINNED);
-    fireEvent.keyDown(pinned.el, { key: 'P' });
-    expect(pinned.told).toEqual([]);
   });
 
   it('lets a key it is given go first: one it takes is not its own', () => {

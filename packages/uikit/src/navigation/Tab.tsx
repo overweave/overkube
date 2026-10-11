@@ -3,12 +3,10 @@ import { Icon } from '../display/Icon';
 import type { Level } from '../lib/level';
 
 /*
- * One tab of a strip: its name; a dot of how what it shows is; a small
- * pin before the name of one the user pinned (always there; a click unpins
- * it); and the × of a closable one, in room kept for it, shown under the
- * pointer and on the selected tab. ARIA allows nothing interactive in a
- * tab: the pin and the × are the pointer's (a tooltip names them); the
- * keyboard closes by Delete. Enter or Space selects it; a middle click closes it.
+ * One tab of a strip: its name; a dot of how what it shows is; and the ×
+ * of a closable one, in room kept for it, shown under the pointer and on
+ * the selected tab. ARIA allows nothing interactive in a tab: the × is the
+ * pointer's (a tooltip names it); the keyboard closes by Delete. Enter or Space selects it; a middle click closes it.
  */
 
 export interface TabItem {
@@ -20,8 +18,6 @@ export interface TabItem {
   /** Shown as not kept (an open tab, not pinned). */
   transient?: boolean;
   closable?: boolean;
-  /** Pinned by the user: its pin unpins it (pinned: dragged into the pinned). */
-  pinned?: boolean;
   /** Dragged, it stays in its section (a page's own: pinned for good). */
   stays?: boolean;
 }
@@ -29,12 +25,11 @@ export interface TabItem {
 /** The names of a tab's tools and dot, for those who cannot see them. */
 export interface TabLabels {
   close: (title: string) => string;
-  unpin: (title: string) => string;
   /** How it is, by its dot ("needs a look"); without, the dot is not said. */
   dot?: (level: Level) => string;
 }
 
-export const TAB_LABELS: TabLabels = { close: (t) => `Close ${t}`, unpin: (t) => `Unpin ${t}` };
+export const TAB_LABELS: TabLabels = { close: (t) => `Close ${t}` };
 
 export type TabProps = {
   tab: TabItem;
@@ -46,14 +41,11 @@ export type TabProps = {
   labels?: TabLabels;
   onSelect: (key: string) => void;
   onClose?: (key: string) => void;
-  onPin?: (key: string, pin: boolean) => void;
 } & Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onSelect' | 'onClose' | 'tab' | 'label'>;
 
-export function Tab({ tab, selected = false, stop = selected, panel, labels = TAB_LABELS, onSelect, onClose, onPin, onKeyDown, ...rest }: TabProps) {
+export function Tab({ tab, selected = false, stop = selected, panel, labels = TAB_LABELS, onSelect, onClose, onKeyDown, ...rest }: TabProps) {
   const name = tab.title ?? tab.key;
   const closes = tab.closable && onClose;
-  // Pinned by the user (not one that closes, not a page's own): its pin, to unpin it.
-  const unpins = !closes && tab.pinned === true && onPin;
   // Its own keys, and those it is given (moving it: Alt and the arrows).
   const keys = [closes && 'Delete', rest['aria-keyshortcuts']].filter(Boolean).join(' ');
   return (
@@ -83,19 +75,6 @@ export function Tab({ tab, selected = false, stop = selected, panel, labels = TA
         e.preventDefault();
       }}
     >
-      {unpins && (
-        <span
-          class="uk-tab-pin"
-          aria-hidden="true"
-          title={labels.unpin(name)}
-          onClick={(e) => {
-            e.stopPropagation();
-            onPin(tab.key, false);
-          }}
-        >
-          <Icon name="pin-filled" />
-        </span>
-      )}
       <span class="uk-tab-label">{tab.label}</span>
       {tab.dot &&
         tab.dot !== 'ok' &&

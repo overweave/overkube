@@ -1,6 +1,5 @@
 import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
-import { activeElement } from '../lib/focus';
 import { TAB_LABELS, Tab, type TabItem, type TabLabels } from './Tab';
 import { closeFocused, type StripSection, TabStrip } from './TabStrip';
 import { lookIn } from './tabState';
@@ -23,7 +22,6 @@ export interface TabsProps {
   label: string;
   onSelect: (key: string) => void;
   onClose?: (key: string) => void;
-  onPin?: (key: string, pin: boolean) => void;
   /** A tab dragged to another place: into section, at index (among its tabs, as they will be). */
   onMove?: (key: string, section: string, index: number) => void;
   /** The names of a tab's tools and dot, for those who cannot see them. */
@@ -34,7 +32,7 @@ export interface TabsProps {
   end?: ComponentChildren;
 }
 
-export function Tabs({ sections, active, label, onSelect, onClose, onPin, onMove, labels = TAB_LABELS, panel, end }: TabsProps) {
+export function Tabs({ sections, active, label, onSelect, onClose, onMove, labels = TAB_LABELS, panel, end }: TabsProps) {
   const strip = useRef<HTMLDivElement | null>(null);
   const all = sections.flatMap((s) => s.tabs);
   const stop = all.some((t) => t.key === active) ? active : all[0]?.key;
@@ -56,20 +54,6 @@ export function Tabs({ sections, active, label, onSelect, onClose, onPin, onMove
   };
   const close = onClose && ((key: string) => closeFocused(strip.current, key, onClose));
 
-  // A tab pinned or unpinned with focus on it moves to the other section (its element moved, blurred): focus back on it, where it now is.
-  const pin =
-    onPin &&
-    ((key: string, on: boolean) => {
-      const had = activeElement() === tabs().find((t) => t.dataset.key === key);
-      onPin(key, on);
-      if (had)
-        Promise.resolve().then(() =>
-          tabs()
-            .find((t) => t.dataset.key === key)
-            ?.focus(),
-        );
-    });
-
   return (
     <div class="uk-tabs">
       <TabStrip
@@ -87,7 +71,6 @@ export function Tabs({ sections, active, label, onSelect, onClose, onPin, onMove
             labels={labels}
             onSelect={onSelect}
             onClose={close}
-            onPin={pin}
             data-into={into}
             {...drag}
           />

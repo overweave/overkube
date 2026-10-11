@@ -1,10 +1,11 @@
 import { type ComponentCluster, kindMatcher } from '@overkube/sdk';
-import { KubeProvider, PageProvider, type PageValue } from '@overkube/sdk/preact';
+import { KubeProvider, type OpenMenu, PageProvider, type PageValue } from '@overkube/sdk/preact';
 import type { Registry } from '@overweave/core';
 import type { Failure } from '@overweave/ui';
 import { OverweaveProvider } from '@overweave/ui/preact';
+import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { useMemo, useRef } from 'preact/hooks';
+import { useEffect, useMemo, useRef } from 'preact/hooks';
 import { Frame } from './Frame.tsx';
 import type { Notifications } from './notifications.ts';
 import type { Router } from './router.ts';
@@ -42,6 +43,16 @@ export function ShellProvider({ router, notifications, onFailure = warn, childre
     },
     [],
   );
+  // The context menu open: one at a time, closed as the page goes elsewhere.
+  const menu = useMemo(() => signal<OpenMenu | null>(null), []);
+  const opened = useRef(0);
+  useEffect(
+    () =>
+      router.path.subscribe(() => {
+        menu.value = null;
+      }),
+    [router, menu],
+  );
   const value = useMemo<PageValue>(
     () => ({
       path: router.path,
@@ -53,8 +64,15 @@ export function ShellProvider({ router, notifications, onFailure = warn, childre
       back: () => router.back(),
       hold: (id, held) => notifications.hold(id, held),
       report,
+      menu,
+      openMenu: (m) => {
+        menu.value = { ...m, id: ++opened.current };
+      },
+      closeMenu: () => {
+        menu.value = null;
+      },
     }),
-    [router, notifications, report],
+    [router, notifications, report, menu],
   );
   return <PageProvider value={value}>{children}</PageProvider>;
 }

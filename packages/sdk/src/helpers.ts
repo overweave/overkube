@@ -3,7 +3,7 @@ import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import type { FillSpec } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
 import type { ComponentType } from 'preact';
-import type { ActionSpec, ColumnRenderProps, ColumnSpec, Target } from './kinds.ts';
+import type { ActionSpec, ColumnRenderProps, ColumnSpec, MenuItemSpec, MenuSubject, MenuSubjects, Target } from './kinds.ts';
 import { type ObjectProps, slots } from './slots.ts';
 import { forKinds } from './target.ts';
 import type { Label } from './text.ts';
@@ -74,6 +74,13 @@ export function action(spec: { kinds?: readonly KindInfo[] } & ActionOf<KubeObje
 export function action(spec: { kinds?: readonly KindInfo[] } & ActionOf<KubeObject>): ActionSpec {
   const { kinds, ...rest } = spec;
   return { ...rest, target: targetOf(kinds) };
+}
+
+/** An item of a subject's context menu: its when and run given that subject's (a tab's: MenuSubjects['nav.tab']). */
+export function menuItem<const S extends MenuSubject>(
+  spec: Omit<MenuItemSpec, 'on' | 'when' | 'run'> & { on: S; when?: (subject: MenuSubjects[S]) => boolean; run: (subject: MenuSubjects[S]) => Promise<unknown> | unknown },
+): MenuItemSpec {
+  return spec;
 }
 
 /** Something on a page's region: a tile of the overview, a panel. */

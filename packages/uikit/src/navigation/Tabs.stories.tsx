@@ -3,14 +3,12 @@ import { useState } from 'preact/hooks';
 import { Icon } from '../display/Icon';
 import type { Level } from '../lib/level';
 import { type TabItem, Tabs, type TabsProps } from './Tabs';
-import { closeTab, moveTab, nextTab, openTab, pinTab } from './tabState';
+import { closeTab, moveTab, nextTab, openTab } from './tabState';
 
 /*
  * The strip as a page has it, two sections: pinned — the pages' own
- * (pinned for good, no tool) and those the user pinned (each with its
- * unpin), in any order — and open (each with its ×). Every callback wired:
- * select, close (×, Delete, a middle click), unpin (its pin: it goes, or
- * stays open if it is the one shown), drag within a section or across it (into the pinned: pinned; into the open: unpinned —
+ * (pinned for good) and those the user pinned, in any order — and open (each with its ×). Every callback wired:
+ * select, close (×, Delete, a middle click), drag within a section or across it (into the pinned: pinned; into the open: unpinned —
  * a page's own stays in the pinned), Alt and the arrows, a + adding an
  * open tab.
  */
@@ -53,7 +51,6 @@ function Strip({ initial, active: first }: { initial: State; active: string }) {
     dot: DOTS[key],
     transient: how === 'open',
     closable: how === 'open',
-    pinned: how === 'own' ? undefined : how === 'pinned',
     stays: how === 'own',
   });
   // The strip's rules (tabState), as the page keeps them.
@@ -62,7 +59,6 @@ function Strip({ initial, active: first }: { initial: State; active: string }) {
     if (key === active) setActive(nextTab(lists, key) ?? '');
     setS({ ...s, ...closeTab(lists, key) });
   };
-  const pin = (key: string, on: boolean) => setS({ ...s, ...pinTab(lists, key, on, active) });
   const move: TabsProps['onMove'] = (key, section, index) => setS({ ...s, ...moveTab(lists, key, section, index) });
   const add = () => {
     const next = Object.keys(LABELS).find((k) => !all.includes(k));
@@ -86,7 +82,6 @@ function Strip({ initial, active: first }: { initial: State; active: string }) {
         }
         onSelect={setActive}
         onClose={close}
-        onPin={pin}
         onMove={move}
       />
       <p style={{ color: 'var(--uk-muted)', fontSize: '12px', marginTop: '16px' }}>
@@ -104,7 +99,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Select; close (×, Delete, a middle click); unpin (its pin); drag within and across (pinning, unpinning); add with +. */
+/** Select; close (×, Delete, a middle click); drag within and across (pinning, unpinning); add with +. */
 export const Playing: Story = {
   args: {
     initial: { own: ['overview', 'extensions'], pinned: ['overview', 'extensions', 'pods', 'deployments', 'services'], open: ['nodes', 'configmaps'] },

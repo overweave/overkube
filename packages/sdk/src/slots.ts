@@ -52,6 +52,8 @@ export const slots = {
   },
   /** Over the page: what is opened over it (a palette, a panel); placed by what fills it. */
   overlay: slot<Record<string, never>>('overlay'),
+  /** The context menu open (usePage().menu): drawn over everything, by what fills it. */
+  menu: slot<Record<string, never>>('menu'),
   /** What the user is told: drawn over everything, a dialog too (the shell keeps it on top). */
   notifications: slot<Record<string, never>>('notifications'),
   kind: {

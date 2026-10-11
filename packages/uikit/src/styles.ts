@@ -318,16 +318,12 @@ export const css = `
 .uk-tab:focus-visible { outline: none; }
 .uk-tab:focus-visible::before { box-shadow: inset 0 0 0 2px var(--uk-focus); }
 .uk-tab[data-transient] .uk-tab-label { font-style: italic; }
-/* A tab with a tool keeps room for it (it comes without the tab growing), as much as a pin takes: dragged from the open to the pinned (or back), it keeps its width. */
-.uk-tab[data-tool] { padding-right: 28.5px; }
+/* A tab with a tool keeps room for it: it comes without the tab growing. */
+.uk-tab[data-tool] { padding-right: 30px; }
 .uk-tab-close { position: absolute; right: 7px; top: 50%; margin-top: -10px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--uk-radius-sm); color: var(--uk-muted); opacity: 0; pointer-events: none; transition: opacity .12s, color .12s, background .12s; }
 .uk-tab:hover .uk-tab-close, .uk-tab:focus-visible .uk-tab-close, .uk-tab[aria-selected='true'] .uk-tab-close, .uk-tab[aria-current='page'] .uk-tab-close, .uk-tab[data-sort-active] .uk-tab-close { opacity: 1; pointer-events: auto; }
 .uk-tab-close:hover { color: var(--uk-text); background: var(--uk-border); }
 .uk-tab-close .uk-icon { width: 13px; height: 13px; }
-/* A tab the user pinned: a small pin before its name, always there; a click unpins it. */
-.uk-tab-pin { display: inline-flex; margin: 0 -.5px 0 -4px; padding: 2px; border-radius: 3px; color: var(--uk-muted); transition: color .12s, background .12s; }
-.uk-tab-pin .uk-icon { width: 11px; height: 11px; transform: rotate(35deg); }
-.uk-tab-pin:hover { color: var(--uk-text); background: var(--uk-border); }
 .uk-tab-sep { flex: none; width: 1px; align-self: center; height: 16px; margin: 0 10px; border-radius: 1px; background: var(--uk-muted); opacity: .4; }
 .uk-tab-sep[data-quiet] { visibility: hidden; }
 .uk-tab-list[data-sorting] .uk-tab-sep { visibility: visible; }
@@ -336,10 +332,10 @@ export const css = `
 .uk-tab[data-sort-active]::before { background: var(--uk-panel-2); box-shadow: 0 8px 22px color-mix(in srgb, var(--uk-shadow) 40%, transparent), 0 1px 3px color-mix(in srgb, var(--uk-shadow) 25%, transparent); transition: box-shadow .2s ease-out, background .15s; }
 [data-sort-drop] .uk-tab[data-sort-active]::before { box-shadow: 0 0 0 transparent, 0 0 0 transparent; }
 .uk-tab-list[data-sorting] .uk-tab-bar { opacity: 0; }
-/* The tab dragged into another section: as it will be there at once — its pin, its × appearing. */
-.uk-tab[data-into] .uk-tab-pin, .uk-tab[data-into] .uk-tab-close { animation: uk-tab-tool-in .18s cubic-bezier(.2, 0, 0, 1); }
+/* The tab dragged into another section: as it will be there at once — its × appearing, or going. */
+.uk-tab[data-into] .uk-tab-close { animation: uk-tab-tool-in .18s cubic-bezier(.2, 0, 0, 1); }
 @keyframes uk-tab-tool-in { from { opacity: 0; scale: .4; } }
-@media (prefers-reduced-motion: reduce) { .uk-tab[data-into] .uk-tab-pin, .uk-tab[data-into] .uk-tab-close { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .uk-tab[data-into] .uk-tab-close { animation: none; } }
 .uk-tab-bar[data-instant] { transition: none; }
 .uk-tab-bar { position: absolute; left: 0; top: -1px; height: 2px; background: var(--uk-text); border-radius: 2px; transition: transform .28s cubic-bezier(.4, 0, .2, 1), width .28s cubic-bezier(.4, 0, .2, 1), opacity .15s; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .uk-tab-bar { transition: none; } }
@@ -410,6 +406,30 @@ button.uk-stat:hover .uk-stat-go, button.uk-stat:focus-visible .uk-stat-go { opa
   .uk-popover, .uk-popover[data-state='closing'], .uk-modal::backdrop, .uk-modal .uk-modal-panel, .uk-modal[data-state] .uk-modal-panel { animation: none !important; }
   .uk-switch-thumb, .uk-switch-track, .uk-tab-bar { transition: none; }
 }
+/* A context menu: a pane of glass over everything, growing from where it was asked for; its items as a system's. */
+.uk-menu { position: fixed; inset: auto; margin: 0; z-index: 950; box-sizing: border-box; min-width: 200px; max-width: 320px; max-height: calc(100vh - 16px); overflow-y: auto; padding: 5px; border: 1px solid color-mix(in srgb, var(--uk-border) 80%, transparent); border-radius: var(--uk-radius-lg); background: color-mix(in srgb, var(--uk-panel) 86%, transparent); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); box-shadow: 0 16px 40px color-mix(in srgb, var(--uk-shadow) 42%, transparent), 0 2px 8px color-mix(in srgb, var(--uk-shadow) 22%, transparent), inset 0 1px 0 color-mix(in srgb, var(--uk-text) 5%, transparent); color: var(--uk-text); font-size: 13px; outline: none; transform-origin: var(--uk-menu-origin, 0 0); animation: uk-menu-in .14s cubic-bezier(.2, .9, .3, 1.1); }
+.uk-menu[data-state='closing'] { animation: uk-menu-out .1s ease-in forwards; pointer-events: none; }
+.uk-menu-title { padding: 6px 9px 5px; color: var(--uk-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uk-menu-group { display: flex; flex-direction: column; gap: 1px; }
+.uk-menu-sep { height: 1px; margin: 5px 4px; border: 0; background: var(--uk-border); }
+.uk-menu-item { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px 0 8px; border-radius: var(--uk-radius); cursor: default; user-select: none; outline: none; transition: background .08s, color .08s; }
+.uk-menu-item:focus { background: var(--uk-panel-2); }
+.uk-menu-item:active { scale: .985; }
+.uk-menu-icon { display: inline-flex; flex: none; width: 15px; color: var(--uk-muted); transition: color .08s; }
+.uk-menu-icon .uk-icon { width: 15px; height: 15px; }
+.uk-menu-item:focus .uk-menu-icon { color: var(--uk-text); }
+.uk-menu-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uk-menu-keys { margin-left: 16px; color: var(--uk-muted); font-size: 12px; letter-spacing: .02em; white-space: nowrap; }
+.uk-menu-item[data-danger], .uk-menu-item[data-danger] .uk-menu-icon { color: var(--uk-error); }
+.uk-menu-item[data-danger]:focus { background: color-mix(in srgb, var(--uk-error) 14%, transparent); }
+.uk-menu-item[aria-disabled='true'] { opacity: .45; }
+.uk-menu-item[aria-disabled='true']:focus { background: none; }
+/* Chosen: a blink, then done. */
+.uk-menu-item[data-chosen] { animation: uk-menu-blink .11s steps(2, jump-none); }
+@keyframes uk-menu-in { from { opacity: 0; scale: .94; } }
+@keyframes uk-menu-out { to { opacity: 0; scale: .98; } }
+@keyframes uk-menu-blink { 50% { background: none; } }
+@media (prefers-reduced-motion: reduce) { .uk-menu, .uk-menu[data-state='closing'], .uk-menu-item[data-chosen] { animation: none; } .uk-menu-item:active { scale: none; } }
 .uk-popover { position: fixed; z-index: 900; background: var(--uk-panel); border: 1px solid var(--uk-border); border-radius: var(--uk-radius); box-shadow: 0 10px 30px color-mix(in srgb, var(--uk-shadow) 45%, transparent); padding: 12px; }
 .uk-shell { display: flex; flex-direction: column; gap: 12px; min-height: 100%; }
 .uk-shell-header { display: flex; align-items: center; gap: 8px; }

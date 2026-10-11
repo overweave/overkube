@@ -1,10 +1,12 @@
 import { NavView } from '@overkube/sdk';
-import { usePage, useSay } from '@overkube/sdk/preact';
+import { useMenu, usePage, useSay } from '@overkube/sdk/preact';
 import {
   Catalog,
   type CatalogGroup,
+  closeFocused,
   closeTab,
   Icon,
+  keepFocused,
   moveTab,
   NavList,
   type NavListGroup,
@@ -46,8 +48,16 @@ export interface TabsKept {
   open: string[];
 }
 
-/** Tabs: the pinned, those open (the one the page is at among them); "+" at their end opens the rest. */
-export function NavTabs({ tabs }: { tabs: Signal<TabsKept> }) {
+/** The tabs while the page runs: as the user made them, and what the tabs drawn do to one (a menu's items: set as they are drawn). */
+export interface TabsState {
+  kept: Signal<TabsKept>;
+  act?: { pin(key: string, on: boolean): void; close(key: string): void };
+}
+
+/** Tabs: the pinned, those open (the one the page is at among them); "+" at their end opens the rest; each its context menu (nav.tab). */
+export function NavTabs({ tabs: state }: { tabs: TabsState }) {
+  const tabs = state.kept;
+  const menu = useMenu('nav.tab');
   const nav = useNav();
   const page = usePage();
   const say = useSay();
@@ -73,7 +83,7 @@ export function NavTabs({ tabs }: { tabs: Signal<TabsKept> }) {
     (pinned: boolean) =>
     (key: string): TabLink => {
       const e = entries.get(key) as NavEntry;
-      return { key, label: e.title, href: page.href(e.path), title: e.kind?.id ?? e.path, pinned, closable: !pinned, transient: !pinned };
+      return { key, label: e.title, href: page.href(e.path), title: e.kind?.id ?? e.path, closable: !pinned, transient: !pinned };
     };
   const closeOne = (key: string) => {
     if (key === nav.current?.key) {
@@ -82,6 +92,9 @@ export function NavTabs({ tabs }: { tabs: Signal<TabsKept> }) {
     }
     keep(closeTab(lists, key));
   };
+  const pin = (key: string, on: boolean) => keep(pinTab(lists, key, on, nav.current?.key));
+  // From a menu (focus given back to the tab): kept on it where it moves, or to its neighbour as it closes (as the × does).
+  state.act = { pin: (key, on) => keepFocused(key, () => pin(key, on)), close: (key) => closeFocused(null, key, closeOne) };
   const close = () => {
     setPicking(false);
     add.current?.focus();
@@ -95,9 +108,13 @@ export function NavTabs({ tabs }: { tabs: Signal<TabsKept> }) {
           { id: 'open', tabs: known(lists.open).map(link(false)), draggable: true },
         ]}
         current={nav.current?.key}
-        labels={{ close: (title) => say(T.nav.close, { title }), unpin: (title) => say(T.nav.unpin, { title }) }}
+        labels={{ close: (title) => say(T.nav.close, { title }) }}
         onClose={closeOne}
-        onPin={(key, pin) => keep(pinTab(lists, key, pin, nav.current?.key))}
+        onMenu={(key, e) => {
+          const entry = entries.get(key) as NavEntry;
+          const subject = { key, title: entry.title, path: entry.path, kind: entry.kind, pinned: lists.pinned.includes(key), current: key === nav.current?.key };
+          menu(subject, e, entry.title);
+        }}
         onMove={(key, section, index) => {
           // Its place among those drawn, as a place among those kept (some not drawn): before the one drawn there.
           const kept = (section === 'pinned' ? lists.pinned : lists.open).filter((k) => k !== key);

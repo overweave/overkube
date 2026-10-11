@@ -27,6 +27,7 @@ export const ICONS = {
   plus: 'plus',
   pin: 'pinned',
   'pin-filled': 'pinned:filled',
+  'pin-off': 'pinned-off',
   x: 'x',
   chevron: 'chevron-down',
   warning: 'alert-triangle',

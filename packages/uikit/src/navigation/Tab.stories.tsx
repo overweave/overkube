@@ -6,25 +6,25 @@ import { Tab, type TabItem } from './Tab';
 /*
  * One tab, each state of it side by side: as it is drawn alone, in a tab
  * list of its own. Each is live: a click selects it, its × closes it (Delete
- * too, focused), its pin unpins it.
+ * too, focused).
  */
 
 const STATES: { name: string; tab: TabItem; selected?: boolean }[] = [
   { name: 'A page’s own', tab: { key: 'overview', label: 'Overview' } },
   { name: 'Selected', tab: { key: 'overview', label: 'Overview' }, selected: true },
-  { name: 'Pinned', tab: { key: 'pods', label: 'Pods', title: 'Pods (v1/Pod)', pinned: true } },
-  { name: 'Open (not kept)', tab: { key: 'nodes', label: 'Nodes', title: 'Nodes (v1/Node)', transient: true, closable: true, pinned: false } },
-  { name: 'Open, selected', tab: { key: 'nodes', label: 'Nodes', title: 'Nodes (v1/Node)', transient: true, closable: true, pinned: false }, selected: true },
-  { name: 'Warn', tab: { key: 'deployments', label: 'Deployments', pinned: true, dot: 'warn' } },
-  { name: 'Error', tab: { key: 'pods', label: 'Pods', pinned: true, dot: 'error' } },
-  { name: 'Ok (no dot)', tab: { key: 'pods', label: 'Pods', pinned: true, dot: 'ok' } },
-  { name: 'Error, open', tab: { key: 'jobs', label: 'Jobs', transient: true, closable: true, pinned: false, dot: 'error' } },
-  { name: 'Long name', tab: { key: 'pvcs', label: 'PersistentVolumeClaims', transient: true, closable: true, pinned: false } },
+  { name: 'Pinned', tab: { key: 'pods', label: 'Pods', title: 'Pods (v1/Pod)' } },
+  { name: 'Open (not kept)', tab: { key: 'nodes', label: 'Nodes', title: 'Nodes (v1/Node)', transient: true, closable: true } },
+  { name: 'Open, selected', tab: { key: 'nodes', label: 'Nodes', title: 'Nodes (v1/Node)', transient: true, closable: true }, selected: true },
+  { name: 'Warn', tab: { key: 'deployments', label: 'Deployments', dot: 'warn' } },
+  { name: 'Error', tab: { key: 'pods', label: 'Pods', dot: 'error' } },
+  { name: 'Ok (no dot)', tab: { key: 'pods', label: 'Pods', dot: 'ok' } },
+  { name: 'Error, open', tab: { key: 'jobs', label: 'Jobs', transient: true, closable: true, dot: 'error' } },
+  { name: 'Long name', tab: { key: 'pvcs', label: 'PersistentVolumeClaims', transient: true, closable: true } },
   { name: 'No tools', tab: { key: 'map', label: 'Map', closable: true } },
 ];
 
 function Live({ tab: first, selected: on = false }: { tab: TabItem; selected?: boolean }) {
-  const [tab, setTab] = useState(first);
+  const [tab] = useState(first);
   const [selected, setSelected] = useState(on);
   const [closed, setClosed] = useState(false);
   if (closed)
@@ -40,10 +40,9 @@ function Live({ tab: first, selected: on = false }: { tab: TabItem; selected?: b
           tab={tab}
           selected={selected}
           stop
-          labels={{ close: (t) => `Close ${t}`, unpin: (t) => `Unpin ${t}`, dot: (l) => (l === 'error' ? 'failing' : 'needs a look') }}
+          labels={{ close: (t) => `Close ${t}`, dot: (l) => (l === 'error' ? 'failing' : 'needs a look') }}
           onSelect={() => setSelected(!selected)}
           onClose={first.closable ? () => setClosed(true) : undefined}
-          onPin={first.pinned !== undefined ? (_, pin) => setTab({ ...tab, pinned: pin, transient: !pin, closable: !pin }) : undefined}
         />
       </div>
     </div>
@@ -67,5 +66,5 @@ const meta = { title: 'Navigation/Tab', component: States, parameters: { control
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Every state; each live (a click, the ×, the pin; Delete when focused). */
+/** Every state; each live (a click, the ×; Delete when focused). */
 export const AllStates: Story = {};

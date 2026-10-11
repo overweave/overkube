@@ -7,7 +7,7 @@ import { type TabLink, TabLinks, type TabLinksProps } from './TabLinks';
 
 afterEach(cleanup);
 
-const PINNED: TabLink[] = [{ key: 'pods', label: 'Pods', href: '#/pods', pinned: true }];
+const PINNED: TabLink[] = [{ key: 'pods', label: 'Pods', href: '#/pods' }];
 const OPEN: TabLink[] = [
   { key: 'nodes', label: 'Nodes', href: '#/nodes', closable: true, transient: true },
   { key: 'jobs', label: 'Jobs', href: '#/jobs', closable: true, transient: true },
@@ -25,7 +25,6 @@ function mount(props: Partial<TabLinksProps> = {}) {
       current="nodes"
       onOpen={(link) => told.push(`open ${link.key}`)}
       onClose={(k) => told.push(`close ${k}`)}
-      onPin={(k, pin) => told.push(`${pin ? 'pin' : 'unpin'} ${k}`)}
       onMove={(k, section, index) => told.push(`move ${k} ${section} ${index}`)}
       {...props}
     />,
@@ -44,14 +43,12 @@ describe('TabLinks', () => {
     expect(link('Pods').getAttribute('aria-keyshortcuts')).toBe('Alt+ArrowLeft Alt+ArrowRight');
   });
 
-  it('closes by its ×, unpins by its pin — neither following the link', () => {
+  it('closes by its × (a pinned one has none) — not following the link', () => {
     const { link, told } = mount();
     const close = new MouseEvent('click', { bubbles: true, cancelable: true });
     (link('Jobs').querySelector('.uk-tab-close') as HTMLElement).dispatchEvent(close);
-    const unpin = new MouseEvent('click', { bubbles: true, cancelable: true });
-    (link('Pods').querySelector('.uk-tab-pin') as HTMLElement).dispatchEvent(unpin);
-    expect([close.defaultPrevented, unpin.defaultPrevented]).toEqual([true, true]);
-    expect(told).toEqual(['close jobs', 'unpin pods']);
+    expect([close.defaultPrevented, link('Pods').querySelector('.uk-tab-close')]).toEqual([true, null]);
+    expect(told).toEqual(['close jobs']);
   });
 
   it('closes the focused one by Delete, focus going to its neighbour (the right one, else the left)', async () => {
@@ -67,8 +64,8 @@ describe('TabLinks', () => {
   });
 
   it('has no tools with nobody to tell, and is followed as a link', () => {
-    const { link, told } = mount({ onClose: undefined, onPin: undefined });
-    expect([link('Jobs').querySelector('.uk-tab-close'), link('Pods').querySelector('.uk-tab-pin')]).toEqual([null, null]);
+    const { link, told } = mount({ onClose: undefined });
+    expect(link('Jobs').querySelector('.uk-tab-close')).toBeNull();
     fireEvent.click(link('Jobs'));
     expect(told).toEqual(['open jobs']);
   });

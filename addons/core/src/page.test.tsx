@@ -372,14 +372,69 @@ describe('the navigation', () => {
     expect([page.path, page.links('Kinds').includes('Secrets')]).toEqual(['/k/namespaces.v1', false]);
   });
 
-  it('unpins a tab by its pin; moves one into the pinned (Alt and an arrow, as a drag), pinning it', async () => {
+  it('moves a tab into the pinned (Alt and an arrow, as a drag), pinning it', async () => {
     const page = renderRoute(world(), '/k/events.v1');
-    page.act(() => (page.container.querySelector('nav [data-key="apps/v1/Deployment"] .uk-tab-pin') as HTMLElement).click());
-    expect(page.links('Kinds')).not.toContain('Deployments');
     const events = page.container.querySelector('nav [data-key="v1/Event"]') as HTMLElement;
     page.act(() => void events.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true })));
     await vi.waitFor(() => expect(page.container.querySelector('nav [data-key="v1/Event"]')?.hasAttribute('data-transient')).toBe(false));
     expect(page.links('Kinds').at(-1)).toBe('Events');
+  });
+
+  it('has a tab’s menu (a right click, Shift+F10): pin, unpin, close — as the tab is; Shift and a right click: the browser’s', async () => {
+    const page = renderRoute(world(), '/k/events.v1');
+    const tab = (id: string) => page.container.querySelector(`nav [data-key="${id}"]`) as HTMLElement;
+    const items = () => [...document.querySelectorAll('.uk-menu [role="menuitem"] .uk-menu-label')].map((i) => i.textContent);
+    const menu = (id: string, init: MouseEventInit = {}) => {
+      const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10, ...init });
+      page.act(() => void tab(id).dispatchEvent(e));
+      return e.defaultPrevented;
+    };
+    expect(menu('v1/Event', { shiftKey: true })).toBe(false);
+    expect(menu('v1/Event')).toBe(true);
+    expect([document.querySelector('.uk-menu-title')?.textContent, items()]).toEqual(['Events', ['Pin', 'Close']]);
+    page.act(() => (document.querySelector('.uk-menu [role="menuitem"]') as HTMLElement).click());
+    await vi.waitFor(() => expect(tab('v1/Event').hasAttribute('data-transient')).toBe(false));
+    page.act(() => void tab('v1/Pod').dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true })));
+    expect(items()).toEqual(['Unpin']);
+  });
+
+  it('keeps focus on a tab pinned from its menu (the keyboard’s), where it now is', async () => {
+    const page = renderRoute(world(), '/k/events.v1');
+    const tab = () => page.container.querySelector('nav [data-key="v1/Event"]') as HTMLElement;
+    tab().focus();
+    page.act(() => void tab().dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true })));
+    expect(document.activeElement?.textContent).toBe('Pin');
+    page.act(() => void (document.activeElement as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+    await vi.waitFor(() => expect(tab().hasAttribute('data-transient')).toBe(false));
+    await vi.waitFor(() => expect(document.activeElement).toBe(tab()));
+  });
+
+  it('opens none of its own when its menu is not drawn (hidden in the menu slot): the browser’s then; nor again for the keyboard’s click after it', () => {
+    const w = world();
+    w.addon(addon('quiet', ({ contributor }) => void contributor.add('Slot', 'menu', { hidden: { 'core.menu': true } })));
+    const page = renderRoute(w, '/k/events.v1');
+    const tab = page.container.querySelector('nav [data-key="v1/Event"]') as HTMLElement;
+    const click = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    page.act(() => void tab.dispatchEvent(click));
+    expect(click.defaultPrevented).toBe(false);
+    cleanup();
+    const shown = renderRoute(world(), '/k/events.v1');
+    const t = shown.container.querySelector('nav [data-key="v1/Event"]') as HTMLElement;
+    shown.act(() => void t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ContextMenu', bubbles: true, cancelable: true })));
+    const id = document.querySelector('.uk-menu');
+    const echo = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    shown.act(() => void t.dispatchEvent(echo));
+    expect([echo.defaultPrevented, document.querySelector('.uk-menu')]).toEqual([true, id]);
+  });
+
+  it('closes a tab from its menu, the page going to its neighbour', async () => {
+    const page = renderRoute(world(), '/k/events.v1');
+    const tab = page.container.querySelector('nav [data-key="v1/Event"]') as HTMLElement;
+    page.act(() => void tab.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })));
+    const close = [...document.querySelectorAll<HTMLElement>('.uk-menu [role="menuitem"]')].find((i) => i.textContent?.startsWith('Close')) as HTMLElement;
+    page.act(() => close.click());
+    await vi.waitFor(() => expect(page.path).toBe('/k/namespaces.v1'));
+    expect(page.links('Kinds')).not.toContain('Events');
   });
 
   it('opens the kinds’ picker from the tabs’ +: every kind, filtered as typed; one chosen goes there', () => {

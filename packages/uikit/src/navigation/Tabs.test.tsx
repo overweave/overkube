@@ -1,9 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'preact/hooks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TabSection, Tabs, type TabsProps } from './Tabs';
-import { pinTab, type TabLists } from './tabState';
 
 /*
  * The strip as a user has it (user-event): one tab stop, the arrows, the
@@ -36,16 +34,16 @@ const SECTIONS: TabSection[] = [
     draggable: true,
     tabs: [
       { key: 'overview', label: 'Overview', stays: true },
-      { key: 'pods', label: 'Pods', pinned: true, dot: 'error' },
-      { key: 'deploys', label: 'Deploys', pinned: true },
+      { key: 'pods', label: 'Pods', dot: 'error' },
+      { key: 'deploys', label: 'Deploys' },
     ],
   },
   {
     id: 'open',
     draggable: true,
     tabs: [
-      { key: 'nodes', label: 'Nodes', transient: true, closable: true, pinned: false },
-      { key: 'jobs', label: 'Jobs', transient: true, closable: true, pinned: false },
+      { key: 'nodes', label: 'Nodes', transient: true, closable: true },
+      { key: 'jobs', label: 'Jobs', transient: true, closable: true },
     ],
   },
 ];
@@ -59,7 +57,6 @@ function mount(props: Partial<TabsProps> = {}) {
       active="pods"
       onSelect={(k) => told.push(`select ${k}`)}
       onClose={(k) => told.push(`close ${k}`)}
-      onPin={(k, pin) => told.push(`${pin ? 'pin' : 'unpin'} ${k}`)}
       onMove={(k, section, index) => told.push(`move ${k} ${section} ${index}`)}
       end={<button type="button">add</button>}
       {...props}
@@ -121,9 +118,8 @@ describe('Tabs: the strip', () => {
   });
 
   it('gives the tabs its words for their tools', () => {
-    const { container } = mount({ labels: { close: (t) => `shut ${t}`, unpin: (t) => `drop ${t}` } });
+    const { container } = mount({ labels: { close: (t) => `shut ${t}` } });
     expect(container.querySelector('[data-tab="nodes"] .uk-tab-close')?.getAttribute('title')).toBe('shut nodes');
-    expect(container.querySelector('[data-tab="pods"] .uk-tab-pin')?.getAttribute('title')).toBe('drop pods');
   });
 });
 
@@ -150,36 +146,6 @@ describe('Tabs: the keyboard', () => {
     tab('Jobs').focus();
     await user.keyboard('{Delete}');
     expect(document.activeElement).toBe(tab('Nodes'));
-  });
-
-  it('keeps focus on a tab unpinned by its pin, moved to the other section', async () => {
-    // A page keeping its lists, by the strip's rules.
-    function Page() {
-      const [lists, setLists] = useState<TabLists>({ pinned: ['pods'], open: ['nodes'] });
-      const tab = (key: string, pinned: boolean) => ({ key, label: key, pinned, closable: !pinned, transient: !pinned });
-      return (
-        <Tabs
-          label="Pages"
-          active="pods"
-          sections={[
-            { id: 'pinned', draggable: true, tabs: lists.pinned.map((k) => tab(k, true)) },
-            { id: 'open', draggable: true, tabs: lists.open.map((k) => tab(k, false)) },
-          ]}
-          onSelect={() => {}}
-          onPin={(key, on) => setLists((l) => pinTab(l, key, on, 'pods'))}
-          onMove={() => {}}
-        />
-      );
-    }
-    const view = render(<Page />);
-    const user = userEvent.setup();
-    const tab = (name: string) => view.getByRole('tab', { name }) as HTMLElement;
-    tab('pods').focus();
-    await user.click(tab('pods').querySelector('.uk-tab-pin') as HTMLElement);
-    // The one shown: unpinned, it stays, first of the open.
-    await waitFor(() => expect(tab('pods').querySelector('.uk-tab-pin')).toBeNull());
-    expect(tab('pods').getAttribute('data-transient')).toBe('');
-    expect(document.activeElement).toBe(tab('pods'));
   });
 
   it('gives focus to the neighbour of a tab closed by its × too (the press focused the tab), not to the page', async () => {
@@ -217,17 +183,16 @@ describe('Tabs: dragging', () => {
     const { tab, user } = mount();
     const from = tab('Deploys').getBoundingClientRect().left + SIZE / 2;
     await user.pointer({ keys: '[MouseLeft>]', target: tab('Deploys'), coords: { clientX: from, clientY: 20 } });
-    // Over the open: its pin gone, its × there.
+    // Over the open: slanted, its × there.
     await user.pointer({ coords: { clientX: from + 100, clientY: 20 } });
-    expect([
-      tab('Deploys').getAttribute('data-into'),
-      tab('Deploys').hasAttribute('data-transient'),
-      !!tab('Deploys').querySelector('.uk-tab-pin'),
-      !!tab('Deploys').querySelector('.uk-tab-close'),
-    ]).toEqual(['open', true, false, true]);
+    expect([tab('Deploys').getAttribute('data-into'), tab('Deploys').hasAttribute('data-transient'), !!tab('Deploys').querySelector('.uk-tab-close')]).toEqual([
+      'open',
+      true,
+      true,
+    ]);
     // Back over its own: as it was.
     await user.pointer({ coords: { clientX: from, clientY: 20 } });
-    expect([tab('Deploys').hasAttribute('data-into'), !!tab('Deploys').querySelector('.uk-tab-pin')]).toEqual([false, true]);
+    expect([tab('Deploys').hasAttribute('data-into'), !!tab('Deploys').querySelector('.uk-tab-close')]).toEqual([false, false]);
     await user.pointer({ keys: '[/MouseLeft]' });
   });
 

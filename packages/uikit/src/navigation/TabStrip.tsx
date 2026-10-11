@@ -53,14 +53,32 @@ const BAR_INSET = 12;
 
 /**
  * One closed with focus on it (its element gone): focus to its neighbour —
- * the right one, as a browser does, else the left.
+ * the right one, as a browser does, else the left. Its strip: the one given,
+ * else the one focus is in (a menu's item, focus given back to the tab).
  */
 export function closeFocused(list: HTMLElement | null, key: string, close: (key: string) => void) {
-  const tabs = [...(list?.querySelectorAll<HTMLElement>('.uk-tab[data-key]') ?? [])];
+  const strip = list ?? activeElement()?.closest<HTMLElement>('.uk-tab-list');
+  const tabs = [...(strip?.querySelectorAll<HTMLElement>('.uk-tab[data-key]') ?? [])];
   const at = tabs.findIndex((t) => t.dataset.key === key);
   const had = at >= 0 && activeElement() === tabs[at];
   close(key);
   if (had) (tabs[at + 1] ?? tabs[at - 1])?.focus();
+}
+
+/**
+ * One moved with focus on it (pinned, unpinned: into another section, its
+ * element drawn anew): focus back on it where it now is, after the draw —
+ * or, gone (unpinned, not shown), on its neighbour.
+ */
+export function keepFocused(key: string, move: () => void) {
+  const el = activeElement() as HTMLElement | null;
+  const strip = el?.dataset.key === key ? el.closest<HTMLElement>('.uk-tab-list') : null;
+  const keys = [...(strip?.querySelectorAll<HTMLElement>('.uk-tab[data-key]') ?? [])].map((t) => t.dataset.key);
+  const at = keys.indexOf(key);
+  move();
+  if (!strip) return;
+  const find = (k: string | undefined) => (k === undefined ? null : strip.querySelector<HTMLElement>(`.uk-tab[data-key="${CSS.escape(k)}"]`));
+  Promise.resolve().then(() => (find(key) ?? find(keys[at + 1]) ?? find(keys[at - 1]))?.focus());
 }
 
 /** The order with one put at another place. */

@@ -54,8 +54,8 @@ export function nextTab(tabs: TabLists, key: string): string | undefined {
   return all[at + 1] ?? all[at - 1];
 }
 
-/** A tab as it will be in the section it is dragged over: the pinned (its pin), or the open (its ×). */
-export function lookIn<T extends { pinned?: boolean; closable?: boolean; transient?: boolean }>(tab: T, section: string): T {
-  const pinned = section === 'pinned';
-  return { ...tab, pinned, closable: !pinned, transient: !pinned };
+/** A tab as it will be in the section it is dragged over: the pinned (no ×), or the open (its ×, slanted). */
+export function lookIn<T extends { closable?: boolean; transient?: boolean }>(tab: T, section: string): T {
+  const open = section !== 'pinned';
+  return { ...tab, closable: open, transient: open };
 }

@@ -30,8 +30,10 @@ export { Catalog, type CatalogGroup, type CatalogItem, type CatalogProps } from 
 export { NavList, type NavListGroup, type NavListItem, type NavListProps } from './navigation/NavList';
 export { TAB_LABELS, Tab, type TabLabels, type TabProps } from './navigation/Tab';
 export { type TabLink, TabLinks, type TabLinksProps } from './navigation/TabLinks';
+export { closeFocused, keepFocused } from './navigation/TabStrip';
 export { type TabItem, type TabSection, Tabs, type TabsProps } from './navigation/Tabs';
 export { closeTab, moveTab, nextTab, openTab, pinTab, type TabLists } from './navigation/tabState';
+export { ContextMenu, type ContextMenuGroup, type ContextMenuItem, type ContextMenuProps } from './overlays/ContextMenu';
 export { MODAL_OUT_MS, Modal, type ModalPlacement, type ModalProps } from './overlays/Modal';
 export { Popover } from './overlays/Popover';
 export { Spotlight, type SpotlightItem, type SpotlightProps } from './overlays/Spotlight';

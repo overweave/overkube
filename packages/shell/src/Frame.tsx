@@ -49,6 +49,7 @@ export function Frame() {
         </main>
       </div>
       {slotElement(slots.overlay, {})}
+      {slotElement(slots.menu, {})}
       <Notifications />
     </div>
   );

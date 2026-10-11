@@ -1,10 +1,11 @@
 import { type KindInfo, type KubeObject, kinds } from '@overkube/kube-types';
-import { column, defineAddon, type KindViewSpec, type Label, section, slots } from '@overkube/sdk';
+import { column, defineAddon, type KindViewSpec, type Label, menuItem, section, slots } from '@overkube/sdk';
 import { Age } from '@overkube/uikit';
 import { signal } from '@preact/signals';
 import { Home, KindPage, NameCell, TablePage } from './KindPage.tsx';
 import { titleOf } from './kinds.ts';
-import { NavSide, NavTabs, type TabsKept } from './Nav.tsx';
+import { Menu } from './Menu.tsx';
+import { NavSide, NavTabs, type TabsKept, type TabsState } from './Nav.tsx';
 import { ObjectView, YamlSection } from './ObjectView.tsx';
 import { Toasts } from './Toasts.tsx';
 import { T } from './texts.ts';
@@ -96,8 +97,25 @@ export default defineAddon({
     // The navigation: tabs, or the menu — as the NavView says (one setting, the user's to patch).
     c.add('NavView', 'default', { mode: 'tabs' }, fallback);
     // The tabs as the user made them (pinned, moved, opened, closed): while the page runs — the user's layer's, once there is one.
-    const tabs = signal<TabsKept>({ open: [] });
+    const tabs: TabsState = { kept: signal<TabsKept>({ open: [] }) };
     c.add('Fill', 'core.nav.tabs', { slot: slots.nav.top.name, render: () => <NavTabs tabs={tabs} /> });
+    // A tab's menu: pinned or not, closed (an open one).
+    c.add(
+      'MenuItem',
+      'core.tab.pin',
+      menuItem({ on: 'nav.tab', group: 'state', title: T.nav.tab.pin, icon: 'pin', when: (t) => !t.pinned, run: (t) => tabs.act?.pin(t.key, true) }),
+    );
+    c.add(
+      'MenuItem',
+      'core.tab.unpin',
+      menuItem({ on: 'nav.tab', group: 'state', title: T.nav.tab.unpin, icon: 'pin-off', when: (t) => t.pinned, run: (t) => tabs.act?.pin(t.key, false) }),
+    );
+    c.add(
+      'MenuItem',
+      'core.tab.close',
+      menuItem({ on: 'nav.tab', group: 'state', order: 900, title: T.nav.tab.close, icon: 'x', keys: 'delete', when: (t) => !t.pinned, run: (t) => tabs.act?.close(t.key) }),
+    );
+    c.add('Fill', 'core.menu', { slot: slots.menu.name, render: Menu });
     c.add('Fill', 'core.nav.side', { slot: slots.nav.side.name, render: NavSide });
     c.add('Fill', 'core.toasts', { slot: slots.notifications.name, render: Toasts });
 
@@ -113,5 +131,6 @@ export default defineAddon({
   },
 });
 
-export { KindPicker, NavSide, NavTabs, type TabsKept } from './Nav.tsx';
+export { Menu } from './Menu.tsx';
+export { KindPicker, NavSide, NavTabs, type TabsKept, type TabsState } from './Nav.tsx';
 export { currentOf, type Nav, type NavEntry, type NavGroup, navOf, useNav } from './nav.ts';
