@@ -1,11 +1,12 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { objectPathOf, type RouteProps, slots } from '@overkube/sdk';
-import { useCluster, useCollection, useKind, usePage } from '@overkube/sdk/preact';
+import { useCluster, useCollection, useKind, usePage, useSay } from '@overkube/sdk/preact';
 import { Button, Notice } from '@overkube/uikit';
 import { slotElement } from '@overweave/ui/preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { KindTable } from './KindTable.tsx';
 import { useNav } from './nav.ts';
+import { T } from './texts.ts';
 import { Waiting } from './Waiting.tsx';
 import { Waited } from './waited.ts';
 
@@ -20,6 +21,7 @@ import { Waited } from './waited.ts';
  */
 export function KindPage({ params, rest }: RouteProps) {
   const discovery = useCluster().discovery;
+  const say = useSay();
   const kind = useKind(params.kind);
   if (!kind) {
     const error = discovery.error.value;
@@ -30,15 +32,15 @@ export function KindPage({ params, rest }: RouteProps) {
           icon="warning"
           action={
             <Button variant="ghost" size="sm" icon="refresh" onClick={() => discovery.retry()}>
-              Try again
+              {say(T.retry)}
             </Button>
           }
         >
-          <span title={error.message}>What the cluster serves cannot be had: {error.code}</span>
+          <span title={error.message}>{say(T.discovery.refused, { code: error.code })}</span>
         </Notice>
       );
-    if (!discovery.kinds.value) return <Waiting label="Asking the cluster what it serves…" />;
-    return <Notice icon="puzzle">The cluster serves no kind {params.kind}.</Notice>;
+    if (!discovery.kinds.value) return <Waiting label={say(T.discovery.asking)} />;
+    return <Notice icon="puzzle">{say(T.discovery.noKind, { kind: params.kind })}</Notice>;
   }
   return <Shown next={kind} rest={rest} />;
 }
@@ -107,9 +109,10 @@ export function NameCell({ object, kind, value }: { object: KubeObject; kind: Pa
 export function Home() {
   const nav = useNav();
   const page = usePage();
+  const say = useSay();
   const first = nav.pinned[0] ?? nav.groups[0]?.entries[0];
   useEffect(() => {
     if (first) page.navigate(first.path, { replace: true });
   }, [first?.path]);
-  return first ? null : <Waiting label="Asking the cluster what it serves…" />;
+  return first ? null : <Waiting label={say(T.discovery.asking)} />;
 }

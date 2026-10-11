@@ -1,5 +1,5 @@
 import { kinds } from '@overkube/kube-types';
-import { action, column, defineAddon, PENDING, section, slots } from '@overkube/sdk';
+import { action, column, defineAddon, PENDING, section, slots, t } from '@overkube/sdk';
 import { useRoute } from '@overkube/sdk/preact';
 import { cleanup, kubeWorld, make } from '@overkube/testkit';
 import { renderRoute } from '@overkube/testkit/preact';
@@ -457,6 +457,103 @@ describe('a theme, further', () => {
       }),
     );
     expect(result).toMatchObject({ status: 'rejected' });
+  });
+});
+
+describe('in another language', () => {
+  const pl = (more: Record<string, unknown> = {}) =>
+    addon(
+      'lang-pl',
+      ({ contributor }) =>
+        void contributor.add('Messages', 'pl:core', {
+          messages: { 'core.column.name': 'Nazwa', 'core.category.cluster': 'Klaster', 'core.nav.kinds': 'Rodzaje', ...more } as never,
+        }),
+    );
+
+  it('says the core’s words as the language says them, the rest in English; kinds’ names as they are; the root says its language', () => {
+    const w = world('web');
+    w.addon(pl());
+    w.language('pl');
+    const page = renderRoute(w, '/k/nodes.v1');
+    expect(page.headers()).toEqual(['Nazwa', 'Namespace', 'Age']);
+    expect(page.links('Rodzaje')).toContain('Nodes');
+    expect((page.container.querySelector('.uk-root') as HTMLElement).lang).toBe('pl');
+  });
+
+  it('switches at once: a language set, a translation added, the user’s rewording of one phrase (English’s too)', () => {
+    const w = world('web');
+    const page = renderRoute(w, '/k/pods.v1');
+    page.act(() => w.language('pt-BR'));
+    expect(page.headers()[0]).toBe('Name');
+    page.act(() => void w.addon(addon('lang-pt', ({ contributor }) => void contributor.add('Messages', 'pt:core', { messages: { 'core.column.name': 'Nome' } }))));
+    expect(page.headers()[0]).toBe('Nome');
+    page.act(() => void w.as('user', { priority: 1000, rights: ['configure'] }).patch('Messages', 'pt:core', { messages: { 'core.column.name': 'Nominho' } }));
+    expect(page.headers()[0]).toBe('Nominho');
+    page.act(() => {
+      w.language('en');
+      w.as('user', { priority: 1000, rights: ['configure'] }).patch('Messages', 'en:core', { messages: { 'core.column.age': 'Created' } });
+    });
+    expect(page.headers()).toEqual(['Name', 'Namespace', 'Created']);
+  });
+
+  it('finds and orders kinds by their titles as the language reads them', () => {
+    const w = world();
+    w.addon(pl());
+    w.language('pl');
+    const page = renderRoute(w, '/k/pods.v1');
+    page.act(() => (page.container.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement).click());
+    const picker = page.container.querySelector('[role="dialog"]') as HTMLElement;
+    expect(picker.textContent).toContain('Klaster');
+  });
+
+  it('says the shell’s words in its own name (pl:shell), and the table’s count again after a switch', () => {
+    vi.useFakeTimers();
+    const w = world('web');
+    w.addon(
+      addon('lang-pl', ({ contributor }) => {
+        contributor.add('Messages', 'pl:shell', { messages: { 'shell.nothing-here': 'Nic tu nie ma' } });
+        contributor.add('Messages', 'pl:core', { messages: { 'core.table.count': '{kind}: {count}' } });
+      }),
+    );
+    const page = renderRoute(w, '/k/pods.v1');
+    page.act(() => void vi.advanceTimersByTime(1));
+    expect(page.container.querySelector('.uk-shell-main [role="status"]')?.textContent).toBe('1 pods');
+    page.act(() => w.language('pl'));
+    page.act(() => void vi.advanceTimersByTime(1));
+    expect(page.container.querySelector('.uk-shell-main [role="status"]')?.textContent).toBe('pods: 1');
+    page.navigate('/nowhere');
+    expect(page.text()).toContain('Nic tu nie ma');
+    vi.useRealTimers();
+  });
+
+  it('follows the browser’s language when the page’s is the system’s', () => {
+    const w = world('web');
+    w.addon(pl());
+    const page = renderRoute(w, '/k/pods.v1');
+    const was = Object.getOwnPropertyDescriptor(Navigator.prototype, 'language');
+    Object.defineProperty(navigator, 'language', { value: 'pl', configurable: true });
+    page.act(() => void window.dispatchEvent(new Event('languagechange')));
+    expect(page.headers()[0]).toBe('Nazwa');
+    Object.defineProperty(navigator, 'language', { value: 'en-US', configurable: true });
+    page.act(() => void window.dispatchEvent(new Event('languagechange')));
+    expect(page.headers()[0]).toBe('Name');
+    delete (navigator as unknown as { language?: string }).language;
+    if (was) Object.defineProperty(Navigator.prototype, 'language', was);
+  });
+
+  it('refuses what is no phrase, a key that is none, and a misspelled form; a language that is none is English', () => {
+    const w = world();
+    const results: unknown[] = [];
+    w.addon(
+      addon('bad', ({ contributor }) => {
+        results.push(contributor.add('Messages', 'pl:bad', { messages: { 'bad.x': { one: 'only one' } } as never }));
+        results.push(contributor.add('Messages', 'pl:bad2', { messages: { Tag: 'Tag' } }));
+        results.push(contributor.add('Messages', 'pl:bad3', { messages: { 'bad3.x': { other: 'x', oen: 'y' } } as never }));
+      }),
+    );
+    expect(results.map((r) => (r as { status: string }).status)).toEqual(['rejected', 'rejected', 'rejected']);
+    expect(w.as('user', { priority: 1000, rights: ['configure'] }).patch('Language', 'default', { locale: 'en_US' }).status).toBe('rejected');
+    expect(() => t('Tag', 'Tag')).toThrow(/label key/);
   });
 });
 

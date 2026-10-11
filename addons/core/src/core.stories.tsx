@@ -71,3 +71,20 @@ export const Arriving = () => (
     }}
   />
 );
+
+/** A language pack (a few of the core's keys in Polish), the user's language set to it: the rest is said in English. */
+const polish = defineAddon({
+  id: 'lang-pl',
+  title: 'Polski',
+  setup: ({ contributor }) =>
+    void contributor.add('Messages', 'pl:core', {
+      messages: {
+        'core.column.name': 'Nazwa',
+        'core.column.namespace': 'Przestrzeń nazw',
+        'core.column.age': 'Wiek',
+        'core.nav.kinds': 'Rodzaje',
+        'core.nav.all': 'Wszystkie rodzaje',
+      },
+    }),
+});
+export const InPolish = () => <KubeStory addons={[core, polish]} path="/k/pods.v1" cluster={shop} locale="pl" />;

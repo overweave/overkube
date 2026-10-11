@@ -33,6 +33,8 @@ export interface KubeStoryProps {
   user?: (user: KubeContributor) => void;
   /** Dark or light (none: as the Appearance says — the system's, by default). */
   theme?: 'dark' | 'light';
+  /** The page's language (none: as the Language says — the browser's, by default): 'pl'. */
+  locale?: string;
   /**
    * cluster, served, kinds and user are the story's start: read once. Another
    * resetKey starts it anew with what they are then (a control's value: its key).
@@ -70,10 +72,10 @@ function PathBar() {
 /** A story of the page: started anew (its cluster, its world, its path) whenever its resetKey changes. */
 export function KubeStory(props: KubeStoryProps) {
   // Another theme, another start (the story's world made anew with it).
-  return <Story key={`${String(props.resetKey)}:${props.theme ?? ''}`} {...props} />;
+  return <Story key={`${String(props.resetKey)}:${props.theme ?? ''}:${props.locale ?? ''}`} {...props} />;
 }
 
-function Story({ addons, path = '/', cluster, served, kinds, user, theme }: KubeStoryProps) {
+function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale }: KubeStoryProps) {
   // The story's own, kept while it is shown: its cluster (filled once), its notifications and services, its path.
   const [env] = useState<AddonEnv>(() => {
     const c = fakeCluster({ served, kinds });
@@ -109,11 +111,13 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme }: Kube
         matcher={kindMatcher}
         addons={addons.map(run)}
         given={
-          user || theme
+          user || theme || locale
             ? (w) => {
                 if (user) user(w.as('user', standingOf('user')) as unknown as KubeContributor);
-                // Dark or light, as the story says: over the user's (a contributor of its own: not one patch replacing another).
-                if (theme) w.as('story', { priority: PRIORITY.user + 1, rights: ['configure'] }).patch('Appearance', 'default', { mode: theme });
+                // Its look and language, as the story says: over the user's (a contributor of its own: not one patch replacing another).
+                const story = theme || locale ? w.as('story', { priority: PRIORITY.user + 1, rights: ['configure'] }) : undefined;
+                if (theme) story?.patch('Appearance', 'default', { mode: theme });
+                if (locale) story?.patch('Language', 'default', { locale });
               }
             : undefined
         }

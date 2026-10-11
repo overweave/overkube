@@ -1,5 +1,5 @@
-import { Appearance, Route, slots, Theme } from '@overkube/sdk';
-import { RouteProvider, usePage } from '@overkube/sdk/preact';
+import { Appearance, Route, slots, Theme, t } from '@overkube/sdk';
+import { RouteProvider, usePage, useSay } from '@overkube/sdk/preact';
 import { Notice, SHAPE_TOKENS, tokenStyle } from '@overkube/uikit';
 import { Guarded, slotElement, useDefinition, useDefinitions } from '@overweave/ui/preact';
 import type { RefObject } from 'preact';
@@ -17,6 +17,14 @@ export function Frame() {
   const page = usePage();
   const frame = useRef<HTMLDivElement>(null);
   useTheme(frame);
+  // The language said in, on the page's root: read out as it is written.
+  const say = useSay();
+  useLayoutEffect(() => {
+    const root = frame.current?.closest('.uk-root') as HTMLElement | null;
+    if (!root) return;
+    root.lang = say.locale;
+    return () => root.removeAttribute('lang');
+  }, [say.locale]);
   // A link within the page (#/…) goes through the router: the same for a hash's and one in memory (a story, a test).
   const follow = (e: MouseEvent) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -124,16 +132,22 @@ function useTheme(frame: RefObject<HTMLElement>) {
   }, [variant, theme]);
 }
 
+// What the shell says while it runs (said in the page's language); what it says when no addon runs is as it is.
+const NOTHING_HERE = t('shell.nothing-here', 'Nothing here');
+const NO_PAGE = t('shell.no-page', 'No page at {path}.');
+const TO_START = t('shell.to-start', 'To the start');
+
 /** The Route at the path, drawn apart (what it throws is its own); none: said so. */
 export function Outlet() {
   const page = usePage();
+  const say = useSay();
   const routes = useDefinitions(Route);
   const path = page.path.value;
   const matched = useMemo(() => matchRoute(routes, path), [routes, path]);
   if (!matched)
     return routes.length ? (
-      <Notice icon="puzzle" title="Nothing here">
-        No page at {path}. <a href={page.href('/')}>To the start</a>
+      <Notice icon="puzzle" title={say(NOTHING_HERE)}>
+        {say(NO_PAGE, { path })} <a href={page.href('/')}>{say(TO_START)}</a>
       </Notice>
     ) : (
       <Notice icon="puzzle" title="No pages">

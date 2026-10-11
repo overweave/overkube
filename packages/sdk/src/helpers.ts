@@ -6,6 +6,7 @@ import type { ComponentType } from 'preact';
 import type { ActionSpec, ColumnRenderProps, ColumnSpec, Target } from './kinds.ts';
 import { type ObjectProps, slots } from './slots.ts';
 import { forKinds } from './target.ts';
+import type { Label } from './text.ts';
 
 /*
  * The usual definitions, typed by the kinds they are for: each gives a spec
@@ -24,7 +25,7 @@ type ObjectOfAny<KS extends readonly KindInfo[]> = KS[number] extends infer K ? 
 const targetOf = (kinds: readonly KindInfo[] | undefined): Target => (kinds === undefined ? {} : forKinds(...kinds));
 
 interface ColumnOf<O extends KubeObject> {
-  header: string;
+  header: Label;
   value: (object: O) => unknown;
   render?: ComponentType<ColumnRenderProps<O>>;
   width?: number;
@@ -58,7 +59,7 @@ export function section(spec: { kinds?: readonly KindInfo[] } & SectionOf<KubeOb
 }
 
 interface ActionOf<O extends KubeObject> {
-  title: string;
+  title: Label;
   icon?: string;
   order?: number;
   dangerous?: boolean;

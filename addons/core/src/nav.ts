@@ -1,11 +1,12 @@
 import type { KindInfo } from '@overkube/kube-types';
-import { Category, type CategorySpec, KindView, type KindViewSpec, kindPath, kindRef, Route, type RouteSpec } from '@overkube/sdk';
-import { usePage, useServedKinds } from '@overkube/sdk/preact';
+import { Category, type CategorySpec, KindView, type KindViewSpec, kindPath, kindRef, type Label, Route, type RouteSpec } from '@overkube/sdk';
+import { usePage, useSay, useServedKinds } from '@overkube/sdk/preact';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { useDefinitions } from '@overweave/ui/preact';
 import { useMemo } from 'preact/hooks';
 import { titleOf } from './kinds.ts';
+import { T } from './texts.ts';
 
 /*
  * The navigation, as data: what can be gone to — every kind the cluster
@@ -44,7 +45,6 @@ export interface Nav {
 }
 
 const PAGES = 'pages';
-const byOrder = (a: NavEntry, b: NavEntry) => a.order - b.order || a.title.localeCompare(b.title);
 
 /** The navigation of these kinds, views, categories and routes: its groups and pinned (where the page is: currentOf). */
 export function navOf(
@@ -52,7 +52,13 @@ export function navOf(
   views: readonly Definition<KindViewSpec>[],
   categories: readonly Definition<CategorySpec>[],
   routes: readonly Definition<RouteSpec>[],
+  /** How a label is said (the page's language). */
+  said: (label: Label) => string,
+  /** The language, as titles are ordered in it. */
+  locale = 'en',
 ): Omit<Nav, 'current'> & { entries: NavEntry[] } {
+  const collator = new Intl.Collator(locale);
+  const byOrder = (a: NavEntry, b: NavEntry) => a.order - b.order || collator.compare(a.title, b.title);
   const byName = new Map(views.map((d) => [d.name, d.spec]));
   const entries: NavEntry[] = [];
   for (const kind of kinds) {
@@ -60,7 +66,7 @@ export function navOf(
     if (view?.hidden) continue;
     entries.push({
       key: kind.id,
-      title: view?.title ?? titleOf(kind),
+      title: view?.title ? said(view.title) : titleOf(kind),
       path: kindPath(kind),
       icon: view?.icon,
       kind,
@@ -74,7 +80,7 @@ export function navOf(
     if (!r.spec.title || r.spec.path.includes(':')) continue;
     entries.push({
       key: `route:${r.name}`,
-      title: r.spec.title,
+      title: said(r.spec.title),
       path: r.spec.path.replace(/\/\*$/, '') || '/',
       icon: r.spec.icon,
       pinned: false,
@@ -83,16 +89,17 @@ export function navOf(
     });
   }
   const ordered = inOrder(categories);
-  const titles = new Map<string, string>([[PAGES, 'Pages'], ...ordered.map((c) => [c.name, c.spec.title] as [string, string])]);
+  const titles = new Map<string, string>([[PAGES, said(T.nav.pages)], ...ordered.map((c) => [c.name, said(c.spec.title)] as [string, string])]);
   const order = [PAGES, ...ordered.map((c) => c.name)];
   const keys = [...new Set(entries.map((e) => e.group))].sort((a, b) => {
     const ia = order.indexOf(a);
     const ib = order.indexOf(b);
     if (ia >= 0 || ib >= 0) return (ia < 0 ? Infinity : ia) - (ib < 0 ? Infinity : ib);
-    return a.localeCompare(b);
+    return collator.compare(a, b);
   });
   const groups = keys.map((key) => ({
     key,
+    // A kind's API group (core: the core group's), as Kubernetes names it: a term, not words to translate.
     title: titles.get(key) ?? (key === 'group:' ? 'Core' : key.replace(/^group:/, '')),
     entries: entries.filter((e) => e.group === key).sort(byOrder),
   }));
@@ -112,6 +119,7 @@ export function useNav(): Nav {
   const categories = useDefinitions(Category);
   const routes = useDefinitions(Route);
   const path = usePage().path.value;
-  const model = useMemo(() => navOf(kinds.values(), views, categories, routes), [kinds, views, categories, routes]);
+  const say = useSay();
+  const model = useMemo(() => navOf(kinds.values(), views, categories, routes, say, say.locale), [kinds, views, categories, routes, say]);
   return { groups: model.groups, pinned: model.pinned, current: currentOf(model.entries, path) };
 }

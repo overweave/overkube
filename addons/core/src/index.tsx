@@ -1,11 +1,12 @@
 import { type KindInfo, type KubeObject, kinds } from '@overkube/kube-types';
-import { column, defineAddon, type KindViewSpec, section, slots } from '@overkube/sdk';
+import { column, defineAddon, type KindViewSpec, type Label, section, slots } from '@overkube/sdk';
 import { Age } from '@overkube/uikit';
 import { Home, KindPage, NameCell, TablePage } from './KindPage.tsx';
 import { titleOf } from './kinds.ts';
 import { NavSide, NavTabs } from './Nav.tsx';
 import { ObjectView, YamlSection } from './ObjectView.tsx';
 import { Toasts } from './Toasts.tsx';
+import { T } from './texts.ts';
 
 /*
  * The core: everything the page shows that is not another addon's, each a
@@ -20,7 +21,8 @@ import { Toasts } from './Toasts.tsx';
  *              a table's view (TableView) — all of these defaults that yield (fallback adds): another's
  *              add takes their place, the user's patches go over whichever is there
  *   looks      the kit's own theme, dark or light as the system is (Appearance: the user's to change;
- *              another addon's Theme to choose)
+ *              another addon's Theme to choose); the language, the browser's (Language) — its words by
+ *              key (texts.ts), in English until a language pack says them otherwise
  *   overlay    what the user is told
  */
 
@@ -48,12 +50,12 @@ const USUAL: [KindInfo, string, boolean][] = [
   [core.v1.Event, 'cluster', false],
 ];
 
-const CATEGORIES: [string, string][] = [
-  ['workloads', 'Workloads'],
-  ['network', 'Network'],
-  ['config', 'Config'],
-  ['storage', 'Storage'],
-  ['cluster', 'Cluster'],
+const CATEGORIES: [string, Label][] = [
+  ['workloads', T.categories.workloads],
+  ['network', T.categories.network],
+  ['config', T.categories.config],
+  ['storage', T.categories.storage],
+  ['cluster', T.categories.cluster],
 ];
 
 const AgeCell = ({ object }: { object: KubeObject }) => <Age since={object.metadata?.creationTimestamp} />;
@@ -69,9 +71,9 @@ export default defineAddon({
     c.add('Fill', 'core.table', { slot: slots.kind.page.name, order: 1000, render: TablePage });
     c.add('Fill', 'core.object', { slot: slots.object.view.name, order: 1000, render: ObjectView });
 
-    c.add('Column', 'core.name', column({ header: 'Name', order: 0, value: (o) => o.metadata?.name, render: NameCell }));
-    c.add('Column', 'core.namespace', column({ header: 'Namespace', order: 10, value: (o) => o.metadata?.namespace }));
-    c.add('Column', 'core.age', column({ header: 'Age', order: 900, width: 90, value: (o) => o.metadata?.creationTimestamp, render: AgeCell }));
+    c.add('Column', 'core.name', column({ header: T.columns.name, order: 0, value: (o) => o.metadata?.name, render: NameCell }));
+    c.add('Column', 'core.namespace', column({ header: T.columns.namespace, order: 10, value: (o) => o.metadata?.namespace }));
+    c.add('Column', 'core.age', column({ header: T.columns.age, order: 900, width: 90, value: (o) => o.metadata?.creationTimestamp, render: AgeCell }));
     c.add('Fill', 'core.yaml', section({ title: 'YAML', order: 1000, render: YamlSection }));
 
     // Defaults that yield: another's add of one takes its place.
@@ -85,6 +87,10 @@ export default defineAddon({
     // How it looks: the kit's own theme (no tokens of its own: the kit's defaults), as the system is (dark or light).
     c.add('Theme', 'default', { title: 'overkube' }, fallback);
     c.add('Appearance', 'default', { theme: 'default', mode: 'system' }, fallback);
+    // The language: as the browser's, until the user says otherwise; English said as given — there to reword (a patch).
+    c.add('Language', 'default', { locale: 'system' }, fallback);
+    c.add('Messages', 'en:core', { messages: {} }, fallback);
+    c.add('Messages', 'en:shell', { messages: {} }, fallback);
 
     // The navigation: tabs, or the menu — as the NavView says (one setting, the user's to patch).
     c.add('NavView', 'default', { mode: 'tabs' }, fallback);

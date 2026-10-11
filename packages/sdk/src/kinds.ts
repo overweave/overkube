@@ -3,6 +3,7 @@ import { TOKENS, type Tokens } from '@overkube/uikit';
 import { defineKind, type Problem } from '@overweave/core';
 import { uiKinds } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
+import { canonicalLocale, isLabel, isPhrase, KEY, type Label, type Phrase } from './text.ts';
 
 /*
  * What the dashboard is made of, as kinds of overweave: anything shown is a
@@ -53,8 +54,8 @@ const mapOf =
 const target: Check = (v) => typeof v === 'object' && v !== null && !Array.isArray(v) && ((v as Target).kinds === undefined || texts((v as Target).kinds));
 const sort: Check = (v) =>
   typeof v === 'object' && v !== null && text((v as { column?: unknown }).column) && [undefined, true, false].includes((v as { descending?: unknown }).descending as never);
-/** A region's name: a slot's part, so no ":" (page:<page>:<region>). */
-const regions: Check = (v) => Array.isArray(v) && v.every((r) => typeof r?.name === 'string' && /^[^:]+$/.test(r.name));
+/** A region's name: a slot's part, so no ":" (page:<page>:<region>); its title, a label. */
+const regions: Check = (v) => Array.isArray(v) && v.every((r) => typeof r?.name === 'string' && /^[^:]+$/.test(r.name) && (r.title === undefined || isLabel(r.title)));
 
 /** A validation of some fields: each, if given, as it should be (its code: what it should be). */
 function fields(checks: Record<string, [Check, string]>) {
@@ -66,7 +67,7 @@ function fields(checks: Record<string, [Check, string]>) {
   };
 }
 
-const looks = { title: [text, 'notText'], icon: [text, 'notText'], order: [finite, 'notANumber'] } as Record<string, [Check, string]>;
+const looks = { title: [isLabel, 'notText'], icon: [text, 'notText'], order: [finite, 'notANumber'] } as Record<string, [Check, string]>;
 
 /** How an object is doing: the dots on tabs, "3 need a look". */
 export interface Health {
@@ -76,7 +77,7 @@ export interface Health {
 
 /** How a kind of the cluster is shown. Named by the kind's id. */
 export interface KindViewSpec {
-  title: string;
+  title: Label;
   /** Its Category's name. */
   category?: string;
   /** An icon's name (the kit's icons). */
@@ -97,7 +98,7 @@ export const KindView = defineKind<KindViewSpec>()('KindView', {
 
 /** A group of kinds, as the picker shows them. */
 export interface CategorySpec {
-  title: string;
+  title: Label;
   icon?: string;
   order?: number;
 }
@@ -125,7 +126,7 @@ export interface ColumnRenderProps<O extends KubeObject = KubeObject> {
 /** A column of kinds' tables: its value of each object (PENDING: not there yet), drawn as text unless it has a render (given ColumnRenderProps). */
 export interface ColumnSpec {
   target: Target;
-  header: string;
+  header: Label;
   value: (object: KubeObject) => unknown;
   render?: PreactComponent;
   width?: number;
@@ -137,7 +138,7 @@ export const Column = defineKind<ColumnSpec>()('Column', {
   createRight: behaviour,
   validate: fields({
     target: [target, 'notATarget'],
-    header: [text, 'notText'],
+    header: [isLabel, 'notText'],
     value: [fn, 'notAFunction'],
     render: [fn, 'notAFunction'],
     width: [finite, 'notANumber'],
@@ -173,14 +174,14 @@ export const TableView = defineKind<TableViewSpec>()('TableView', {
 /** A region of a page: a slot of its own, page:<page>:<region> (its name: no ":"). */
 export interface Region {
   name: string;
-  title?: string;
+  title?: Label;
   order?: number;
   layout?: 'stack' | 'row' | 'grid';
 }
 
 /** A page: its regions are slots others fill (slots.page). */
 export interface PageSpec {
-  title: string;
+  title: Label;
   /** Shown as a tab of its own. */
   tab?: boolean;
   icon?: string;
@@ -198,7 +199,7 @@ export const Page = defineKind<PageSpec>()('Page', {
 /** Something done to an object (its view's actions): the page draws its button, asks first when it is dangerous, tells the cluster's refusal. */
 export interface ActionSpec {
   target: Target;
-  title: string;
+  title: Label;
   icon?: string;
   order?: number;
   dangerous?: boolean;
@@ -274,7 +275,7 @@ export interface RouteProps {
  */
 export interface RouteSpec {
   path: string;
-  title?: string;
+  title?: Label;
   icon?: string;
   order?: number;
   /** Drawn with RouteProps. */
@@ -291,8 +292,38 @@ export const Route = defineKind<RouteSpec>()('Route', {
   patchRights: { path: behaviour, render: behaviour, title: configure, icon: configure, order: configure },
 });
 
+/**
+ * What is said in a language, of one addon's keys: named <locale>:<addon>
+ * (pl:images, de:core) — its language in its name, its keys that addon's
+ * (images.…). An addon's own, or a language pack's for another (in that
+ * addon's name; one it ships itself, a pack patches). Its phrases patched
+ * by anyone, the user too, key by key.
+ */
+export interface MessagesSpec {
+  messages: Readonly<Record<string, Phrase>>;
+}
+
+const phrases: Check = (v) => mapOf(isPhrase)(v) && Object.keys(v as object).every((key) => KEY.test(key));
+
+export const Messages = defineKind<MessagesSpec>()('Messages', {
+  required: ['messages'],
+  validate: fields({ messages: [phrases, 'notPhrases'] }),
+  patchRights: { messages: configure },
+  merge: { maps: ['messages'] },
+});
+
+/** The language the page is in: one named 'default' (system: the browser's). */
+export interface LanguageSpec {
+  locale?: string;
+}
+
+export const Language = defineKind<LanguageSpec>()('Language', {
+  validate: fields({ locale: [(v) => v === 'system' || (typeof v === 'string' && canonicalLocale(v) !== undefined), 'notALocale'] }),
+  patchRights: { locale: configure },
+});
+
 /** The dashboard's own kinds (the UI's beside them). */
-export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, Route, NavView, Theme, Appearance] as const;
+export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, Route, NavView, Theme, Appearance, Messages, Language] as const;
 
 /** Every kind the dashboard has: its registry is made of them. */
 export const kubeKinds = [ui.Slot, ui.Fill, ui.Wrap, ...kubeOwnKinds] as const;

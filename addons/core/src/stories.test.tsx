@@ -17,6 +17,7 @@ const said: Record<string, string> = {
   PendingCells: '12m',
   ATheme: 'web-1',
   Arriving: 'Loading pods',
+  InPolish: 'Przestrzeń nazw',
 };
 
 describe('the core’s stories', () => {

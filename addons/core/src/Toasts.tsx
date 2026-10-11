@@ -1,9 +1,11 @@
-import { usePage } from '@overkube/sdk/preact';
+import { usePage, useSay } from '@overkube/sdk/preact';
 import { Button, Notice } from '@overkube/uikit';
+import { T } from './texts.ts';
 
 /** What the user is told, each closable; its time stopped while the pointer or focus is on it. Read out by the shell's live regions. */
 export function Toasts() {
   const page = usePage();
+  const say = useSay();
   return (
     <>
       {page.notifications.value.map((n) => (
@@ -18,7 +20,7 @@ export function Toasts() {
           <Notice
             level={n.level === 'ok' ? 'ok' : n.level === 'warn' ? 'warn' : n.level === 'error' ? 'error' : undefined}
             title={n.title}
-            action={<Button variant="ghost" size="sm" icon="x" aria-label="Close" onClick={() => page.dismiss(n.id)} />}
+            action={<Button variant="ghost" size="sm" icon="x" aria-label={say(T.close)} onClick={() => page.dismiss(n.id)} />}
           >
             {n.text}
           </Notice>

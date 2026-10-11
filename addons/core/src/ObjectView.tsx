@@ -1,11 +1,12 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { Action, type ActionSpec, kindPath, type ObjectRef, objectPathOf, slots, takes } from '@overkube/sdk';
-import { useCollection, useNotify, usePage } from '@overkube/sdk/preact';
+import { useCollection, useNotify, usePage, useSay } from '@overkube/sdk/preact';
 import { Button, Code, Modal, Notice, toYaml } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { slotElement, useDefinitions } from '@overweave/ui/preact';
 import { useState } from 'preact/hooks';
+import { T } from './texts.ts';
 import { Waiting } from './Waiting.tsx';
 
 /**
@@ -18,6 +19,7 @@ import { Waiting } from './Waiting.tsx';
  */
 export function ObjectView({ kind, namespace, name }: ObjectRef) {
   const page = usePage();
+  const say = useSay();
   const collection = useCollection(kind);
   const object = collection.items.value.get(namespace ? `${namespace}/${name}` : name);
   const here = objectPathOf(kind, { metadata: { name, namespace } });
@@ -31,28 +33,23 @@ export function ObjectView({ kind, namespace, name }: ObjectRef) {
     return (
       <Modal title={title} placement="right" onClose={close}>
         {state === 'loading' ? (
-          <Waiting label={`Loading ${kind.kind} ${name}…`} />
+          <Waiting label={say(T.object.loading, { kind: kind.kind, name })} />
         ) : state === 'error' ? (
           <Notice
             level="error"
             icon="warning"
             action={
               <Button variant="ghost" size="sm" icon="refresh" onClick={() => collection.retry()}>
-                Try again
+                {say(T.retry)}
               </Button>
             }
           >
-            <span title={error?.message}>
-              {kind.plural} cannot be had: {error?.code}
-            </span>
+            <span title={error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
           </Notice>
         ) : state === 'absent' ? (
-          <Notice icon="puzzle">The cluster does not serve {kind.id}.</Notice>
+          <Notice icon="puzzle">{say(T.kind.notServed, { kind: kind.id })}</Notice>
         ) : (
-          <Notice icon="puzzle">
-            There is no {kind.kind} {name}
-            {state === 'stale' ? ' (as last seen: the page is reconnecting)' : ' (now)'}.
-          </Notice>
+          <Notice icon="puzzle">{say(state === 'stale' ? T.object.goneStale : T.object.gone, { kind: kind.kind, name })}</Notice>
         )}
       </Modal>
     );
@@ -81,6 +78,7 @@ interface Asked {
 
 function Actions({ kind, object }: { kind: KindInfo; object: KubeObject }) {
   const page = usePage();
+  const say = useSay();
   const notify = useNotify();
   const [asked, setAsked] = useState<Asked | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -108,7 +106,7 @@ function Actions({ kind, object }: { kind: KindInfo; object: KubeObject }) {
       // The cluster's refusal (or the action's own failure): said here, and told.
       const message = error instanceof Error ? error.message : String(error);
       setRefused({ action: a.name, message });
-      notify({ level: 'error', title: a.spec.title, text: message, key: `action:${a.name}` });
+      notify({ level: 'error', title: say(a.spec.title), text: message, key: `action:${a.name}` });
     } finally {
       setBusy(null);
     }
@@ -122,14 +120,14 @@ function Actions({ kind, object }: { kind: KindInfo; object: KubeObject }) {
   return (
     <div class="uk-region">
       {refused && (
-        <Notice level="error" icon="warning" title={actions.find((a) => a.name === refused.action)?.spec.title}>
+        <Notice level="error" icon="warning" title={say(actions.find((a) => a.name === refused.action)?.spec.title ?? '')}>
           {refused.message}
         </Notice>
       )}
       <div class="uk-bar">
         {actions.map((a) => (
           <Button key={a.name} variant={a.spec.dangerous ? 'danger' : undefined} icon={a.spec.icon} busy={busy === a.name} onClick={() => press(a)}>
-            {asking === a.name ? `${a.spec.title}: sure?` : a.spec.title}
+            {asking === a.name ? say(T.object.sure, { action: say(a.spec.title) }) : say(a.spec.title)}
           </Button>
         ))}
       </div>

@@ -51,6 +51,10 @@ export {
   type KubeKinds,
   kubeKinds,
   kubeOwnKinds,
+  Language,
+  type LanguageSpec,
+  Messages,
+  type MessagesSpec,
   NavView,
   type NavViewSpec,
   Page,
@@ -70,5 +74,7 @@ export {
   ui,
 } from './kinds.ts';
 export { kindOfRef, kindPath, kindRef, objectPathOf } from './links.ts';
+export { type MessagesOf, messagesName, type Params, type Say, sayer } from './say.ts';
 export { type KindProps, type ListState, type ObjectProps, type ObjectRef, parseSlot, slots } from './slots.ts';
 export { forKinds, kindMatcher, takes } from './target.ts';
+export { canonicalLocale, isLabel, isPhrase, type Label, type LabelRef, type Phrase, type PluralForms, t } from './text.ts';

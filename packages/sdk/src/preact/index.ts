@@ -11,3 +11,4 @@ export { fill, Slot } from '@overweave/ui/preact';
 export { KubeProvider, useCluster, useCollection } from './hooks.ts';
 export { useKind, useServedKinds } from './kinds.ts';
 export { PageProvider, type PageValue, RouteProvider, type Shown, useNavigate, useNotify, usePage, useRoute } from './page.ts';
+export { useSay } from './say.ts';

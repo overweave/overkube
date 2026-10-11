@@ -1,10 +1,11 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { Column, PENDING, slots, TableView, takes } from '@overkube/sdk';
-import { useCollection, usePage } from '@overkube/sdk/preact';
+import { useCollection, usePage, useSay } from '@overkube/sdk/preact';
 import { Button, Notice, Skeleton, Table, type TableColumn } from '@overkube/uikit';
 import { inOrder } from '@overweave/ui';
 import { Guarded, slotElement, useDefinition, useDefinitions } from '@overweave/ui/preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { T } from './texts.ts';
 import { useWaited } from './waited.ts';
 
 /**
@@ -29,7 +30,8 @@ export function KindTable({ kind }: { kind: KindInfo }) {
   const [said, setSaid] = useState('');
   const loadingNow = collection.state.value === 'loading';
   const count = collection.items.value.size;
-  useEffect(() => setSaid(loadingNow ? `Loading ${kind.plural}…` : `${count} ${kind.plural}`), [loadingNow]);
+  const say = useSay();
+  useEffect(() => setSaid(loadingNow ? say(T.table.loading, { kind: kind.plural }) : say(T.table.count, { count, kind: kind.plural })), [loadingNow, say]);
   const view = useDefinition(TableView, kind.id)?.spec ?? {};
   const all = useDefinitions(Column).filter((c) => takes(c.spec.target, kind));
   const placed = useMemo(() => {
@@ -75,7 +77,7 @@ export function KindTable({ kind }: { kind: KindInfo }) {
         };
         return {
           id: c.name,
-          header: c.spec.header,
+          header: say(c.spec.header),
           width: width === undefined ? undefined : `${width}px`,
           // Not there yet (PENDING): none to sort by — last.
           sort: (o) => {
@@ -88,7 +90,7 @@ export function KindTable({ kind }: { kind: KindInfo }) {
               return (
                 <>
                   <Skeleton width="60%" />
-                  <span class="uk-sr-only">Loading</span>
+                  <span class="uk-sr-only">{say(T.table.cellLoading)}</span>
                 </>
               );
             if (Render)
@@ -108,15 +110,15 @@ export function KindTable({ kind }: { kind: KindInfo }) {
           },
         };
       }),
-    [placed, view.widths, kind, failed],
+    [placed, view.widths, kind, failed, say],
   );
 
-  if (placed.length === 0) return <Notice icon="grid">No columns for {kind.id}: no addon defines any.</Notice>;
+  if (placed.length === 0) return <Notice icon="grid">{say(T.table.noColumns, { kind: kind.id })}</Notice>;
 
   const state = collection.state.value;
   const error = collection.error.value;
   const initialSort = view.sort ? { id: view.sort.column, desc: view.sort.descending } : undefined;
-  if (state === 'absent') return <Notice icon="puzzle">The cluster does not serve {kind.id}.</Notice>;
+  if (state === 'absent') return <Notice icon="puzzle">{say(T.kind.notServed, { kind: kind.id })}</Notice>;
   if (state === 'error')
     return (
       <Notice
@@ -124,13 +126,11 @@ export function KindTable({ kind }: { kind: KindInfo }) {
         icon="warning"
         action={
           <Button variant="ghost" size="sm" icon="refresh" onClick={() => collection.retry()}>
-            Try again
+            {say(T.retry)}
           </Button>
         }
       >
-        <span title={error?.message}>
-          {kind.plural} cannot be had: {error?.code}
-        </span>
+        <span title={error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
       </Notice>
     );
 
@@ -154,12 +154,12 @@ export function KindTable({ kind }: { kind: KindInfo }) {
     <div class="uk-region">
       {loading && error && (
         <Notice level="warn" icon="refresh">
-          <span title={error.message}>Waiting: {error.message}</span>
+          <span title={error.message}>{say(T.table.waiting, { reason: error.message })}</span>
         </Notice>
       )}
       {state === 'stale' && (
         <Notice level="warn" icon="refresh">
-          <span title={error?.message}>Not current: the page has lost the cluster's changes and is reconnecting. What is shown is as it was.</span>
+          <span title={error?.message}>{say(T.table.stale)}</span>
         </Notice>
       )}
       <span class="uk-sr-only" role="status">
@@ -172,7 +172,7 @@ export function KindTable({ kind }: { kind: KindInfo }) {
         rowKey={rowKey}
         loading={loading}
         placeholdersAfter={waited ? 0 : undefined}
-        empty={rows.length < items.length ? `No ${kind.plural} shown of ${items.length}` : `No ${kind.plural}`}
+        empty={rows.length < items.length ? say(T.table.noneShown, { kind: kind.plural, total: items.length }) : say(T.table.none, { kind: kind.plural })}
         initialSort={initialSort}
       />
     </div>

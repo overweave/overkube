@@ -35,6 +35,8 @@ export interface KubeWorld extends KubeWorldBase {
   failures(id: string): readonly unknown[];
   /** A service, while its provider runs. */
   service<T = unknown>(name: string): T | null;
+  /** The page's language, as its user would set it (Language): w.language('pl'). */
+  language(locale: string): void;
 }
 
 /** The cluster for one run: what it holds is let go of when the run stops; what it writes is in its name; after, it writes nothing. */
@@ -165,5 +167,8 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
     },
     failures: (id: string) => env.failures(id),
     service: <T>(name: string) => (services.peek().get(name)?.value as T | undefined) ?? null,
+    language(locale: string) {
+      w.as('user', standingOf('user')).patch('Language', 'default', { locale } as never);
+    },
   }) as unknown as KubeWorld;
 }
