@@ -6,6 +6,7 @@ import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { slotElement, useDefinitions } from '@overweave/ui/preact';
 import { useState } from 'preact/hooks';
+import { Waiting } from './Waiting.tsx';
 
 /**
  * An object, opened over its kind's table: its header and sections (the
@@ -30,7 +31,7 @@ export function ObjectView({ kind, namespace, name }: ObjectRef) {
     return (
       <Modal title={title} placement="right" onClose={close}>
         {state === 'loading' ? (
-          <Notice loading>Loading…</Notice>
+          <Waiting label={`Loading ${kind.kind} ${name}…`} />
         ) : state === 'error' ? (
           <Notice
             level="error"

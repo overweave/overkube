@@ -13,10 +13,18 @@ const now = signal(Date.now());
 let drawn = 0;
 let timer: ReturnType<typeof setInterval> | undefined;
 
+/** The clock as read for the ages first drawn while none ticks: one reading for all of them. */
+let first: number | undefined;
+
 function useNow(): number {
+  // None ticking, now is as old as the last tick: the clock read here — once for every age drawn with this one — and
+  // the tick started with that same reading: drawn once, as it is (not an old age first, the right one a moment after).
+  if (drawn === 0) first ??= Date.now();
+  const fresh = drawn === 0 ? first : undefined;
   useEffect(() => {
     if (drawn++ === 0) {
-      now.value = Date.now();
+      now.value = first ?? Date.now();
+      first = undefined;
       timer = setInterval(() => {
         now.value = Date.now();
       }, AGE_TICK_MS);
@@ -25,7 +33,9 @@ function useNow(): number {
       if (--drawn === 0) clearInterval(timer);
     };
   }, []);
-  return now.value;
+  // Read always: what is read is followed (each tick draws it again).
+  const ticked = now.value;
+  return fresh ?? ticked;
 }
 
 /** How long ago, as kubectl says it (to one unit): 45s, 12m, 3h, 5d. Nothing for no time, or one that is not a time. */

@@ -38,20 +38,14 @@ function CoreDown({ host }: { host: AddonHost }) {
  * The page drawn into an element: the shell (the frame, the route at the
  * hash) over the registry and the cluster, what addons tell the user, their
  * failures told as their own — and, should the core not run, that said.
- * Dark, or light as the system is. What it gives back takes it away.
+ * How it looks is the shell's (the Appearance). What it gives back takes it away.
  */
 export function mount(element: HTMLElement, page: Page, told = notifications()): () => void {
   const doc = element.ownerDocument;
   const win = doc.defaultView as Window;
   styles(doc);
+  // The kit's root: its tokens' defaults; the shell sets the theme's over them (dark, light, as the system is).
   element.classList.add('uk-root');
-  const light = win.matchMedia?.('(prefers-color-scheme: light)');
-  const theme = () => {
-    if (light?.matches) element.dataset.theme = 'light';
-    else delete element.dataset.theme;
-  };
-  theme();
-  light?.addEventListener('change', theme);
   const router = hashRouter(win);
   render(
     <>
@@ -70,6 +64,5 @@ export function mount(element: HTMLElement, page: Page, told = notifications()):
     render(null, element);
     router.close();
     told.close();
-    light?.removeEventListener('change', theme);
   };
 }

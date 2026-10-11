@@ -1,7 +1,7 @@
 {
   "name": "@overkube/sdk",
   "version": "0.1.0",
-  "description": "What overkube's addons are written with: the dashboard's kinds over overweave (KindView, Category, Column, TableView, Page, Action), its slots, defineAddon and what an addon is given — its contributor and the cluster; hooks for its components",
+  "description": "What overkube's addons are written with: the dashboard's kinds over overweave (KindView, Category, Column, TableView, Page, Action), its slots, defineAddon and what an addon is given \u2014 its contributor and the cluster; hooks for its components",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -27,6 +27,7 @@
     "@overkube/client": "0.1.0",
     "@overkube/gateway": "0.1.0",
     "@overkube/kube-types": "0.1.0",
+    "@overkube/uikit": "0.1.0",
     "@overweave/core": "0.2.0",
     "@overweave/ui": "0.2.0"
   },

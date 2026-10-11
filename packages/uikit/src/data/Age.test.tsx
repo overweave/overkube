@@ -1,4 +1,5 @@
 import { act, cleanup, render } from '@testing-library/preact';
+import { render as draw } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AGE_TICK_MS, Age, age } from './Age';
 
@@ -98,11 +99,25 @@ describe('Age', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('is as of now when drawn again after a while with none drawn', () => {
+  it('is as of now when drawn again after a while with none drawn — at once, all of them one reading', () => {
     render(<Age since={ago(0)} />).unmount();
-    vi.setSystemTime(AT + 10 * 60_000);
-    const { container } = render(<Age since={ago(0)} />);
-    act(() => {});
-    expect(container.textContent).toBe('10m');
+    // Ten minutes on, the clock a few ms from a minute's edge: several drawn together read it once.
+    vi.setSystemTime(AT + 10 * 60_000 - 1);
+    // Drawn by Preact itself (not under act): what is first committed is read before any effect runs.
+    const container = document.createElement('div');
+    document.body.append(container);
+    draw(
+      <>
+        <Age since={ago(0)} />
+        <Age since={ago(0)} />
+      </>,
+      container,
+    );
+    const drawn = container.textContent;
+    vi.setSystemTime(AT + 10 * 60_000 + 5);
+    act(() => void vi.advanceTimersByTime(20));
+    expect([drawn, container.textContent]).toEqual(['9m9m', '9m9m']);
+    draw(null, container);
+    container.remove();
   });
 });

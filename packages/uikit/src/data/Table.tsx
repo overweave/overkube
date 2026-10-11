@@ -1,6 +1,7 @@
 import type { ComponentChildren, Ref } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from '../display/Icon';
+import { Skeleton } from '../display/Skeleton';
 import { uid } from '../lib/focus';
 import { useSortable } from '../lib/sortable';
 
@@ -50,6 +51,10 @@ export interface TableProps<T> {
   overscan?: number;
   /** What it says with no rows. */
   empty?: ComponentChildren;
+  /** Its rows are on their way: its head as it is, a few rows of placeholders under it. Said busy (aria-busy). */
+  loading?: boolean;
+  /** How long it waits before showing its placeholders (rows that come sooner, come at once; default 200 ms; 0: at once). */
+  placeholdersAfter?: number;
   /** How it is sorted at first, and again whenever this changes. */
   initialSort?: { id: string; desc?: boolean };
   /** Columns may be dragged wider or narrower (default: yes). */
@@ -80,6 +85,14 @@ const CHECK = 20;
 const CALM = 8;
 /** How long a row gone takes to fold (the CSS's). */
 const LEAVE_MS = 220;
+/** How long the placeholders below the rows take to fold away. */
+const FOLD_MS = LEAVE_MS + 40;
+/** Placeholder rows while its rows are on their way (loading: true). */
+const PLACEHOLDERS = 5;
+/** Rows that come sooner than this need no placeholders: none flashed for a frame. */
+const PLACEHOLDERS_AFTER_MS = 200;
+/** Placeholders once shown stay at least this long: not a flash either. */
+const PLACEHOLDERS_FOR_MS = 400;
 
 /** A row gone, drawn a moment where it was. */
 interface Leaving<T> {
@@ -102,6 +115,8 @@ export function Table<T>({
   rowHeight = 34,
   overscan = 8,
   empty,
+  loading = false,
+  placeholdersAfter = PLACEHOLDERS_AFTER_MS,
   initialSort,
   resizable = true,
   onResize,
@@ -162,20 +177,28 @@ export function Table<T>({
   };
   useEffect(() => () => sizeObserver.current?.disconnect(), []);
 
+  // What each row sorts by, read at each drawing: a value that changed on its own (one that came later) sorts it again.
+  const sortBy = sort && columns.find((c) => c.id === sort.id)?.sort;
+  const by = sortBy ? rows.map(sortBy) : undefined;
+  const byRef = useRef(by);
+  if (by && byRef.current && (by.length !== byRef.current.length || by.some((v, i) => v !== byRef.current?.[i]))) byRef.current = by;
+  else if (!by || !byRef.current) byRef.current = by;
   const sorted = useMemo(() => {
-    const column = sort && columns.find((c) => c.id === sort.id);
-    if (!column?.sort) return rows;
-    const by = column.sort;
+    const values = byRef.current;
+    if (!values) return rows;
     const dir = sort?.desc ? -1 : 1;
-    return [...rows].sort((a, b) => {
-      const x = by(a);
-      const y = by(b);
-      if (x === y) return 0;
-      if (x === undefined) return 1;
-      if (y === undefined) return -1;
-      return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })) * dir;
-    });
-  }, [rows, columns, sort]);
+    return rows
+      .map((row, i) => ({ row, v: values[i] }))
+      .sort((a, b) => {
+        const x = a.v;
+        const y = b.v;
+        if (x === y) return 0;
+        if (x === undefined) return 1;
+        if (y === undefined) return -1;
+        return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })) * dir;
+      })
+      .map((e) => e.row);
+  }, [rows, sort, byRef.current]);
 
   // Rows' heights as measured (by key), else rowHeight; where each row starts.
   const heights = useRef(new Map<string, number>());
@@ -235,12 +258,13 @@ export function Table<T>({
   // What the data changed, drawn as it moves: a row gone from those drawn fades and folds (the rows under it rise); a
   // row new to the list fades in; a few rows moved slide to where they are (FLIP). Not a new sort, a scroll, a change of
   // many rows (a filter, another namespace): those are drawn at once — as is everything under prefers-reduced-motion.
-  const last_ = useRef<{ keys: string[]; drawn: Map<string, { row: T; height: number }>; sort: typeof sort; scroll: number }>();
+  const last_ = useRef<{ keys: string[]; drawn: Map<string, { row: T; height: number }>; sort: typeof sort; scroll: number; waiting: boolean }>();
   const tops = useRef(new Map<string, number>());
   const [, setTick] = useState(0);
   const motion = useMemo(() => {
     const was = last_.current;
-    if (!was || was.keys === keys) return { calm: false, born: new Set<string>(), leaving: [] as Leaving<T>[] };
+    // The first rows after waiting for them (a load): drawn as they are, not as rows new to the list.
+    if (!was || was.keys === keys || was.waiting) return { calm: false, born: new Set<string>(), leaving: [] as Leaving<T>[] };
     const now = new Set(keys);
     const before = new Set(was.keys);
     const added = keys.filter((k) => !before.has(k));
@@ -346,6 +370,62 @@ export function Table<T>({
     selection.onChange(next);
   };
 
+  // Placeholders, only if the rows are slow: none for the first moments (rows that come by then come at once, with no
+  // flash of placeholders before them); once shown, kept a while (not a flash either). Then the rows in their place,
+  // each where a placeholder was, as they are; the placeholders below the rows fold away (as a row gone does).
+  const [shown, setShown] = useState(() => loading && placeholdersAfter <= 0);
+  const shownAt = useRef(shown ? Date.now() : 0);
+  useEffect(() => {
+    if (loading && !shown) {
+      const t = setTimeout(() => {
+        shownAt.current = Date.now();
+        setShown(true);
+      }, placeholdersAfter);
+      return () => clearTimeout(t);
+    }
+    if (!loading && shown) {
+      const t = setTimeout(() => setShown(false), Math.max(0, PLACEHOLDERS_FOR_MS - (Date.now() - shownAt.current)));
+      return () => clearTimeout(t);
+    }
+  }, [loading, shown]);
+  /** Still waiting for its rows (or keeping its placeholders a while): no rows drawn yet. */
+  const waiting = loading || shown;
+  // Placeholders gone, rows in: those below the rows fold away — the bottom ones, as they were (their own nodes).
+  const wasShown = useRef(shown);
+  const folding = useRef<{ from: number; until: number } | null>(null);
+  if (wasShown.current && !shown) {
+    const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    const from = Math.min(PLACEHOLDERS, keys.length);
+    folding.current = still || from === PLACEHOLDERS ? null : { from, until: Date.now() + FOLD_MS };
+  }
+  wasShown.current = shown;
+  if (folding.current && folding.current.until <= Date.now()) folding.current = null;
+  const fold = folding.current;
+  useEffect(() => {
+    if (!fold) return;
+    const t = setTimeout(() => setTick((n) => n + 1), Math.max(0, fold.until - Date.now()) + 10);
+    return () => clearTimeout(t);
+  }, [fold?.until]);
+  /** A placeholder row: a line in each cell, of a width of its own. */
+  const placeholder = (i: number, leaving = false) => (
+    <div
+      key={`skeleton-${i}`}
+      class="uk-table-row"
+      data-skeleton=""
+      data-leaving={leaving ? '' : undefined}
+      aria-hidden="true"
+      style={{ gridTemplateColumns: template, minHeight: `${rowHeight}px`, ...(leaving ? { '--uk-row-h': `${rowHeight}px` } : {}) }}
+    >
+      {selection && <div class="uk-table-pick" />}
+      {columns.map((c) => (
+        <div key={c.id} {...sortable.item(c.id)}>
+          <Skeleton width={`${55 + ((i * 37 + c.id.length * 13) % 40)}%`} />
+        </div>
+      ))}
+    </div>
+  );
+  const leavingPlaceholders = fold ? Array.from({ length: PLACEHOLDERS - fold.from }, (_, i) => placeholder(fold.from + i, true)) : [];
+
   // The rows drawn: those in view, and those leaving among them (before the row that followed them).
   type Drawn = { row: T; key: string; index: number; gone?: Leaving<T> };
   const drawnRows: Drawn[] = sorted.slice(first, last).map((row, n) => ({ row, key: keys[first + n], index: first + n }));
@@ -373,13 +453,21 @@ export function Table<T>({
       keys,
       sort,
       scroll,
+      waiting,
       drawn: new Map(drawnRows.filter((d) => !d.gone).map((d) => [d.key, { row: d.row, height: rowEls.current.get(d.key)?.offsetHeight || rowHeight }])),
     };
   });
 
   const lastColumn = columns.length - 1;
   return (
-    <div class="uk-table" ref={sortable.root as Ref<HTMLDivElement>} role="table" aria-rowcount={sorted.length + 1} data-resizing={resizing !== undefined ? '' : undefined}>
+    <div
+      class="uk-table"
+      ref={sortable.root as Ref<HTMLDivElement>}
+      role="table"
+      aria-rowcount={waiting ? -1 : sorted.length + 1}
+      aria-busy={waiting ? true : undefined}
+      data-resizing={resizing !== undefined ? '' : undefined}
+    >
       <div class="uk-table-body" ref={attach} style={{ maxHeight: height }} onScroll={(e) => setScroll((e.currentTarget as HTMLDivElement).scrollTop)}>
         <div class="uk-table-inner" style={{ minWidth: `${minWidth}px` }}>
           {/* biome-ignore lint/a11y/useFocusableInteractive: the header row is not a stop; its buttons are. */}
@@ -445,8 +533,13 @@ export function Table<T>({
               );
             })}
           </div>
-          {sorted.length === 0 ? (
-            <div class="uk-table-empty">{empty}</div>
+          {waiting ? (
+            <div role="rowgroup">{Array.from({ length: shown ? PLACEHOLDERS : 0 }, (_, i) => placeholder(i))}</div>
+          ) : sorted.length === 0 ? (
+            <>
+              {leavingPlaceholders.length > 0 && <div role="rowgroup">{leavingPlaceholders}</div>}
+              <div class="uk-table-empty">{empty}</div>
+            </>
           ) : (
             <div role="rowgroup" style={{ paddingTop: `${starts[first]}px`, paddingBottom: `${starts[keys.length] - starts[last]}px` }}>
               {drawnRows.map(({ row, key, index, gone }) => {
@@ -499,6 +592,7 @@ export function Table<T>({
                   </div>
                 );
               })}
+              {leavingPlaceholders}
             </div>
           )}
         </div>

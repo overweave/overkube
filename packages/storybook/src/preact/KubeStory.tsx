@@ -1,5 +1,5 @@
 import type { KindInfo } from '@overkube/kube-types';
-import { type Addon, type KubeContributor, kindMatcher, kubeOwnKinds, standingOf, ui } from '@overkube/sdk';
+import { type Addon, type KubeContributor, kindMatcher, kubeOwnKinds, PRIORITY, standingOf, ui } from '@overkube/sdk';
 import { KubeProvider, usePage } from '@overkube/sdk/preact';
 import { Frame, memoryRouter, ShellProvider } from '@overkube/shell';
 import { type AddonEnv, addonEnv, addonRun, type FakeCluster, fakeCluster } from '@overkube/testkit';
@@ -31,6 +31,7 @@ export interface KubeStoryProps {
   kinds?: readonly KindInfo[];
   /** The user's own changes, over every addon's: (user) => user.patch('TableView', Pod.id, { hidden: { … } }). */
   user?: (user: KubeContributor) => void;
+  /** Dark or light (none: as the Appearance says — the system's, by default). */
   theme?: 'dark' | 'light';
   /**
    * cluster, served, kinds and user are the story's start: read once. Another
@@ -68,10 +69,11 @@ function PathBar() {
 
 /** A story of the page: started anew (its cluster, its world, its path) whenever its resetKey changes. */
 export function KubeStory(props: KubeStoryProps) {
-  return <Story key={props.resetKey as never} {...props} />;
+  // Another theme, another start (the story's world made anew with it).
+  return <Story key={`${String(props.resetKey)}:${props.theme ?? ''}`} {...props} />;
 }
 
-function Story({ addons, path = '/', cluster, served, kinds, user, theme = 'dark' }: KubeStoryProps) {
+function Story({ addons, path = '/', cluster, served, kinds, user, theme }: KubeStoryProps) {
   // The story's own, kept while it is shown: its cluster (filled once), its notifications and services, its path.
   const [env] = useState<AddonEnv>(() => {
     const c = fakeCluster({ served, kinds });
@@ -100,17 +102,21 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme = 'dark
     setFailures((now) => (now.includes(said) ? now : [...now, said]));
   };
   return (
-    <div
-      class="uk-root"
-      data-theme={theme === 'light' ? 'light' : undefined}
-      style={{ padding: '16px', background: 'var(--uk-bg)', minHeight: '100%', fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}
-    >
+    <div class="uk-root" style={{ padding: '16px', background: 'var(--uk-bg)', minHeight: '100%', fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
       <WorldStory
         ui={ui}
         kinds={kubeOwnKinds}
         matcher={kindMatcher}
         addons={addons.map(run)}
-        given={user ? (w) => user(w.as('user', standingOf('user')) as unknown as KubeContributor) : undefined}
+        given={
+          user || theme
+            ? (w) => {
+                if (user) user(w.as('user', standingOf('user')) as unknown as KubeContributor);
+                // Dark or light, as the story says: over the user's (a contributor of its own: not one patch replacing another).
+                if (theme) w.as('story', { priority: PRIORITY.user + 1, rights: ['configure'] }).patch('Appearance', 'default', { mode: theme });
+              }
+            : undefined
+        }
       >
         <KubeProvider cluster={env.cluster}>
           <ShellProvider router={router} notifications={env.notifications} onFailure={onFailure}>

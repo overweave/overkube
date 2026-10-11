@@ -1,8 +1,9 @@
-import { Route, slots } from '@overkube/sdk';
+import { Appearance, Route, slots, Theme } from '@overkube/sdk';
 import { RouteProvider, usePage } from '@overkube/sdk/preact';
-import { Notice } from '@overkube/uikit';
-import { Guarded, slotElement, useDefinitions } from '@overweave/ui/preact';
-import { useEffect, useMemo, useRef } from 'preact/hooks';
+import { Notice, SHAPE_TOKENS, tokenStyle } from '@overkube/uikit';
+import { Guarded, slotElement, useDefinition, useDefinitions } from '@overweave/ui/preact';
+import type { RefObject } from 'preact';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { matchRoute } from './match.ts';
 
 /**
@@ -14,6 +15,8 @@ import { matchRoute } from './match.ts';
  */
 export function Frame() {
   const page = usePage();
+  const frame = useRef<HTMLDivElement>(null);
+  useTheme(frame);
   // A link within the page (#/…) goes through the router: the same for a hash's and one in memory (a story, a test).
   const follow = (e: MouseEvent) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -24,7 +27,7 @@ export function Frame() {
   };
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: links are followed here, not clicks made of it (a link's Enter is a click).
-    <div class="uk-shell" onClick={follow}>
+    <div class="uk-shell" ref={frame} onClick={follow}>
       {slotElement(slots.header.above, {})}
       <header class="uk-shell-header">
         {slotElement(slots.header.start, {})}
@@ -82,6 +85,43 @@ function Notifications() {
       {slotElement(slots.notifications, {})}
     </div>
   );
+}
+
+/**
+ * How the page looks, as its Appearance says: its Theme's tokens set on the
+ * page's root (.uk-root: where the kit's defaults are, under them) — its
+ * colours in the variant asked for (dark, light, or as the system is), its
+ * corners and fonts as it says them in either.
+ */
+function useTheme(frame: RefObject<HTMLElement>) {
+  const appearance = useDefinition(Appearance, 'default')?.spec;
+  const theme = useDefinition(Theme, appearance?.theme ?? 'default')?.spec;
+  const mode = appearance?.mode ?? 'system';
+  const [systemLight, setSystemLight] = useState(() => globalThis.matchMedia?.('(prefers-color-scheme: light)').matches ?? false);
+  useEffect(() => {
+    if (mode !== 'system') return;
+    const query = globalThis.matchMedia?.('(prefers-color-scheme: light)');
+    if (!query) return;
+    const follow = () => setSystemLight(query.matches);
+    follow();
+    query.addEventListener?.('change', follow);
+    return () => query.removeEventListener?.('change', follow);
+  }, [mode]);
+  const variant = mode === 'light' || (mode === 'system' && systemLight) ? 'light' : 'dark';
+  useLayoutEffect(() => {
+    const root = frame.current?.closest('.uk-root') as HTMLElement | null;
+    if (!root) return;
+    if (variant === 'light') root.dataset.theme = 'light';
+    else delete root.dataset.theme;
+    const other = variant === 'light' ? theme?.dark : theme?.light;
+    const shapes = Object.fromEntries(Object.entries(other ?? {}).filter(([name]) => (SHAPE_TOKENS as readonly string[]).includes(name)));
+    const set = tokenStyle({ ...shapes, ...theme?.[variant] });
+    for (const [name, value] of Object.entries(set)) root.style.setProperty(name, value);
+    return () => {
+      for (const name of Object.keys(set)) root.style.removeProperty(name);
+      delete root.dataset.theme;
+    };
+  }, [variant, theme]);
 }
 
 /** The Route at the path, drawn apart (what it throws is its own); none: said so. */

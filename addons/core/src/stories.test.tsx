@@ -13,6 +13,10 @@ const said: Record<string, string> = {
   SideMenu: 'Workloads',
   Forbidden: 'pods cannot be had: Forbidden',
   Light: 'web-2',
+  Loading: 'Loading pods',
+  PendingCells: '12m',
+  ATheme: 'web-1',
+  Arriving: 'Loading pods',
 };
 
 describe('the core’s stories', () => {

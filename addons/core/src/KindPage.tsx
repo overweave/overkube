@@ -1,11 +1,13 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { objectPathOf, type RouteProps, slots } from '@overkube/sdk';
-import { useCluster, useKind, usePage } from '@overkube/sdk/preact';
+import { useCluster, useCollection, useKind, usePage } from '@overkube/sdk/preact';
 import { Button, Notice } from '@overkube/uikit';
 import { slotElement } from '@overweave/ui/preact';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { KindTable } from './KindTable.tsx';
 import { useNav } from './nav.ts';
+import { Waiting } from './Waiting.tsx';
+import { Waited } from './waited.ts';
 
 /**
  * A kind's page (/k/<kind>, and /k/<kind>/<namespace>/<name> or
@@ -35,15 +37,46 @@ export function KindPage({ params, rest }: RouteProps) {
           <span title={error.message}>What the cluster serves cannot be had: {error.code}</span>
         </Notice>
       );
-    if (!discovery.kinds.value) return <Notice loading>Asking the cluster what it serves…</Notice>;
+    if (!discovery.kinds.value) return <Waiting label="Asking the cluster what it serves…" />;
     return <Notice icon="puzzle">The cluster serves no kind {params.kind}.</Notice>;
   }
-  const object = objectOf(kind, rest);
+  return <Shown next={kind} rest={rest} />;
+}
+
+/** How long the page shows the last kind while the next one's objects come: by then, the next one's placeholders. */
+const HOLD_MS = 200;
+
+/**
+ * The kind shown: the last one, while the next one's objects are on their way
+ * (a moment: they come, the next is shown as it is — no empty table between,
+ * no placeholders); too long, the next one, its placeholders at once. A path
+ * that names an object is not held: an object is opened over its own kind.
+ */
+function Shown({ next, rest }: { next: KindInfo; rest: string }) {
+  // Held from now on (its objects asked for while the last kind is still shown).
+  const state = useCollection(next).state.value;
+  // This going to the next kind (a new one each time it changes: one gone to again waits anew), and whether it ran out.
+  const going = useMemo(() => ({ to: next.id }), [next.id]);
+  const [late, setLate] = useState<object | null>(null);
+  const [shown, setShown] = useState({ kind: next, waited: false });
+  const object = objectOf(next, rest);
+  const there = shown.kind.id === next.id;
+  const ready = there || state !== 'loading' || late === going || !!object;
+  const kind = ready ? next : shown.kind;
+  const waited = there ? shown.waited : late === going;
+  useEffect(() => {
+    if (ready && !there) setShown({ kind: next, waited });
+  }, [ready, there]);
+  useEffect(() => {
+    if (ready) return;
+    const t = setTimeout(() => setLate(going), HOLD_MS);
+    return () => clearTimeout(t);
+  }, [going, ready]);
   return (
-    <>
+    <Waited.Provider value={waited}>
       {slotElement(slots.kind.page, { kind }, { limit: 1 })}
-      {object && slotElement(slots.object.view, { kind, ...object }, { limit: 1 })}
-    </>
+      {ready && object && slotElement(slots.object.view, { kind: next, ...object }, { limit: 1 })}
+    </Waited.Provider>
   );
 }
 
@@ -78,5 +111,5 @@ export function Home() {
   useEffect(() => {
     if (first) page.navigate(first.path, { replace: true });
   }, [first?.path]);
-  return first ? null : <Notice loading>Asking the cluster what it serves…</Notice>;
+  return first ? null : <Waiting label="Asking the cluster what it serves…" />;
 }

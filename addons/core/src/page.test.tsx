@@ -1,9 +1,10 @@
 import { kinds } from '@overkube/kube-types';
-import { action, column, defineAddon, section, slots } from '@overkube/sdk';
+import { action, column, defineAddon, PENDING, section, slots } from '@overkube/sdk';
 import { useRoute } from '@overkube/sdk/preact';
 import { cleanup, kubeWorld, make } from '@overkube/testkit';
 import { renderRoute } from '@overkube/testkit/preact';
-import { afterEach, describe, expect, it } from 'vitest';
+import { signal } from '@preact/signals';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import core from './index.tsx';
 
 /*
@@ -104,6 +105,130 @@ describe('a kind’s table', () => {
     w.cluster.discover('error', { status: 403, code: 'Forbidden', message: 'no' });
     const page = renderRoute(w, '/k/things.v1.example.com');
     expect(page.text()).toContain('What the cluster serves cannot be had: Forbidden');
+  });
+});
+
+describe('waiting', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('shows the table as it will be while its rows are slow: its columns (another’s too), then rows waiting; the rows in their place', () => {
+    vi.useFakeTimers();
+    const w = world();
+    w.addon(addon('images', ({ contributor }) => void contributor.add('Column', 'images.image', column({ kinds: [Pod], header: 'Image', order: 20, value: () => 'nginx' }))));
+    w.cluster.state(Pod, 'loading');
+    const page = renderRoute(w, '/k/pods.v1');
+    const table = page.container.querySelector('[role="table"]');
+    expect([page.headers(), table?.getAttribute('aria-busy'), page.container.querySelectorAll('[data-skeleton]').length]).toEqual([
+      ['Name', 'Namespace', 'Image', 'Age'],
+      'true',
+      0,
+    ]);
+    page.act(() => vi.advanceTimersByTime(200));
+    expect(page.container.querySelectorAll('[data-skeleton]')).toHaveLength(5);
+    expect(page.text()).toContain('Loading pods');
+    page.act(() => {
+      w.cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop' } }));
+      w.cluster.state(Pod, 'live');
+    });
+    // Its placeholders kept a while (no flash), then the same table's rows in their place — not as rows new to it.
+    expect(page.container.querySelectorAll('[data-skeleton]:not([data-leaving])')).toHaveLength(5);
+    page.act(() => vi.advanceTimersByTime(400));
+    expect(page.container.querySelector('[role="table"]')).toBe(table);
+    expect(page.column('Name')).toEqual(['web']);
+    expect(page.container.querySelector('[role="row"][data-key]')?.hasAttribute('data-enter')).toBe(false);
+    expect(page.container.querySelectorAll('[data-skeleton][data-leaving]')).toHaveLength(4);
+    expect([table?.getAttribute('aria-busy'), page.text()]).toEqual([null, expect.stringContaining('1 pods')]);
+  });
+
+  it('shows rows that come soon at once: no placeholders flashed before them', () => {
+    vi.useFakeTimers();
+    const w = world();
+    w.cluster.state(Pod, 'loading');
+    const page = renderRoute(w, '/k/pods.v1');
+    page.act(() => vi.advanceTimersByTime(150));
+    page.act(() => {
+      w.cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop' } }));
+      w.cluster.state(Pod, 'live');
+    });
+    page.act(() => vi.advanceTimersByTime(1000));
+    expect([page.column('Name'), page.container.querySelectorAll('[data-skeleton]').length]).toEqual([['web'], 0]);
+  });
+
+  it('shows a cell whose value is not there yet waiting, sorts it last either way, and sorts it again once it comes', () => {
+    const w = world('a', 'b', 'c');
+    const cpu = signal<Record<string, number>>({ a: 30, c: 10 });
+    w.addon(
+      addon('metrics', ({ contributor }) => {
+        contributor.add('Column', 'metrics.cpu', column({ kinds: [Pod], header: 'CPU', value: (p) => cpu.value[p.metadata?.name ?? ''] ?? PENDING }));
+        contributor.patch('TableView', Pod.id, { sort: { column: 'metrics.cpu' } });
+      }),
+    );
+    const page = renderRoute(w, '/k/pods.v1');
+    expect([page.column('Name'), page.column('CPU')]).toEqual([
+      ['c', 'a', 'b'],
+      ['10', '30', 'Loading'],
+    ]);
+    page.act(() => {
+      cpu.value = { ...cpu.value, b: 1 };
+    });
+    expect(page.column('Name')).toEqual(['b', 'c', 'a']);
+  });
+});
+
+describe('going from one kind to another', () => {
+  afterEach(() => vi.useRealTimers());
+  const tables = (page: ReturnType<typeof renderRoute>) => page.column('Name');
+
+  it('keeps the last kind’s table while the next one’s objects come, then shows the next as it is', () => {
+    vi.useFakeTimers();
+    const w = world('web');
+    w.cluster.state(Deployment, 'loading');
+    const page = renderRoute(w, '/k/pods.v1');
+    page.navigate('/k/deployments.v1.apps');
+    expect([page.current('Kinds'), tables(page)]).toEqual(['Deployments', ['web']]);
+    page.act(() => {
+      w.cluster.add(Deployment, make(Deployment, { metadata: { name: 'shop', namespace: 'shop' }, spec: { selector: {}, template: {} } }));
+      w.cluster.state(Deployment, 'live');
+    });
+    expect([tables(page), page.container.querySelectorAll('[data-skeleton]').length]).toEqual([['shop'], 0]);
+  });
+
+  it('shows the next kind with its placeholders at once when its objects are slow; one gone to again waits anew', () => {
+    vi.useFakeTimers();
+    const w = world('web');
+    w.cluster.state(Deployment, 'loading');
+    const page = renderRoute(w, '/k/pods.v1');
+    page.navigate('/k/deployments.v1.apps');
+    page.act(() => vi.advanceTimersByTime(200));
+    expect(page.container.querySelectorAll('[data-skeleton]')).toHaveLength(5);
+    page.navigate('/k/pods.v1');
+    expect(tables(page)).toEqual(['web']);
+    page.navigate('/k/deployments.v1.apps');
+    expect(tables(page)).toEqual(['web']);
+  });
+
+  it('never shows a kind gone past before its objects came (A → B → C)', () => {
+    vi.useFakeTimers();
+    const w = world('web');
+    w.cluster.state(Deployment, 'loading');
+    const page = renderRoute(w, '/k/pods.v1');
+    page.navigate('/k/deployments.v1.apps');
+    page.navigate('/k/nodes.v1');
+    expect([page.current('Kinds'), page.text().includes('No nodes'), page.container.querySelectorAll('[data-skeleton]').length]).toEqual(['Nodes', true, 0]);
+  });
+
+  it('shows at once a next kind that cannot be had, and opens an object over its own kind, not the last one', () => {
+    vi.useFakeTimers();
+    const w = world('web');
+    w.cluster.state(Deployment, 'error', { status: 403, code: 'Forbidden', message: 'no' });
+    const page = renderRoute(w, '/k/pods.v1');
+    page.navigate('/k/deployments.v1.apps');
+    expect(page.text()).toContain('deployments cannot be had: Forbidden');
+    w.cluster.state(Deployment, 'loading');
+    page.navigate('/k/pods.v1');
+    page.navigate('/k/deployments.v1.apps/shop/web');
+    expect(page.text()).toContain('Deployment shop/web');
+    expect(page.text()).not.toContain('Pod shop/web');
   });
 });
 
@@ -275,6 +400,63 @@ describe('the navigation', () => {
 
   it('says so when nothing is at a path', () => {
     expect(renderRoute(world(), '/nowhere').text()).toContain('No page at /nowhere');
+  });
+});
+
+describe('how it looks', () => {
+  /** The frame's root: where the theme's tokens are set (the page's .uk-root; here, the frame). */
+  const root = (page: ReturnType<typeof renderRoute>) => page.container.querySelector('.uk-root') as HTMLElement;
+
+  it('takes the theme the user chooses — an addon’s — in the variant asked for; the kit’s own under it', () => {
+    const w = world();
+    w.addon(addon('nord', ({ contributor }) => void contributor.add('Theme', 'nord', { title: 'Nord', dark: { accent: '#88c0d0' }, light: { accent: '#5e81ac', bg: '#eceff4' } })));
+    const user = w.as('user', { priority: 1000, rights: ['configure'] });
+    const page = renderRoute(w, '/k/pods.v1');
+    // The kit's own theme: no tokens of its own set (the defaults are the kit's CSS).
+    expect(root(page).style.getPropertyValue('--uk-accent')).toBe('');
+    page.act(() => user.patch('Appearance', 'default', { theme: 'nord', mode: 'dark' }));
+    expect([root(page).style.getPropertyValue('--uk-accent'), root(page).style.getPropertyValue('--uk-bg'), root(page).dataset.theme]).toEqual(['#88c0d0', '', undefined]);
+    page.act(() => user.patch('Appearance', 'default', { theme: 'nord', mode: 'light' }));
+    expect([root(page).style.getPropertyValue('--uk-accent'), root(page).style.getPropertyValue('--uk-bg'), root(page).dataset.theme]).toEqual(['#5e81ac', '#eceff4', 'light']);
+  });
+
+  it('lets the user change one colour of a theme, the others kept', () => {
+    const w = world();
+    const user = w.as('user', { priority: 1000, rights: ['configure'] });
+    user.patch('Appearance', 'default', { mode: 'dark' });
+    user.patch('Theme', 'default', { dark: { accent: 'rebeccapurple' } });
+    const page = renderRoute(w, '/k/pods.v1');
+    expect(root(page).style.getPropertyValue('--uk-accent')).toBe('rebeccapurple');
+    // A theme is behaviour to add: the user changes one, makes none.
+    // @ts-expect-error adding a Theme is behaviour
+    expect(user.add('Theme', 'mine', { title: 'Mine' }).status).toBe('rejected');
+  });
+});
+
+describe('a theme, further', () => {
+  const root = (page: ReturnType<typeof renderRoute>) => page.container.querySelector('.uk-root') as HTMLElement;
+
+  it('keeps a theme’s corners and fonts in both variants; a patch of one variant keeps the other’s colours', () => {
+    const w = world();
+    w.addon(addon('square', ({ contributor }) => void contributor.add('Theme', 'square', { title: 'Square', dark: { radius: '0', accent: 'red' } })));
+    const user = w.as('user', { priority: 1000, rights: ['configure'] });
+    user.patch('Appearance', 'default', { theme: 'square', mode: 'light' });
+    user.patch('Theme', 'square', { light: { accent: 'blue' } });
+    const page = renderRoute(w, '/k/pods.v1');
+    expect([root(page).style.getPropertyValue('--uk-radius'), root(page).style.getPropertyValue('--uk-accent')]).toEqual(['0', 'blue']);
+    page.act(() => user.patch('Appearance', 'default', { theme: 'square', mode: 'dark' }));
+    expect([root(page).style.getPropertyValue('--uk-radius'), root(page).style.getPropertyValue('--uk-accent'), root(page).dataset.theme]).toEqual(['0', 'red', undefined]);
+  });
+
+  it('refuses a token the kit has not (a misspelling is said, not dropped unseen)', () => {
+    const w = world();
+    let result: unknown;
+    w.addon(
+      addon('typo', ({ contributor }) => {
+        result = contributor.add('Theme', 'typo', { title: 'Typo', dark: { acent: 'red' } as never });
+      }),
+    );
+    expect(result).toMatchObject({ status: 'rejected' });
   });
 });
 

@@ -1,4 +1,5 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import { TOKENS, type Tokens } from '@overkube/uikit';
 import { defineKind, type Problem } from '@overweave/core';
 import { uiKinds } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
@@ -107,6 +108,13 @@ export const Category = defineKind<CategorySpec>()('Category', {
   patchRights: { title: configure, icon: configure, order: configure },
 });
 
+/**
+ * A column's value not there yet — its own data on its way (metrics, an
+ * image's tags): its cell drawn waiting, sorted last. value: (pod) =>
+ * metrics.get(pod) ?? PENDING.
+ */
+export const PENDING: unique symbol = Symbol.for('overkube.pending');
+
 /** What a column's render is drawn with: the object, its kind, the column's value of it. */
 export interface ColumnRenderProps<O extends KubeObject = KubeObject> {
   object: O;
@@ -114,7 +122,7 @@ export interface ColumnRenderProps<O extends KubeObject = KubeObject> {
   value: unknown;
 }
 
-/** A column of kinds' tables: its value of each object, drawn as text unless it has a render (given ColumnRenderProps). */
+/** A column of kinds' tables: its value of each object (PENDING: not there yet), drawn as text unless it has a render (given ColumnRenderProps). */
 export interface ColumnSpec {
   target: Target;
   header: string;
@@ -216,6 +224,41 @@ export const NavView = defineKind<NavViewSpec>()('NavView', {
   patchRights: { mode: configure },
 });
 
+/**
+ * A colour scheme (and corners, fonts): the kit's tokens it changes, in its
+ * dark and its light variant — those it says not, the kit's own; its corners
+ * and fonts, said in either, are the same in both. Added by
+ * an addon (behaviour); its tokens patched by anyone, the user too
+ * (configure): one colour changed, the others kept (key by key).
+ */
+export interface ThemeSpec {
+  title: string;
+  dark?: Tokens;
+  light?: Tokens;
+}
+
+/** The kit's tokens, by name (one it has not: refused — not dropped unseen), each a CSS value. */
+const tokens: Check = (v) => mapOf(text)(v) && Object.keys(v as object).every((name) => (TOKENS as readonly string[]).includes(name));
+
+export const Theme = defineKind<ThemeSpec>()('Theme', {
+  required: ['title'],
+  createRight: behaviour,
+  validate: fields({ title: [text, 'notText'], dark: [tokens, 'notTokens'], light: [tokens, 'notTokens'] }),
+  patchRights: { title: configure, dark: configure, light: configure },
+  merge: { maps: ['dark', 'light'] },
+});
+
+/** How the page looks: its theme (by name), dark, light or as the system is. One, named 'default'. */
+export interface AppearanceSpec {
+  theme?: string;
+  mode?: 'system' | 'dark' | 'light';
+}
+
+export const Appearance = defineKind<AppearanceSpec>()('Appearance', {
+  validate: fields({ theme: [text, 'notText'], mode: [(v) => v === 'system' || v === 'dark' || v === 'light', 'notAMode'] }),
+  patchRights: { theme: configure, mode: configure },
+});
+
 /** What a route's render is given: the path's parameters (:kind), what its * took, the whole path. */
 export interface RouteProps {
   params: Readonly<Record<string, string>>;
@@ -249,7 +292,7 @@ export const Route = defineKind<RouteSpec>()('Route', {
 });
 
 /** The dashboard's own kinds (the UI's beside them). */
-export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, Route, NavView] as const;
+export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, Route, NavView, Theme, Appearance] as const;
 
 /** Every kind the dashboard has: its registry is made of them. */
 export const kubeKinds = [ui.Slot, ui.Fill, ui.Wrap, ...kubeOwnKinds] as const;

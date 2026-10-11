@@ -10,7 +10,10 @@
  * core addon the rest, each a default another's takes the place of — a
  * kind's page (kind.page: its table — Column, TableView, kind.bar), an
  * object over it (object.view: object.*, Action), the navigation
- * (KindView, Category, NavView). Page (its regions, tile) and the picker's
+ * (KindView, Category, NavView), how it looks (Appearance: a Theme, dark or
+ * light). An addon's own components are drawn in the kit's tokens
+ * (var(--uk-accent), var(--uk-panel)…), never colours of their own: so a
+ * theme reaches them too. Page (its regions, tile) and the picker's
  * rows are declared, not drawn yet.
  */
 
@@ -35,6 +38,8 @@ export { action, column, section, tile } from './helpers.ts';
 export {
   Action,
   type ActionSpec,
+  Appearance,
+  type AppearanceSpec,
   Category,
   type CategorySpec,
   Column,
@@ -50,6 +55,7 @@ export {
   type NavViewSpec,
   Page,
   type PageSpec,
+  PENDING,
   type Region,
   RIGHTS,
   type Right,
@@ -59,6 +65,8 @@ export {
   TableView,
   type TableViewSpec,
   type Target,
+  Theme,
+  type ThemeSpec,
   ui,
 } from './kinds.ts';
 export { kindOfRef, kindPath, kindRef, objectPathOf } from './links.ts';

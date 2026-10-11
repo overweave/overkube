@@ -56,6 +56,18 @@ describe('KubeStory', () => {
   });
 });
 
+describe('KubeStory’s look', () => {
+  it('is dark or light as the story says, the core’s Appearance or none', async () => {
+    const light = render(<KubeStory addons={[core]} path="/k/pods.v1" cluster={pods} theme="light" />);
+    await waitFor(() => expect((light.container.querySelector('.uk-root') as HTMLElement).dataset.theme).toBe('light'));
+    cleanup();
+    const bare = defineAddon({ id: 'bare', title: 'Bare', setup: ({ contributor }) => void contributor.add('Route', 'bare.home', { path: '/', render: () => <p>bare</p> }) });
+    const none = render(<KubeStory addons={[bare]} theme="light" />);
+    await waitFor(() => expect(none.container.textContent).toContain('bare'));
+    expect((none.container.querySelector('.uk-root') as HTMLElement).dataset.theme).toBe('light');
+  });
+});
+
 describe('KubeStory, started anew', () => {
   it('reads its start once; another resetKey starts it again with what it is then', async () => {
     const hide = (name: string) => (u: Parameters<NonNullable<Parameters<typeof KubeStory>[0]['user']>>[0]) => u.patch('TableView', Pod.id, { hidden: { [name]: true } });

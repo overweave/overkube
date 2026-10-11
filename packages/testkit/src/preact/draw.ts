@@ -69,7 +69,8 @@ export function renderRoute(world: KubeWorld, path = '/', given?: MountOptions):
   const router = memoryRouter(path);
   const reported: Reported[] = [];
   const onFailure = (definition: Reported['definition'], field: string, error: unknown) => void reported.push({ definition, field, error });
-  const view = mount(world, h(ShellProvider, { router, notifications: world.notifications, onFailure }, h(Frame, null)), given);
+  // In the kit's root, as the page is: its defaults, the theme over them.
+  const view = mount(world, h('div', { class: 'uk-root' }, h(ShellProvider, { router, notifications: world.notifications, onFailure }, h(Frame, null))), given);
   // A drawing's failures (overweave's: a render, a condition) and the page's (a column's value), as one list.
   const drawn = view.failures;
   const failures = (): Reported[] => [

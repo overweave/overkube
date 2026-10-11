@@ -19,6 +19,8 @@ import { Toasts } from './Toasts.tsx';
  *   kinds      the usual ones grouped (Workloads, Network, …), the most used pinned; every one served,
  *              a table's view (TableView) — all of these defaults that yield (fallback adds): another's
  *              add takes their place, the user's patches go over whichever is there
+ *   looks      the kit's own theme, dark or light as the system is (Appearance: the user's to change;
+ *              another addon's Theme to choose)
  *   overlay    what the user is told
  */
 
@@ -79,6 +81,10 @@ export default defineAddon({
       const view: KindViewSpec = { title: titleOf(kind), category, order: i * 10, ...(pinned ? { pinned } : {}) };
       c.add('KindView', kind.id, view, fallback);
     }
+
+    // How it looks: the kit's own theme (no tokens of its own: the kit's defaults), as the system is (dark or light).
+    c.add('Theme', 'default', { title: 'overkube' }, fallback);
+    c.add('Appearance', 'default', { theme: 'default', mode: 'system' }, fallback);
 
     // The navigation: tabs, or the menu — as the NavView says (one setting, the user's to patch).
     c.add('NavView', 'default', { mode: 'tabs' }, fallback);

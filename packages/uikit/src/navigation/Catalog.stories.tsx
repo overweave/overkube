@@ -84,7 +84,7 @@ function Picker({ width = '760px', initialQuery = '' }: { width?: string; initia
     .filter((g) => g.items.length > 0);
   return (
     <div style={{ padding: '24px' }}>
-      <div class="uk-panel" style={{ width, overflow: 'hidden', boxShadow: '0 12px 32px rgb(0 0 0 / .35)' }}>
+      <div class="uk-panel" style={{ width, overflow: 'hidden', boxShadow: '0 12px 32px color-mix(in srgb, var(--uk-shadow) 35%, transparent)' }}>
         <Catalog
           groups={groups}
           query={query}

@@ -1,10 +1,11 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
-import { Column, slots, TableView, takes } from '@overkube/sdk';
+import { Column, PENDING, slots, TableView, takes } from '@overkube/sdk';
 import { useCollection, usePage } from '@overkube/sdk/preact';
-import { Button, Notice, Table, type TableColumn } from '@overkube/uikit';
+import { Button, Notice, Skeleton, Table, type TableColumn } from '@overkube/uikit';
 import { inOrder } from '@overweave/ui';
 import { Guarded, slotElement, useDefinition, useDefinitions } from '@overweave/ui/preact';
-import { useMemo, useRef } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useWaited } from './waited.ts';
 
 /**
  * A kind's objects as a table, all of it from the definitions: the Columns
@@ -14,12 +15,21 @@ import { useMemo, useRef } from 'preact/hooks';
  * in that cell) — told once a drawing, not once a cell (the page tells
  * whose it is); its render is drawn
  * apart (Guarded, tried again when its object changes), the rest of the
- * table goes on. A kind no Column takes has no table. Objects the page can
+ * table goes on. On their way, the rows wait in the table as it will be (its
+ * columns, as set out: no shift once they come); a cell whose value is not
+ * there yet (PENDING) waits on its own. A kind no Column takes has no table. Objects the page can
  * no longer keep current (stale) stay shown, said to be so.
  */
 export function KindTable({ kind }: { kind: KindInfo }) {
   const page = usePage();
+  // The page waited for this kind already (the last one shown meanwhile): its placeholders at once.
+  const waited = useWaited();
   const collection = useCollection(kind);
+  // Said to those who cannot see it, once it is there to be read out (a region's first words are often not): loading, then how many.
+  const [said, setSaid] = useState('');
+  const loadingNow = collection.state.value === 'loading';
+  const count = collection.items.value.size;
+  useEffect(() => setSaid(loadingNow ? `Loading ${kind.plural}…` : `${count} ${kind.plural}`), [loadingNow]);
   const view = useDefinition(TableView, kind.id)?.spec ?? {};
   const all = useDefinitions(Column).filter((c) => takes(c.spec.target, kind));
   const placed = useMemo(() => {
@@ -67,12 +77,20 @@ export function KindTable({ kind }: { kind: KindInfo }) {
           id: c.name,
           header: c.spec.header,
           width: width === undefined ? undefined : `${width}px`,
+          // Not there yet (PENDING): none to sort by — last.
           sort: (o) => {
             const v = value(o)?.value;
             return typeof v === 'number' || typeof v === 'string' ? v : undefined;
           },
           cell: (o) => {
             const got = value(o);
+            if (got?.value === PENDING)
+              return (
+                <>
+                  <Skeleton width="60%" />
+                  <span class="uk-sr-only">Loading</span>
+                </>
+              );
             if (Render)
               return (
                 // Tried again when its object changes (a fix in the object, or another under its name).
@@ -97,12 +115,7 @@ export function KindTable({ kind }: { kind: KindInfo }) {
 
   const state = collection.state.value;
   const error = collection.error.value;
-  if (state === 'loading')
-    return (
-      <Notice loading>
-        Loading {kind.plural}…{error ? ` (${error.message})` : ''}
-      </Notice>
-    );
+  const initialSort = view.sort ? { id: view.sort.column, desc: view.sort.descending } : undefined;
   if (state === 'absent') return <Notice icon="puzzle">The cluster does not serve {kind.id}.</Notice>;
   if (state === 'error')
     return (
@@ -121,7 +134,8 @@ export function KindTable({ kind }: { kind: KindInfo }) {
       </Notice>
     );
 
-  const items = [...collection.items.value.values()];
+  const loading = state === 'loading';
+  const items = loading ? [] : [...collection.items.value.values()];
   // Which objects: as the TableView's filter says (an object it throws on is shown, the failure its owner's).
   const filter = view.filter;
   const rows = filter
@@ -135,20 +149,31 @@ export function KindTable({ kind }: { kind: KindInfo }) {
       })
     : items;
 
+  // One tree, loading or not: the table stays the same table — its placeholders give way to its rows in place.
   return (
     <div class="uk-region">
+      {loading && error && (
+        <Notice level="warn" icon="refresh">
+          <span title={error.message}>Waiting: {error.message}</span>
+        </Notice>
+      )}
       {state === 'stale' && (
         <Notice level="warn" icon="refresh">
           <span title={error?.message}>Not current: the page has lost the cluster's changes and is reconnecting. What is shown is as it was.</span>
         </Notice>
       )}
+      <span class="uk-sr-only" role="status">
+        {said}
+      </span>
       {slotElement(slots.kind.bar, { kind, list: { shown: rows.length, total: items.length, state, error } })}
       <Table
         rows={rows}
         columns={columns}
         rowKey={rowKey}
+        loading={loading}
+        placeholdersAfter={waited ? 0 : undefined}
         empty={rows.length < items.length ? `No ${kind.plural} shown of ${items.length}` : `No ${kind.plural}`}
-        initialSort={view.sort ? { id: view.sort.column, desc: view.sort.descending } : undefined}
+        initialSort={initialSort}
       />
     </div>
   );
