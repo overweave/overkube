@@ -1,0 +1,29 @@
+{
+  "name": "@overkube/kube-types",
+  "version": "0.1.0",
+  "description": "Kubernetes object types for overkube and its addons, generated from a cluster's OpenAPI schemas",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "overkube-source": "./src/gen/*.ts",
+      "types": "./dist/gen/*.d.ts",
+      "default": "./dist/gen/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE",
+    "APACHE-2.0.txt"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && cp ../../LICENSE ."
+  }
+}

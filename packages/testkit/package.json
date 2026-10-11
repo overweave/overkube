@@ -1,0 +1,42 @@
+{
+  "name": "@overkube/testkit",
+  "version": "0.1.0",
+  "description": "Testing overkube's addons without the page or a cluster: a cluster in memory, objects made as the API server would, a world where addons run as on the page (their contributor, their ctx), their slots drawn",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./preact": {
+      "overkube-source": "./src/preact/index.ts",
+      "types": "./dist/preact/index.d.ts",
+      "default": "./dist/preact/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overkube/client": "0.1.0",
+    "@overkube/gateway": "0.1.0",
+    "@overkube/kube-types": "0.1.0",
+    "@overkube/sdk": "0.1.0",
+    "@overweave/testkit": "0.1.0"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.2",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@preact/signals": "2.11.2",
+    "happy-dom": "20.14.5",
+    "preact": "10.29.8"
+  }
+}

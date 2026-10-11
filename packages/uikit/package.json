@@ -1,0 +1,36 @@
+{
+  "name": "@overkube/uikit",
+  "version": "0.1.0",
+  "description": "overkube's UI kit: the components and styles its page and its addons are drawn with",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && cp ../../LICENSE .",
+    "icons": "node scripts/icons.mjs"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.2",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@storybook/preact-vite": "10.6.0",
+    "@tabler/icons": "3.48.0",
+    "@testing-library/preact": "3.2.4",
+    "@testing-library/user-event": "14.6.1",
+    "happy-dom": "20.14.5",
+    "preact": "10.29.8"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@overkube/sdk",
+  "version": "0.1.0",
+  "description": "What overkube's addons are written with: the dashboard's kinds over overweave (KindView, Category, Column, TableView, Page, Action), its slots, defineAddon and what an addon is given — its contributor and the cluster; hooks for its components",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./preact": {
+      "overkube-source": "./src/preact/index.ts",
+      "types": "./dist/preact/index.d.ts",
+      "default": "./dist/preact/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overkube/client": "0.1.0",
+    "@overkube/gateway": "0.1.0",
+    "@overkube/kube-types": "0.1.0",
+    "@overweave/core": "0.1.0",
+    "@overweave/ui": "0.1.0"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.2",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@overweave/testkit": "0.1.0",
+    "@preact/signals": "2.11.2",
+    "@testing-library/preact": "3.2.4",
+    "happy-dom": "20.14.5",
+    "preact": "10.29.8"
+  }
+}

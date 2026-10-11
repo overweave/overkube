@@ -1,0 +1,32 @@
+{
+  "name": "@overkube/gateway",
+  "version": "0.1.0",
+  "description": "overkube's way to a Kubernetes cluster: the API server's paths passed on, several watches over one stream, changes as JSON, a status — one handler over Node's request and response, for any host",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./protocol": {
+      "overkube-source": "./src/protocol.ts",
+      "types": "./dist/protocol.d.ts",
+      "default": "./dist/protocol.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1"
+  }
+}

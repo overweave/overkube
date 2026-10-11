@@ -1,0 +1,29 @@
+{
+  "name": "@overkube/typegen",
+  "version": "0.1.0",
+  "description": "TypeScript types from a Kubernetes cluster's OpenAPI v3 schemas: the built-in kinds for @overkube/kube-types, or an addon's groups (a CRD's, an aggregated API's)",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "overkube-typegen": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && cp ../../LICENSE ."
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,7 @@
+@overkube/kube-types
+
+The types' descriptions (their doc comments) are the Kubernetes API's, taken from its OpenAPI v3
+schemas: Copyright The Kubernetes Authors, licensed under the Apache License, Version 2.0 — its text
+in APACHE-2.0.txt beside this file, or at http://www.apache.org/licenses/LICENSE-2.0. They were
+generated into TypeScript by @overkube/typegen; the rest of this package is under its own license
+(LICENSE).

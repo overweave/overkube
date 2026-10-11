@@ -1,0 +1,27 @@
+{
+  "name": "@overkube/addon-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "overkube's core addon: what every kind's table has — its objects' names, namespaces and ages",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.tsx",
+      "default": "./src/index.tsx"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overkube/sdk": "0.1.0",
+    "@overkube/uikit": "0.1.0"
+  },
+  "devDependencies": {
+    "@overkube/kube-types": "0.1.0",
+    "@overkube/testkit": "0.1.0",
+    "happy-dom": "20.14.5",
+    "preact": "10.29.8"
+  }
+}

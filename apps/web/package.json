@@ -1,0 +1,29 @@
+{
+  "name": "@overkube/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "overkube's page: the registry of the dashboard's kinds, the addons run in it (their lifecycle), the cluster they are given, and the frame that draws what they define",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overkube/addon-core": "0.1.0",
+    "@overkube/client": "0.1.0",
+    "@overkube/kube-types": "0.1.0",
+    "@overkube/sdk": "0.1.0",
+    "@overkube/uikit": "0.1.0",
+    "@overweave/core": "0.1.0",
+    "@overweave/ui": "0.1.0",
+    "@preact/signals": "2.11.2",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "2.10.6",
+    "@testing-library/preact": "3.2.4",
+    "happy-dom": "20.14.5"
+  }
+}

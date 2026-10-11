@@ -1,0 +1,22 @@
+{
+  "name": "@overkube/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "overkube's own server: the gateway to the cluster, the page, health — configured by its environment, for a container or a cluster",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "overkube": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "start": "node --conditions=overkube-source src/cli.ts"
+  },
+  "dependencies": {
+    "@overkube/gateway": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1"
+  }
+}

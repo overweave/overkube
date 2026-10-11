@@ -1,0 +1,71 @@
+# The dev stand: a cluster and overkube over it, from the sources.
+#
+#   browser → web (Vite, live reload) :5173 ─ /kube → server :8080 → kube (KubeSolo)
+#
+# make dev · http://localhost:5173 (the page as it is worked on) · http://localhost:8080 (the server: its gateway, its health)
+# The parent folder is mounted: overweave beside this repository is seen, once linked (make link-overweave).
+name: overkube-dev
+
+x-node: &node
+  image: node:24-alpine
+  working_dir: /src/overkube
+  volumes:
+    - ../..:/src
+    - ok-npmcache:/root/.npm
+  environment:
+    npm_config_update_notifier: "false"
+
+services:
+  kube:
+    build: ./kube
+    hostname: kube
+    privileged: true
+    init: true
+    # KubeSolo does not stop on TERM.
+    stop_grace_period: 5s
+    volumes:
+      - kube-data:/var/lib/kubesolo
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "--no-check-certificate", "https://127.0.0.1:6443/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+
+  server:
+    <<: *node
+    # Started again when its sources (or the gateway's) change.
+    working_dir: /src/overkube/apps/server
+    command: node --watch --conditions=overkube-source src/cli.ts
+    volumes:
+      - ../..:/src
+      - ok-npmcache:/root/.npm
+      # The cluster's admin kubeconfig, as KubeSolo writes it.
+      - kube-data:/var/lib/kubesolo:ro
+    environment:
+      npm_config_update_notifier: "false"
+      KUBECONFIG: /var/lib/kubesolo/pki/admin/admin.kubeconfig
+      # Inside its container; published on this machine only (below): its network trusted, its names this machine's.
+      OVERKUBE_HOST: 0.0.0.0
+      OVERKUBE_TRUST_NETWORK: "true"
+      OVERKUBE_HOSTS: localhost,127.0.0.1
+    ports:
+      - "127.0.0.1:${OVERKUBE_PORT:-8080}:8080"
+    depends_on:
+      kube:
+        condition: service_healthy
+
+  web:
+    <<: *node
+    command: npm run dev -w @overkube/web
+    environment:
+      npm_config_update_notifier: "false"
+      OVERKUBE_SERVER: http://server:8080
+    ports:
+      - "127.0.0.1:${WEB_PORT:-5173}:5173"
+    depends_on:
+      - server
+
+volumes:
+  kube-data:
+  ok-npmcache:
+    external: true

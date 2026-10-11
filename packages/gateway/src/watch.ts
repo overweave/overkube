@@ -1,0 +1,550 @@
+import type { ClientRequest, IncomingMessage, ServerResponse } from 'node:http';
+import { classify, splitQuery } from './paths.ts';
+import { WATCH } from './protocol.ts';
+import { fail as failRequest, isDown, openUpstream, type UpstreamSource } from './upstream.ts';
+
+/*
+ * The watch multiplexer: several Kubernetes watches over one response, so the
+ * page needs one connection however many kinds it shows (a browser keeps six
+ * per site over HTTP/1.1, and the host page may use some of them).
+ *
+ *   GET /watch?w=<id>:<resourceVersion>:<path>&w=…
+ *
+ * <id> is the client's name for the watch, <resourceVersion> where it starts
+ * (empty: from now, with the objects there are as ADDED), <path> a collection
+ * (/api/v1/pods, /apis/apps/v1/namespaces/media/deployments), with a
+ * labelSelector or fieldSelector if any. The answer is one JSON per line:
+ *
+ *   {"w":"pods","type":"OPEN"}                   the watch is (again) open
+ *   {"w":"pods","type":"ADDED","object":{…}}     the API server's events (MODIFIED, DELETED, BOOKMARK too),
+ *                                                without metadata.managedFields
+ *   {"w":"pods","type":"RETRY","error":{…}}      the cluster went away for it, or erred; tried again by itself
+ *   {"w":"pods","type":"ERROR","object":{…}}     a Status: that watch is over (410: list again; 403, 404)
+ *   {"type":"PING"}                              now and then, so the client knows the stream is alive
+ *   {"type":"CLOSE","reason":"slow_client"}      the client read too slowly: the stream ends; open it again
+ *
+ * The gateway keeps each watch's last resourceVersion: when the API server
+ * ends a watch (it does every few minutes) or the cluster comes back, it goes
+ * on from there. The client reopens the stream only when the watches it wants
+ * change, after an ERROR, or after a CLOSE.
+ */
+
+export interface WatchOptions {
+  upstream: UpstreamSource;
+  /** How often a PING is sent. */
+  pingMs?: number;
+  /** The first wait before trying again; doubled each time, up to maxRetryMs, ± jitter (a share of it). */
+  retryMs?: number;
+  maxRetryMs?: number;
+  jitter?: number;
+  /** A watch that ends sooner than this, or with no event, is tried again after a wait, not at once. */
+  minLifetimeMs?: number;
+  /** After a cluster refused bookmarks, how long before they are asked for again. */
+  bookmarkRetryMs?: number;
+  /** A client that has not read for slowClientMs, or has left this much unread, is let go. */
+  maxBufferBytes?: number;
+  slowClientMs?: number;
+  /** How long a client let go has to take its CLOSE before its connection is cut. */
+  closeGraceMs?: number;
+  /** The longest line (one event) and error body taken from the API server. */
+  maxLineBytes?: number;
+  maxErrorBytes?: number;
+  connectTimeoutMs?: number;
+  /** Watches open at once, over every stream of the process (a followed log through the proxy counts as one). */
+  maxChannels?: number;
+  /** Streams open at once, over the process. */
+  maxStreams?: number;
+  /** The streams of one gateway: told CLOSE when it closes. */
+  streams?: Set<{ shutdown(): void }>;
+  /** Where the minutely summary goes (none when nothing happened). */
+  log?: (message: string) => void;
+}
+
+const DEFAULTS = {
+  pingMs: 20_000,
+  retryMs: 1000,
+  maxRetryMs: 30_000,
+  jitter: 0.2,
+  minLifetimeMs: 1000,
+  bookmarkRetryMs: 600_000,
+  maxBufferBytes: 16 * 1024 * 1024,
+  slowClientMs: 30_000,
+  closeGraceMs: 5000,
+  maxLineBytes: 8 * 1024 * 1024,
+  maxErrorBytes: 64 * 1024,
+  connectTimeoutMs: 10_000,
+  maxChannels: 500,
+  maxStreams: 100,
+};
+type Settings = typeof DEFAULTS & Pick<WatchOptions, 'upstream' | 'log' | 'streams'>;
+
+interface Spec {
+  id: string;
+  /** The collection's path, without a query. */
+  path: string;
+  /** Its labelSelector and fieldSelector. */
+  selectors: URLSearchParams;
+  resourceVersion: string;
+}
+
+/** At most this many watches in one stream; each as the protocol says (its resourceVersion opaque). */
+const MAX_WATCHES = WATCH.watchesPerStream;
+const SPEC = WATCH.spec;
+const SELECTORS = new Set(['labelSelector', 'fieldSelector']);
+const EVENT_TYPES = new Set(['ADDED', 'MODIFIED', 'DELETED', 'BOOKMARK', 'ERROR']);
+
+/** The watches a request asks for, or why it cannot have them. */
+export function parseWatches(url: string): Spec[] | string {
+  const query = new URL(url, 'http://gateway').searchParams.getAll('w');
+  if (query.length === 0) return 'no watch asked for (w=<id>:<resourceVersion>:<path>)';
+  if (query.length > MAX_WATCHES) return `at most ${MAX_WATCHES} watches in one stream`;
+  const specs: Spec[] = [];
+  for (const w of query) {
+    const m = w.match(SPEC);
+    if (!m) return `${w}: not <id>:<resourceVersion>:<path>`;
+    const [path, query] = splitQuery(m[3]);
+    if (classify(path)?.type !== 'collection') return `${path} is not a collection of the API: only those can be watched`;
+    const selectors = new URLSearchParams(query);
+    for (const key of selectors.keys()) if (!SELECTORS.has(key)) return `${path}: only labelSelector and fieldSelector may be given, not ${key}`;
+    if (specs.some((s) => s.id === m[1])) return `${m[1]} is asked for twice`;
+    specs.push({ id: m[1], path, selectors, resourceVersion: m[2] });
+  }
+  return specs;
+}
+
+/** The watch at fault in a request refused, when one alone is (its id): the client ends that one, not the others. */
+function culprit(url: string): { w?: string } {
+  for (const w of new URL(url, 'http://gateway').searchParams.getAll('w')) {
+    if (typeof parseWatches(`/watch?w=${encodeURIComponent(w)}`) === 'string') return { w: w.split(':')[0] };
+  }
+  return {};
+}
+
+// ── Over every stream of the process ──────────────────────────────────────
+
+/**
+ * Clusters that refused bookmarks (KubeSolo's storage, kine, does: 500
+ * "RequestWatchProgress is disabled"), by API server, until when.
+ */
+const noBookmarks = new Map<string, number>();
+
+/** What the process carries, for the budget and the minutely summary. */
+const totals = { streams: 0, channels: 0, retries: 0, errors: 0 };
+let summary: ReturnType<typeof setInterval> | null = null;
+
+/** For tests: the process as if no stream had been served. */
+export function resetWatchState(): void {
+  noBookmarks.clear();
+  Object.assign(totals, { streams: 0, channels: 0, retries: 0, errors: 0 });
+  if (summary) clearInterval(summary);
+  summary = null;
+}
+
+/**
+ * A place in the budget of watches for something streamed outside a /watch
+ * (a followed log through the proxy): its release, or null when the budget
+ * is spent.
+ */
+export function reserveChannel(maxChannels = DEFAULTS.maxChannels): (() => void) | null {
+  if (totals.channels >= maxChannels) return null;
+  totals.channels++;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    totals.channels--;
+  };
+}
+
+/** What is open now, and what went wrong since the last summary. */
+export function watchTotals(): Readonly<typeof totals> {
+  return { ...totals };
+}
+
+function summarise(log: (message: string) => void): void {
+  if (summary) return;
+  summary = setInterval(() => {
+    if (totals.streams === 0 && totals.retries === 0 && totals.errors === 0) {
+      if (summary) clearInterval(summary);
+      summary = null;
+      return;
+    }
+    log(`watch: ${totals.streams} streams, ${totals.channels} watches open; last minute ${totals.retries} retries, ${totals.errors} ended in errors`);
+    totals.retries = 0;
+    totals.errors = 0;
+  }, 60_000);
+  summary.unref?.();
+}
+
+/** The wait an API server asks for, in seconds, as milliseconds; nothing for what is not a sane one (up to 10 min). */
+function serverWait(seconds: unknown): number | undefined {
+  return typeof seconds === 'number' && seconds > 0 ? Math.min(seconds, 600) * 1000 : undefined;
+}
+
+// ── A stream: one client ──────────────────────────────────────────────────
+
+/** Serve one multiplexed stream until the client leaves. */
+export function watch(req: { url: string }, res: ServerResponse, options: WatchOptions): void {
+  const settings: Settings = { ...DEFAULTS, ...options };
+  // An answer already gone (its client left while its host was deciding): nothing is opened for it.
+  if (res.destroyed || res.writableEnded) return;
+  const specs = parseWatches(req.url);
+  if (typeof specs === 'string') {
+    failRequest(res, 400, 'bad_watch', specs, culprit(req.url));
+    return;
+  }
+  if (totals.streams >= settings.maxStreams) {
+    failRequest(res, 503, 'too_many_watches', `${totals.streams} streams are open; at most ${settings.maxStreams}`);
+    return;
+  }
+  if (totals.channels + specs.length > settings.maxChannels) {
+    failRequest(res, 503, 'too_many_watches', `${totals.channels} watches are open; at most ${settings.maxChannels}`);
+    return;
+  }
+  new Stream(specs, res, settings);
+}
+
+/** The client's side: writes lines, holds the watches back while it does not read, lets a slow one go. */
+class Stream {
+  private open = true;
+  private paused = false;
+  private slowSince = 0;
+  private readonly channels: Channel[];
+  private readonly ping: ReturnType<typeof setInterval>;
+  private readonly res: ServerResponse;
+  private readonly settings: Settings;
+
+  constructor(specs: Spec[], res: ServerResponse, settings: Settings) {
+    this.res = res;
+    this.settings = settings;
+    // x-accel-buffering: an nginx in front passes each line on at once.
+    res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
+    totals.streams++;
+    summarise(settings.log ?? ((m) => console.log(`[overkube] ${m}`)));
+    this.channels = specs.map((spec) => new Channel(spec, this, settings));
+    this.ping = setInterval(() => this.tick(), settings.pingMs);
+    res.on('drain', () => this.drained());
+    res.on('close', () => this.close());
+    settings.streams?.add(this);
+    for (const c of this.channels) c.start();
+  }
+
+  /** Whether the client is behind: a watch that opens now waits too. */
+  get holding(): boolean {
+    return this.paused;
+  }
+
+  /** One line to the client; when it is not keeping up, the watches stop reading from the API server. */
+  send(line: object): void {
+    if (!this.open) return;
+    if (!this.res.write(`${JSON.stringify(line)}\n`) && !this.paused) {
+      this.paused = true;
+      this.slowSince = Date.now();
+      for (const c of this.channels) c.pause();
+    }
+    if (this.res.writableLength > this.settings.maxBufferBytes) this.letGo();
+  }
+
+  private drained(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    for (const c of this.channels) c.resume();
+  }
+
+  private tick(): void {
+    if (!this.paused) {
+      this.send({ type: 'PING' });
+      return;
+    }
+    // Held back for this long without a drain: the client is not reading, however little is waiting.
+    if (Date.now() - this.slowSince >= this.settings.slowClientMs) this.letGo();
+  }
+
+  /**
+   * The client reads too slowly: it is told (after what it has not read yet)
+   * and the stream ends; its watches go at once, and its connection too if it
+   * does not take the CLOSE in a while.
+   */
+  private letGo(): void {
+    if (!this.open) return;
+    this.res.end(`${JSON.stringify({ type: 'CLOSE', reason: 'slow_client' })}\n`);
+    this.close();
+    const res = this.res;
+    const cut = setTimeout(() => res.destroy(), this.settings.closeGraceMs);
+    cut.unref?.();
+    res.once('close', () => clearTimeout(cut));
+  }
+
+  /** One of its watches is over for good: with none left, the stream ends (a client asking only for kinds it may not see keeps nothing open). */
+  ended(): void {
+    if (!this.open || !this.channels.every((c) => c.stopped)) return;
+    this.res.end();
+    this.close();
+  }
+
+  /** Its gateway closes: the client is told, then the stream ends. */
+  shutdown(): void {
+    if (!this.open) return;
+    this.res.end(`${JSON.stringify({ type: 'CLOSE', reason: 'shutdown' })}\n`);
+    this.close();
+  }
+
+  private close(): void {
+    if (!this.open) return;
+    this.open = false;
+    clearInterval(this.ping);
+    totals.streams--;
+    this.settings.streams?.delete(this);
+    for (const c of this.channels) c.stop();
+  }
+}
+
+// ── A channel: one watch ──────────────────────────────────────────────────
+
+interface Status {
+  kind?: string;
+  code?: number;
+  message?: string;
+  details?: { retryAfterSeconds?: number };
+}
+
+interface Event {
+  type: string;
+  object: Status & { metadata?: { resourceVersion?: string; managedFields?: unknown } };
+}
+
+/**
+ * One watch, kept open against the API server from the last resourceVersion
+ * it saw. Its states: opening (a request on its way), open (events coming),
+ * backoff (waiting to try again), stopped. Every way out of opening and open
+ * goes through restart (at once, quietly), fail (RETRY, then a wait) or
+ * finish (ERROR, stopped); each request is a generation, and one given up on
+ * can no longer move the channel.
+ */
+class Channel {
+  private state: 'idle' | 'opening' | 'open' | 'backoff' | 'stopped' = 'idle';
+  private resourceVersion: string;
+  private attempt = 0;
+  private generation = 0;
+  private request: ClientRequest | null = null;
+  private answer: IncomingMessage | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  /** Whether it is counted in the budget of watches (until it stops). */
+  private counted = true;
+  private readonly spec: Spec;
+  private readonly stream: Stream;
+  private readonly settings: Settings;
+
+  constructor(spec: Spec, stream: Stream, settings: Settings) {
+    this.spec = spec;
+    this.stream = stream;
+    this.settings = settings;
+    this.resourceVersion = spec.resourceVersion;
+    totals.channels++;
+  }
+
+  start(): void {
+    if (this.state === 'stopped') return;
+    this.state = 'opening';
+    const generation = ++this.generation;
+    const current = () => generation === this.generation && this.state !== 'stopped';
+    const upstream = this.settings.upstream;
+    let server: string;
+    try {
+      server = upstream().server;
+    } catch (err) {
+      this.fail('kube_down', `no cluster to reach: ${(err as Error).message}`);
+      return;
+    }
+    const withBookmarks = (noBookmarks.get(server) ?? 0) <= Date.now();
+    const query = new URLSearchParams(this.spec.selectors);
+    query.set('watch', '1');
+    if (withBookmarks) query.set('allowWatchBookmarks', 'true');
+    if (this.resourceVersion) query.set('resourceVersion', this.resourceVersion);
+    try {
+      this.request = openUpstream(
+        { method: 'GET', path: `${this.spec.path}?${query}`, headers: { accept: 'application/json' }, connectTimeoutMs: this.settings.connectTimeoutMs },
+        upstream,
+        (answer) => {
+          if (current()) this.answered(answer, current, { server, withBookmarks });
+          else answer.destroy();
+        },
+      );
+    } catch (err) {
+      this.fail('kube_down', `no cluster to reach: ${(err as Error).message}`);
+      return;
+    }
+    this.request.on('error', (err: NodeJS.ErrnoException) => {
+      if (current()) this.fail(isDown(err) ? 'kube_down' : 'kube_error', err.message);
+    });
+  }
+
+  get stopped(): boolean {
+    return this.state === 'stopped';
+  }
+
+  stop(): void {
+    this.state = 'stopped';
+    this.drop();
+    if (this.counted) totals.channels--;
+    this.counted = false;
+  }
+
+  pause(): void {
+    this.answer?.pause();
+  }
+
+  resume(): void {
+    this.answer?.resume();
+  }
+
+  /** Give up on the current request: it can no longer move the channel. */
+  private drop(): void {
+    this.generation++;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.answer = null;
+    this.request?.destroy();
+    this.request = null;
+  }
+
+  /** Again at once, from where it was: the API server ended a watch that had worked. */
+  private restart(): void {
+    this.drop();
+    this.start();
+  }
+
+  /**
+   * Something went wrong for now: the client is told, and the watch is tried
+   * again after a wait — its own, growing each time, or at least as long as
+   * the API server asked for (retryAfterSeconds, Retry-After).
+   */
+  private fail(code: string, message: string, serverWaitMs?: number): void {
+    if (this.state === 'stopped') return;
+    this.drop();
+    this.state = 'backoff';
+    totals.retries++;
+    this.stream.send({ w: this.spec.id, type: 'RETRY', error: { code, message } });
+    const { retryMs, maxRetryMs, jitter } = this.settings;
+    const own = Math.min(retryMs * 2 ** this.attempt, maxRetryMs);
+    const wait = serverWaitMs ? Math.max(serverWaitMs, own) * (1 + Math.random() * jitter) : Math.min(Math.max(0, own * (1 + (Math.random() * 2 - 1) * jitter)), maxRetryMs);
+    this.attempt++;
+    this.timer = setTimeout(() => this.start(), wait);
+  }
+
+  /** The watch is over (410, a refusal): the client is told why, and it is not tried again. */
+  private finish(status: object): void {
+    if (this.state === 'stopped') return;
+    totals.errors++;
+    this.stream.send({ w: this.spec.id, type: 'ERROR', object: status });
+    this.stop();
+    this.stream.ended();
+  }
+
+  private answered(answer: IncomingMessage, current: () => boolean, ask: { server: string; withBookmarks: boolean }): void {
+    if (answer.statusCode !== 200) {
+      this.refused(answer, current);
+      return;
+    }
+    this.state = 'open';
+    this.answer = answer;
+    if (this.stream.holding) answer.pause();
+    const opened = Date.now();
+    let rest = '';
+    this.stream.send({ w: this.spec.id, type: 'OPEN' });
+    answer.setEncoding('utf8');
+    answer.on('data', (chunk: string) => {
+      if (!current()) return;
+      const lines = (rest + chunk).split('\n');
+      rest = lines.pop() ?? '';
+      // In bytes, a whole line as much as one still coming.
+      const tooLong = (s: string) => s.length > this.settings.maxLineBytes / 3 && Buffer.byteLength(s) > this.settings.maxLineBytes;
+      if (tooLong(rest) || lines.some(tooLong)) {
+        this.fail('kube_error', `an event longer than ${this.settings.maxLineBytes} bytes`);
+        return;
+      }
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        if (!this.event(line, ask)) return;
+        // Working for a while: the next trouble starts from the shortest wait again (not one event, then an error, at once forever).
+        if (Date.now() - opened >= this.settings.minLifetimeMs) this.attempt = 0;
+      }
+    });
+    answer.on('end', () => {
+      if (!current()) return;
+      // The API server ends a watch every so often (30-60 min), events or not — a quiet
+      // collection's too, with no bookmarks on KubeSolo: on at once. One that ends straight
+      // away (not a watch at all, or failing as it opens) is tried again after a wait.
+      if (Date.now() - opened >= this.settings.minLifetimeMs) {
+        this.attempt = 0;
+        this.restart();
+      } else this.fail('kube_error', 'the watch ended as soon as it opened');
+    });
+    answer.on('close', () => {
+      if (current() && !answer.complete) this.fail('kube_error', 'the API server broke the watch off');
+    });
+  }
+
+  /** One line from the API server; false when the channel moved on because of it. */
+  private event(line: string, ask: { server: string; withBookmarks: boolean }): boolean {
+    let event: Event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      this.fail('kube_error', 'the API server sent a line that is not JSON');
+      return false;
+    }
+    if (!event || typeof event !== 'object' || !EVENT_TYPES.has(event.type) || !event.object || typeof event.object !== 'object') {
+      this.fail('kube_error', 'the API server sent something that is not a watch event');
+      return false;
+    }
+    if (event.type === 'ERROR') {
+      const status = event.object;
+      if (ask.withBookmarks && status.code === 500 && /RequestWatchProgress/.test(status.message ?? '')) {
+        noBookmarks.set(ask.server, Date.now() + this.settings.bookmarkRetryMs);
+        this.restart();
+        return false;
+      }
+      // 410: too old to go on from — the end of this watch: the client lists again.
+      if (status.code === 410) this.finish(status);
+      // Anything else passes (KubeSolo's watch cache lagging: 504 ResourceVersionTooLarge): try again.
+      else {
+        this.fail('kube_error', status.message ?? `the watch ended with ${status.code ?? 'an error'}`, serverWait(status.details?.retryAfterSeconds));
+      }
+      return false;
+    }
+    const metadata = event.object.metadata;
+    if (metadata?.resourceVersion) this.resourceVersion = metadata.resourceVersion;
+    if (metadata) delete metadata.managedFields;
+    this.stream.send({ w: this.spec.id, ...event });
+    return true;
+  }
+
+  /** An answer other than 200: a Status. A server's trouble is tried again; the rest ends the watch. */
+  private refused(answer: IncomingMessage, current: () => boolean): void {
+    let body = '';
+    answer.setEncoding('utf8');
+    answer.on('data', (chunk: string) => {
+      if (body.length < this.settings.maxErrorBytes) body += chunk.slice(0, this.settings.maxErrorBytes - body.length);
+    });
+    answer.on('end', () => {
+      if (!current()) return;
+      const code = answer.statusCode ?? 502;
+      let status: Status = { kind: 'Status', code, message: body };
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed && typeof parsed === 'object') status = parsed;
+      } catch {
+        // not JSON: its text as the message
+      }
+      if (code >= 500 || code === 429) {
+        this.fail('kube_error', `the API server answered ${code}`, serverWait(Number(answer.headers['retry-after']) || status.details?.retryAfterSeconds));
+        return;
+      }
+      this.finish(status);
+    });
+    answer.on('close', () => {
+      if (current() && !answer.complete) this.fail('kube_error', 'the API server broke its answer off');
+    });
+  }
+}

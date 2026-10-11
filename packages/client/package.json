@@ -1,0 +1,37 @@
+{
+  "name": "@overkube/client",
+  "version": "0.1.0",
+  "description": "overkube's data: the gateway's API, its watch streams, what the cluster serves, and its objects as signals \u2014 shared by the whole page, kept current, let go of when no one uses them",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "overkube-source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json"
+  },
+  "dependencies": {
+    "@overkube/gateway": "0.1.0",
+    "@overkube/kube-types": "0.1.0"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.2"
+  },
+  "devDependencies": {
+    "@preact/signals": "2.11.2",
+    "@types/node": "24.10.1"
+  }
+}
