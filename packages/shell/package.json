@@ -1,0 +1,38 @@
+{
+  "name": "@overkube/shell",
+  "version": "0.1.0",
+  "description": "overkube's frame, drawn wherever the page is — the page itself, a test, a story: its header, navigation and overlay slots, the Route at the path (a hash's, or one held in memory), the user told things",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overkube/sdk": "0.1.0",
+    "@overkube/uikit": "0.1.0",
+    "@overweave/core": "0.2.0",
+    "@overweave/ui": "0.2.0"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.2",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@overweave/testkit": "0.2.0",
+    "@preact/signals": "2.11.2",
+    "@testing-library/preact": "3.2.4",
+    "happy-dom": "20.14.5",
+    "preact": "10.29.8"
+  }
+}

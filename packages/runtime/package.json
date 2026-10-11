@@ -1,0 +1,30 @@
+{
+  "name": "@overkube/runtime",
+  "version": "0.1.0",
+  "description": "One way to run an overkube addon — wherever it runs: the page, a test, a story — its ctx made, its setup run (async too), everything it took let go of when it stops or fails to start",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overkube/sdk": "0.1.0"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.2"
+  },
+  "devDependencies": {
+    "@preact/signals": "2.11.2"
+  }
+}

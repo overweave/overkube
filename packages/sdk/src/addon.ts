@@ -42,6 +42,17 @@ export interface Condition {
   service?: string;
 }
 
+/** Something told the user (the page shows it, then lets it go). */
+export interface Notification {
+  level?: 'info' | 'ok' | 'warn' | 'error';
+  title?: string;
+  text: string;
+  /** How long it is shown (default: a few seconds; an error until closed); 0: until closed. */
+  timeoutMs?: number;
+  /** One of its kind: a notification with the same key (and teller) replaces it, not stacks under it. */
+  key?: string;
+}
+
 /** What an addon is given. */
 export interface Ctx {
   /** Its contributor: what it adds and patches, at its layer's priority, with its rights; taken back when it stops. */
@@ -56,6 +67,13 @@ export interface Ctx {
   readonly services: { get<T = unknown>(name: string): T | null };
   /** Aborted when it stops: its writes to the cluster in flight, and its own timers and requests (given it). */
   readonly signal: AbortSignal;
+  /**
+   * Tell the user something (as this addon): its id, to take it back
+   * (dismiss). Taken back when it stops, but for errors; once it has
+   * stopped, nothing told.
+   */
+  notify(notification: Notification): string;
+  dismiss(id: string): void;
   /** Done when it stops (in the reverse order). */
   onDispose(fn: () => void): void;
   /** An effect over signals, run until it stops; what it throws is the addon's failure. */

@@ -45,6 +45,9 @@ export function clusterAccess(client: Client): ClusterAccess {
     return groups.value ? groups.value.has(groupOrKind) : undefined;
   };
 
+  // What the cluster serves, as the client's discovery tells it.
+  const componentsDiscovery = { kinds: discovery.kinds, state: discovery.state, error: discovery.error, retry: () => void discovery.load() };
+
   const path = (kind: Parameters<typeof objectPath>[0], object: { metadata?: { name?: string; namespace?: string } }) =>
     objectPath(kind, object.metadata?.name ?? '', object.metadata?.namespace);
 
@@ -54,6 +57,7 @@ export function clusterAccess(client: Client): ClusterAccess {
       if (signal?.aborted) throw new Error('the addon has stopped: it writes nothing more');
     };
     return {
+      discovery: componentsDiscovery,
       peek: (kind) => store.peek(kind),
       hold(kind) {
         const held = store.use(kind);

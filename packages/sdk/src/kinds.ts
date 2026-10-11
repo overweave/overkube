@@ -82,14 +82,16 @@ export interface KindViewSpec {
   icon?: string;
   order?: number;
   hidden?: boolean;
+  /** Kept at hand: a tab of its own (the user pins and unpins, as with a table's widths). */
+  pinned?: boolean;
   health?: (object: KubeObject) => Health | undefined;
 }
 
 export const KindView = defineKind<KindViewSpec>()('KindView', {
   required: ['title'],
   createRight: behaviour,
-  validate: fields({ ...looks, category: [text, 'notText'], hidden: [flag, 'notAFlag'], health: [fn, 'notAFunction'] }),
-  patchRights: { title: configure, category: configure, icon: configure, order: configure, hidden: configure, health: behaviour },
+  validate: fields({ ...looks, category: [text, 'notText'], hidden: [flag, 'notAFlag'], pinned: [flag, 'notAFlag'], health: [fn, 'notAFunction'] }),
+  patchRights: { title: configure, category: configure, icon: configure, order: configure, hidden: configure, pinned: configure, health: behaviour },
 });
 
 /** A group of kinds, as the picker shows them. */
@@ -204,8 +206,50 @@ export const Action = defineKind<ActionSpec>()('Action', {
   patchRights: { target: behaviour, title: configure, icon: configure, order: configure, dangerous: behaviour, when: behaviour, run: behaviour },
 });
 
+/** How the page's navigation is drawn: as tabs across the top, or a menu down the side. One, named 'default'. */
+export interface NavViewSpec {
+  mode?: 'tabs' | 'side';
+}
+
+export const NavView = defineKind<NavViewSpec>()('NavView', {
+  validate: fields({ mode: [(v) => v === 'tabs' || v === 'side', 'notAMode'] }),
+  patchRights: { mode: configure },
+});
+
+/** What a route's render is given: the path's parameters (:kind), what its * took, the whole path. */
+export interface RouteProps {
+  params: Readonly<Record<string, string>>;
+  rest: string;
+  path: string;
+}
+
+/**
+ * A page of the dashboard at a path: '/k/:kind', '/certs/*' (an addon's
+ * own, its pages under it: useRoute().rest). The most specific path takes a
+ * path (more fixed parts first); between equals, by order, then name. A
+ * title: it is shown where pages are (the navigation).
+ */
+export interface RouteSpec {
+  path: string;
+  title?: string;
+  icon?: string;
+  order?: number;
+  /** Drawn with RouteProps. */
+  render: PreactComponent;
+}
+
+/** A path: from the root, its parts fixed or :named, a last * taking the rest. */
+const path: Check = (v) => typeof v === 'string' && /^\/([^/*:]+\/|:[\w-]+\/)*([^/*:]*|:[\w-]+|\*)$/.test(v);
+
+export const Route = defineKind<RouteSpec>()('Route', {
+  required: ['path', 'render'],
+  createRight: behaviour,
+  validate: fields({ ...looks, path: [path, 'notAPath'], render: [fn, 'notAFunction'] }),
+  patchRights: { path: behaviour, render: behaviour, title: configure, icon: configure, order: configure },
+});
+
 /** The dashboard's own kinds (the UI's beside them). */
-export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action] as const;
+export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, Route, NavView] as const;
 
 /** Every kind the dashboard has: its registry is made of them. */
 export const kubeKinds = [ui.Slot, ui.Fill, ui.Wrap, ...kubeOwnKinds] as const;

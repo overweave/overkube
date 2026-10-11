@@ -158,7 +158,7 @@ describe('kubeWorld', () => {
     await w.ready('slow');
     expect(w.cluster.held()).toEqual(['v1/Pod']);
     w.stop('slow');
-    expect([w.cluster.held(), w.failures('slow').map((e) => (e as Error).message)]).toEqual([[], ['cleanup failed']]);
+    expect([w.cluster.held(), w.failures('slow').map((e) => (e as Error).message)]).toEqual([[], ['slow: stopping: cleanup failed']]);
     ctx?.effect(() => {
       effects++;
     });

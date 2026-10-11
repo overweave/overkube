@@ -18,6 +18,8 @@ const workspaces = ['packages', 'apps', 'addons'].flatMap((dir) => {
 const own: Record<string, { environment?: string }> = {
   'packages/uikit': { environment: 'happy-dom' },
   'packages/sdk': { environment: 'happy-dom' },
+  'packages/shell': { environment: 'happy-dom' },
+  'packages/storybook': { environment: 'happy-dom' },
   'apps/web': { environment: 'happy-dom' },
   'packages/testkit': { environment: 'happy-dom' },
   'addons/core': { environment: 'happy-dom' },

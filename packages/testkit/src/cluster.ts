@@ -1,8 +1,8 @@
 import type { CollectionState, CollectionView, ObjectOfKind } from '@overkube/client';
 import type { StatusAnswer } from '@overkube/gateway/protocol';
-import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import { type KindInfo, type KubeObject, knownKinds } from '@overkube/kube-types';
 import type { Cluster, ObjectChange } from '@overkube/sdk';
-import { batch, type Signal, signal } from '@preact/signals';
+import { batch, computed, type Signal, signal } from '@preact/signals';
 import { keyOf } from './make.ts';
 
 /*
@@ -56,11 +56,15 @@ export interface FakeCluster extends Cluster {
   refuse(op: Write['op'], refusal: Refusal): void;
   /** The kinds held now (by an addon's run, a component), by id. */
   held(): string[];
+  /** Discovery as the page would see it: not answered yet, or failed (what the cluster said); ready again with none. */
+  discover(state: 'loading' | 'ready' | 'error', error?: Refusal): void;
 }
 
 export interface FakeClusterOptions {
   /** What is served: groups ('' for the core, 'apps') and kinds ('v1/Pod'). Default: every one (served() says true). */
   served?: readonly string[];
+  /** Kinds the kinds table does not know (a CRD's), served beside its own. */
+  kinds?: readonly KindInfo[];
 }
 
 /** A merge patch (RFC 7386) applied: null takes a field away, an object merges, anything else replaces. */
@@ -81,6 +85,15 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
   const writes: Write[] = [];
   const refusals = new Map<Write['op'], Refusal[]>();
   let version = 1;
+  const discoveryState = signal<'loading' | 'ready' | 'error'>('ready');
+  const discoveryError = signal<Refusal | null>(null);
+  const all = [...knownKinds, ...(options.kinds ?? [])];
+  // What discovery says: the kinds known (and given) that are served, once it has answered.
+  const discovered = computed(() => {
+    if (discoveryState.value !== 'ready') return null;
+    const set = served.value;
+    return new Map(all.filter((k) => set === null || set.has(k.id) || set.has(k.group)).map((k) => [k.id, k]));
+  });
 
   const kept = (kind: KindInfo): Kept => {
     let k = kinds.get(kind.id);
@@ -152,8 +165,20 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
       refusals.set(op, [...(refusals.get(op) ?? []), refusal]);
     },
     held: () => [...holds.keys()].sort(),
+    discover(state, error) {
+      batch(() => {
+        discoveryState.value = state;
+        discoveryError.value = error ?? null;
+      });
+    },
 
     // ── The SDK's Cluster ──
+    discovery: {
+      kinds: discovered,
+      state: discoveryState,
+      error: discoveryError as never,
+      retry() {},
+    },
     collection: (kind) => view(kind),
     peek: (kind) => view(kind),
     hold,

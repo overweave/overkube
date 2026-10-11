@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Button } from '../actions/Button';
 import { activeElement, focusable, trapTab, uid } from '../lib/focus';
 
@@ -39,12 +39,15 @@ export function Modal({ title, actions, footer, onClose, closeLabel = 'Close', p
   close.current = onClose;
   const [closing, setClosing] = useState(false);
   const leaving = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  // Gone before it finished going (what showed it went elsewhere): its close not called after all.
+  useEffect(() => () => clearTimeout(timer.current), []);
   const leave = () => {
     if (leaving.current) return;
     leaving.current = true;
     setClosing(true);
     const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    setTimeout(() => close.current(), still ? 0 : MODAL_OUT_MS);
+    timer.current = setTimeout(() => close.current(), still ? 0 : MODAL_OUT_MS);
   };
   // A click beside it closes it only if it began there (a press inside let go outside is no click beside it).
   const pressedBeside = useRef(false);

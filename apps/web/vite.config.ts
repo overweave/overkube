@@ -16,7 +16,17 @@ export default defineConfig({
   },
   // Ours are sources, not dependencies to pre-bundle: seen through node_modules (symlinks preserved), they would be — with React's JSX.
   optimizeDeps: {
-    exclude: ['@overkube/addon-core', '@overkube/client', '@overkube/gateway', '@overkube/kube-types', '@overkube/sdk', '@overkube/uikit', '@overweave/core', '@overweave/ui'],
+    exclude: [
+      '@overkube/addon-core',
+      '@overkube/client',
+      '@overkube/gateway',
+      '@overkube/kube-types',
+      '@overkube/sdk',
+      '@overkube/shell',
+      '@overkube/uikit',
+      '@overweave/core',
+      '@overweave/ui',
+    ],
   },
   // JSX as Preact's everywhere: a workspace package seen through node_modules has no tsconfig read for it.
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },

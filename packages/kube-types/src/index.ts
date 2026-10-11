@@ -8,10 +8,15 @@
  * Here: the kinds table, which type each kind's objects have, and what any
  * object is.
  */
-import type { KindMap } from './gen/kinds.js';
+import { type KindMap, kinds } from './gen/kinds.js';
 import type { KindInfo } from './object.js';
 
 export { type KindMap, kinds } from './gen/kinds.js';
+
+/** Every kind the kinds table knows: what a kind is before a cluster's discovery says (and in a cluster in memory). */
+export const knownKinds: readonly KindInfo[] = Object.freeze(
+  Object.values(kinds).flatMap((versions) => Object.values(versions).flatMap((byKind) => Object.values(byKind as Record<string, KindInfo>))),
+);
 export { apiVersion, type GroupVersionKind, type KindInfo, type KubeObject } from './object.js';
 
 /** The type of a kind's objects: ObjectOf<typeof kinds.apps.v1.Deployment> is Deployment. */

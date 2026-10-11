@@ -2,7 +2,7 @@
   "name": "@overkube/addon-core",
   "version": "0.1.0",
   "private": true,
-  "description": "overkube's core addon: what every kind's table has — its objects' names, namespaces and ages",
+  "description": "overkube's core addon: everything the page shows that is not another addon's \u2014 a kind's table, an object over it, the navigation (tabs or a side menu), what the user is told",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -15,13 +15,21 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@overkube/kube-types": "0.1.0",
     "@overkube/sdk": "0.1.0",
-    "@overkube/uikit": "0.1.0"
+    "@overkube/uikit": "0.1.0",
+    "@overweave/ui": "0.2.0"
   },
   "devDependencies": {
-    "@overkube/kube-types": "0.1.0",
+    "@overkube/shell": "0.1.0",
+    "@overkube/storybook": "0.1.0",
     "@overkube/testkit": "0.1.0",
+    "@testing-library/preact": "3.2.4",
     "happy-dom": "20.14.5",
     "preact": "10.29.8"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.2",
+    "preact": "^10.29.8"
   }
 }

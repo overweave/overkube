@@ -1,7 +1,9 @@
 import type { KindInfo } from '@overkube/kube-types';
-import { type Addon, type Cluster, type Ctx, type KubeContributor, kubeOwnKinds, type SetupResult, standingOf, ui } from '@overkube/sdk';
-import { type Run, uiWorld } from '@overweave/testkit';
-import { effect, signal } from '@preact/signals';
+import { runAddon } from '@overkube/runtime';
+import { type Addon, type Cluster, type KubeContributor, kubeOwnKinds, standingOf, ui } from '@overkube/sdk';
+import { type Notifications, notifications } from '@overkube/shell';
+import { type AddonRun, type Run, uiWorld } from '@overweave/testkit';
+import { type Signal, signal } from '@preact/signals';
 import { type FakeCluster, fakeCluster } from './cluster.ts';
 
 /*
@@ -21,6 +23,8 @@ export type KubeWorldBase = ReturnType<typeof uiWorld<typeof ui, typeof kubeOwnK
 
 export interface KubeWorld extends KubeWorldBase {
   readonly cluster: FakeCluster;
+  /** What addons told the user (ctx.notify), as the page keeps it — a page drawn of the world shows them. */
+  readonly notifications: Notifications;
   /** An addon run, as the page runs it; its run (stop() takes back all it said and held). */
   addon(addon: Addon): Run<KubeContributor>;
   /** Once an addon's setup has finished (an async one's): what it failed with, thrown. */
@@ -33,66 +37,31 @@ export interface KubeWorld extends KubeWorldBase {
   service<T = unknown>(name: string): T | null;
 }
 
-/** What a run took: let go of all at once when it stops (each, whatever the others throw); once stopped, what is added after at once. */
-function scope(failed: (error: unknown) => void) {
-  const disposers: (() => void)[] = [];
-  const controller = new AbortController();
-  const run = (d: () => void) => {
-    try {
-      d();
-    } catch (error) {
-      failed(error);
-    }
-  };
-  return {
-    signal: controller.signal,
-    get closed() {
-      return controller.signal.aborted;
-    },
-    /** Kept until it stops; what it gives back drops it (let go of before). */
-    add(dispose: () => void): () => void {
-      if (controller.signal.aborted) {
-        run(dispose);
-        return () => {};
-      }
-      disposers.push(dispose);
-      return () => {
-        const at = disposers.indexOf(dispose);
-        if (at >= 0) disposers.splice(at, 1);
-      };
-    },
-    dispose() {
-      controller.abort();
-      for (const d of disposers.splice(0).reverse()) run(d);
-    },
-  };
-}
-
 /** The cluster for one run: what it holds is let go of when the run stops; what it writes is in its name; after, it writes nothing. */
-function scoped(cluster: Cluster, run: ReturnType<typeof scope>, id: string): Cluster {
+function scoped(cluster: Cluster, run: { id: string; onDispose(dispose: () => void): () => void; signal: AbortSignal }): Cluster {
   const live = () => {
     if (run.signal.aborted) throw new Error('the addon has stopped: it writes nothing more');
   };
-  const hold = (kind: KindInfo) => {
-    const release = cluster.hold(kind);
-    const drop = run.add(release);
-    return () => {
-      drop();
-      release();
-    };
-  };
   return {
+    discovery: cluster.discovery,
     collection(kind) {
-      run.add(cluster.hold(kind));
+      run.onDispose(cluster.hold(kind));
       return cluster.peek(kind);
     },
     peek: (kind) => cluster.peek(kind),
-    hold,
+    hold(kind: KindInfo) {
+      const release = cluster.hold(kind);
+      const drop = run.onDispose(release);
+      return () => {
+        drop();
+        release();
+      };
+    },
     served: (g) => cluster.served(g),
     status: (s) => cluster.status(s),
     patch: async (kind, object, change) => {
       live();
-      return cluster.patch(kind, object, { fieldManager: `overkube-${id}`, ...change });
+      return cluster.patch(kind, object, { fieldManager: `overkube-${run.id}`, ...change });
     },
     remove: async (kind, object) => {
       live();
@@ -101,98 +70,85 @@ function scoped(cluster: Cluster, run: ReturnType<typeof scope>, id: string): Cl
   };
 }
 
+/** What addons run beside one another share: the cluster, what they tell the user, their services, what they threw. */
+export interface AddonEnv {
+  readonly cluster: FakeCluster;
+  readonly notifications: Notifications;
+  readonly services: Signal<ReadonlyMap<string, { provider: string; value: unknown }>>;
+  /** What an addon threw (its callbacks, its setup's promise, a service of another's it would give; after it stopped too), by its id. */
+  failures(id: string): unknown[];
+}
+
+/** Addons' shared things: a cluster (in memory, unless given), notifications. */
+export function addonEnv(cluster: FakeCluster = fakeCluster(), told: Notifications = notifications()): AddonEnv {
+  const failed = new Map<string, unknown[]>();
+  return {
+    cluster,
+    notifications: told,
+    services: signal(new Map()),
+    failures(id) {
+      const kept = failed.get(id);
+      if (kept) return kept;
+      const list: unknown[] = [];
+      failed.set(id, list);
+      return list;
+    },
+  };
+}
+
+/**
+ * An addon as overweave's testkit runs one (and its Storybook panel turns on
+ * and off): its id, its layer's grant, a setup handed its contributor — run
+ * as the page runs it (@overkube/runtime), over what it shares with the
+ * others (env). An async setup: on.finished is given its promise; failing
+ * later, everything is let go of, then on.failedLater told.
+ */
+export function addonRun(a: Addon, env: AddonEnv, on: { finished?(done: Promise<void>): void; failedLater?(error: unknown): void } = {}): AddonRun {
+  const failures = () => env.failures(a.id);
+  const setup = (contributor: KubeContributor) => {
+    const run = runAddon(a, contributor, {
+      open: (r) => scoped(env.cluster, r),
+      services: env.services,
+      notify: (n, from) => env.notifications.notify(n, from),
+      dismiss: (id) => env.notifications.dismiss(id),
+      failed: (_, error) => void failures().push(error),
+      log: (message) => void failures().push(new Error(message)),
+    });
+    if (run.pending) {
+      const done = run.ready.catch((error) => {
+        failures().push(error);
+        on.failedLater?.(error);
+        throw error;
+      });
+      done.catch(() => {});
+      on.finished?.(done);
+    }
+    return () => run.stop();
+  };
+  return { id: a.id, setup: setup as AddonRun['setup'], grant: standingOf(a.layer) };
+}
+
 /** A world of the dashboard's kinds and a cluster in memory: kubeWorld(), kubeWorld({ cluster }). */
 export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
-  const cluster = options.cluster ?? fakeCluster();
+  const env = addonEnv(options.cluster ?? fakeCluster());
+  const { cluster, services } = env;
   const w = uiWorld(ui, ...kubeOwnKinds);
   const runs = new Map<string, Run<KubeContributor>>();
   const started = new Map<string, Promise<void>>();
-  const failed = new Map<string, unknown[]>();
-  const services = signal<ReadonlyMap<string, { provider: string; value: unknown }>>(new Map());
 
   const addon = (a: Addon): Run<KubeContributor> => {
-    const failures: unknown[] = [];
-    failed.set(a.id, failures);
+    env.failures(a.id).splice(0);
     let finished: Promise<void> = Promise.resolve();
-    const run = w.run(
-      a.id,
-      ((contributor: KubeContributor) => {
-        const s = scope((error) => failures.push(error));
-        const guard = (<A extends unknown[], R>(fn: (...args: A) => R) =>
-          (...args: A) => {
-            try {
-              const out = fn(...args);
-              if (out && typeof (out as unknown as PromiseLike<unknown>).then === 'function') {
-                return Promise.resolve(out).catch((error) => {
-                  failures.push(error);
-                  return undefined;
-                });
-              }
-              return out;
-            } catch (error) {
-              failures.push(error);
-              return undefined;
-            }
-          }) as Ctx['guard'];
-        const ctx: Ctx = {
-          contributor,
-          cluster: scoped(cluster, s, a.id),
-          services: { get: <T>(name: string) => (services.value.get(name)?.value as T | undefined) ?? null },
-          signal: s.signal,
-          onDispose: (fn) => void s.add(guard(fn)),
-          effect: (fn) => {
-            // Once stopped, nothing runs (as on the page).
-            if (s.closed) return;
-            s.add(
-              effect(() => {
-                const cleanup = guard(fn)() as unknown;
-                return typeof cleanup === 'function' ? guard(cleanup as () => void) : undefined;
-              }),
-            );
-          },
-          guard,
-        };
-        for (const [name, make] of Object.entries(a.provides ?? {})) {
-          // Another's already: not taken from it (as on the page).
-          const taken = services.peek().get(name);
-          if (taken && taken.provider !== a.id) {
-            failures.push(new Error(`${name} is provided by ${taken.provider} already`));
-            continue;
-          }
-          services.value = new Map([...services.peek(), [name, { provider: a.id, value: make(ctx) }]]);
-          s.add(() => {
-            if (services.peek().get(name)?.provider !== a.id) return;
-            const next = new Map(services.peek());
-            next.delete(name);
-            services.value = next;
-          });
-        }
-        let own: SetupResult | Promise<SetupResult>;
-        try {
-          own = a.setup(ctx);
-        } catch (error) {
-          s.dispose();
-          throw error;
-        }
-        const keep = (dispose: SetupResult) => {
-          if (typeof dispose === 'function') s.add(dispose);
-        };
-        if (own && typeof (own as PromiseLike<SetupResult>).then === 'function') {
-          // Waited for (ready): what it gives back kept (done at once if it stopped meanwhile); its failure stops it.
-          finished = Promise.resolve(own).then(keep, (error) => {
-            failures.push(error);
-            runs.get(a.id)?.stop();
-            runs.delete(a.id);
-            throw error;
-          });
-          finished.catch(() => {});
-        } else {
-          keep(own as SetupResult);
-        }
-        return () => s.dispose();
-      }) as never,
-      standingOf(a.layer),
-    ) as unknown as Run<KubeContributor>;
+    const r = addonRun(a, env, {
+      finished: (done) => {
+        finished = done;
+      },
+      failedLater: () => {
+        runs.get(a.id)?.stop();
+        runs.delete(a.id);
+      },
+    });
+    const run = w.run(r.id, r.setup as never, r.grant) as unknown as Run<KubeContributor>;
     runs.set(a.id, run);
     started.set(a.id, finished);
     return run;
@@ -200,13 +156,14 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
 
   return Object.assign(w, {
     cluster,
+    notifications: env.notifications,
     addon,
     ready: (id: string) => started.get(id) ?? Promise.reject(new Error(`no addon ${id} was run`)),
     stop(id: string) {
       runs.get(id)?.stop();
       runs.delete(id);
     },
-    failures: (id: string) => failed.get(id) ?? [],
+    failures: (id: string) => env.failures(id),
     service: <T>(name: string) => (services.peek().get(name)?.value as T | undefined) ?? null,
   }) as unknown as KubeWorld;
 }

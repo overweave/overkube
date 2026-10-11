@@ -27,15 +27,15 @@
     "@overkube/client": "0.1.0",
     "@overkube/gateway": "0.1.0",
     "@overkube/kube-types": "0.1.0",
-    "@overweave/core": "0.1.0",
-    "@overweave/ui": "0.1.0"
+    "@overweave/core": "0.2.0",
+    "@overweave/ui": "0.2.0"
   },
   "peerDependencies": {
     "@preact/signals": "^2.11.2",
     "preact": "^10.29.8"
   },
   "devDependencies": {
-    "@overweave/testkit": "0.1.0",
+    "@overweave/testkit": "0.2.0",
     "@preact/signals": "2.11.2",
     "@testing-library/preact": "3.2.4",
     "happy-dom": "20.14.5",

@@ -1,6 +1,7 @@
-import type { CollectionView, ObjectOfKind } from '@overkube/client';
+import type { ApiError, CollectionView, ObjectOfKind } from '@overkube/client';
 import type { StatusAnswer } from '@overkube/gateway/protocol';
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import type { ReadonlySignal } from '@preact/signals';
 
 /*
  * The cluster, as an addon works with it — a contract, not the client: the
@@ -22,8 +23,19 @@ export interface ObjectChange {
   dryRun?: boolean;
 }
 
+/** What the cluster serves, as discovery tells it. */
+export interface Discovery {
+  /** Its kinds by id; null until known. */
+  readonly kinds: ReadonlySignal<ReadonlyMap<string, KindInfo> | null>;
+  readonly state: ReadonlySignal<'loading' | 'ready' | 'error'>;
+  readonly error: ReadonlySignal<Pick<ApiError, 'status' | 'code' | 'message'> | null>;
+  /** Ask again (after an error). */
+  retry(): void;
+}
+
 /** The cluster as components have it (useCluster): a kind's objects held only while drawn (useCollection, hold), never for good. */
 export interface ComponentCluster {
+  readonly discovery: Discovery;
   /** A kind's objects without holding them: what is there now. */
   peek<K extends KindInfo>(kind: K): CollectionView<ObjectOfKind<K>>;
   /** Hold a kind's objects until the returned function is called (a component while it is drawn). */

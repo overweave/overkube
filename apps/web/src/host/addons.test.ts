@@ -130,10 +130,10 @@ describe('the host', () => {
   });
 
   it('tells a failure as its owner’s: the addon that says what failed is degraded', () => {
-    const { registry, host } = setup();
+    const { host } = setup();
     host.register(named('core', 'core', ({ contributor }) => void contributor.add('Column', 'core.name', col('Name'))));
     host.register(named('broken', 'addon', ({ contributor }) => void contributor.add('Fill', 'broken.f', { slot: 's', render: () => null })));
-    host.fail({ phase: 'render', definition: registry.get('Fill', 'broken.f') as never, error: new Error('drawn wrong') });
+    host.failed({ kind: 'Fill', name: 'broken.f' }, 'render', new Error('drawn wrong'));
     expect(host.status('broken')).toMatchObject({ state: 'degraded', errors: 1, error: 'drawn wrong' });
     expect(host.status('core')?.state).toBe('running');
     expect(host.ownerOf('Column', 'core.name', 'value')).toBe('core');
@@ -161,6 +161,40 @@ describe('the host', () => {
     expect(runs[0]()).toBeUndefined();
     expect(logged.status('cb')).toMatchObject({ state: 'running', errors: 0 });
     expect(said).toEqual(['cb: after it stopped: late 1']);
+  });
+
+  it('tells what the registry refuses an addon as its failure (a name another defines)', () => {
+    const { host } = setup();
+    host.register(named('core', 'core', ({ contributor }) => void contributor.add('Column', 'shared', col('Core’s'))));
+    host.register(named('late', 'addon', ({ contributor }) => void contributor.add('Column', 'shared', col('Mine'))));
+    expect(host.status('late')).toMatchObject({ state: 'degraded', errors: 1, error: 'Column/shared refused: taken' });
+  });
+
+  it('takes back an addon’s notifications when it stops — but for errors', () => {
+    const told = new Map<string, string>();
+    let next = 0;
+    const registry = createRegistry({ kinds: kubeKinds });
+    const host = new AddonHost({
+      registry,
+      cluster: { facts: { served: () => true, available: () => true }, open: () => ({}) as never, components: () => ({}) as never },
+      notify: (n) => {
+        const id = `n${++next}`;
+        told.set(id, n.text);
+        return id;
+      },
+      dismiss: (id) => void told.delete(id),
+      log: () => {},
+    });
+    hosts.push(host);
+    host.register(
+      named('tell', 'addon', (ctx) => {
+        ctx.notify({ text: 'saved' });
+        ctx.notify({ level: 'error', text: 'refused' });
+      }),
+    );
+    expect([...told.values()]).toEqual(['saved', 'refused']);
+    host.close();
+    expect([...told.values()]).toEqual(['refused']);
   });
 
   it('keeps an async callback’s rejection its own too', async () => {

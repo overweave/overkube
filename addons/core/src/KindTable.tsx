@@ -1,24 +1,24 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { Column, slots, TableView, takes } from '@overkube/sdk';
-import { useCollection } from '@overkube/sdk/preact';
+import { useCollection, usePage } from '@overkube/sdk/preact';
 import { Button, Notice, Table, type TableColumn } from '@overkube/uikit';
 import { inOrder } from '@overweave/ui';
 import { Guarded, slotElement, useDefinition, useDefinitions } from '@overweave/ui/preact';
 import { useMemo, useRef } from 'preact/hooks';
-import { useHost } from './context.ts';
 
 /**
  * A kind's objects as a table, all of it from the definitions: the Columns
  * whose target takes the kind, set out as its TableView says (order,
  * hidden, widths, sort, which objects); over it, the kind.bar slot, given
  * the list. A column's value that throws is its owner's failure (no value
- * in that cell) — told once a drawing, not once a cell; its render is drawn
+ * in that cell) — told once a drawing, not once a cell (the page tells
+ * whose it is); its render is drawn
  * apart (Guarded, tried again when its object changes), the rest of the
  * table goes on. A kind no Column takes has no table. Objects the page can
  * no longer keep current (stale) stay shown, said to be so.
  */
 export function KindTable({ kind }: { kind: KindInfo }) {
-  const host = useHost();
+  const page = usePage();
   const collection = useCollection(kind);
   const view = useDefinition(TableView, kind.id)?.spec ?? {};
   const all = useDefinitions(Column).filter((c) => takes(c.spec.target, kind));
@@ -41,15 +41,12 @@ export function KindTable({ kind }: { kind: KindInfo }) {
         queueMicrotask(() => {
           const told = failures.current;
           failures.current = null;
-          for (const f of told?.values() ?? []) {
-            const owner = host.ownerOf(f.kind, f.name, f.field);
-            if (owner) host.report(owner, f.error);
-          }
+          for (const f of told?.values() ?? []) page.report({ kind: f.kind, name: f.name }, f.field, f.error);
         });
       }
       if (!failures.current.has(key)) failures.current.set(key, { kind: definitionKind, name, field, error });
     },
-    [host],
+    [page],
   );
 
   const columns = useMemo(

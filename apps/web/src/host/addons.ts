@@ -1,7 +1,7 @@
-import type { Addon, AddonState, Ctx, GuardedResult, KubeContributor, Layer } from '@overkube/sdk';
+import { type AddonRun, type RunEnv, runAddon } from '@overkube/runtime';
+import type { Addon, AddonState, KubeContributor, Layer, Notification } from '@overkube/sdk';
 import { standingOf } from '@overkube/sdk';
 import type { Registry } from '@overweave/core';
-import type { Failure } from '@overweave/ui';
 import { computed, effect, type ReadonlySignal, type Signal, signal, untracked } from '@preact/signals';
 import type { ClusterAccess } from './cluster.ts';
 import { type Facts, holds } from './conditions.ts';
@@ -55,6 +55,10 @@ export interface HostOptions {
   maxRetryMs?: number;
   /** Failed setups in a row before it is left alone. */
   maxCrashes?: number;
+  /** How an addon tells the user something (the page's notifications); none: said in the log. */
+  notify?: (notification: Notification, from: string) => string;
+  /** A notification taken back. */
+  dismiss?: (id: string) => void;
   log?: (message: string) => void;
 }
 
@@ -65,43 +69,6 @@ export const trusted = (layer: Layer) => layer === 'core' || layer === 'builtin'
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** What one run took: let go of all at once when it stops; once stopped, what is added after is let go of at once. */
-class Scope {
-  readonly controller = new AbortController();
-  private readonly disposers: (() => void)[] = [];
-  constructor(private readonly onError: (error: unknown) => void) {}
-
-  get closed(): boolean {
-    return this.controller.signal.aborted;
-  }
-
-  /** Kept until it stops; what it gives back drops it (let go of before, by its owner). */
-  add(dispose: () => void): () => void {
-    if (this.closed) {
-      this.run(dispose);
-      return () => {};
-    }
-    this.disposers.push(dispose);
-    return () => {
-      const at = this.disposers.indexOf(dispose);
-      if (at >= 0) this.disposers.splice(at, 1);
-    };
-  }
-
-  dispose(): void {
-    this.controller.abort();
-    for (const d of this.disposers.splice(0).reverse()) this.run(d);
-  }
-
-  private run(d: () => void): void {
-    try {
-      d();
-    } catch (error) {
-      this.onError(error);
-    }
-  }
-}
-
 interface Runtime {
   addon: Addon;
   layer: Layer;
@@ -109,7 +76,7 @@ interface Runtime {
   status: Signal<Omit<AddonStatus, 'enabled' | 'suggested'>>;
   /** Each start; a setup given up on (stopped, timed out) can no longer move it. */
   generation: number;
-  scope: Scope | null;
+  run: AddonRun | null;
   crashes: number;
   retry?: ReturnType<typeof setTimeout>;
   drive?: () => void;
@@ -131,7 +98,27 @@ export class AddonHost {
       available: (a) => options.cluster.facts.available(a),
       service: (name) => services.value.has(name),
     };
+    this.env = {
+      open: (run) => options.cluster.open(run),
+      services,
+      notify: (n, from) => {
+        if (options.notify) return options.notify(n, from);
+        this.log(`${from}: ${n.title ? `${n.title}: ` : ''}${n.text}`);
+        return '';
+      },
+      dismiss: (id) => options.dismiss?.(id),
+      failed: (id, error) => this.report(id, error),
+      log: (m) => this.log(m),
+    };
+    // What the registry refuses an addon (a name another defines, a right it has not): its failure, not silence.
+    this.unsubscribe = options.registry.subscribe((e) => {
+      if (e.type !== 'rejected' || !this.runtimes.peek().has(e.contributor)) return;
+      this.report(e.contributor, new Error(`${e.kind}/${e.name} refused: ${e.errors.map((x) => x.code).join(', ')}`));
+    });
   }
+
+  private readonly env: RunEnv;
+  private readonly unsubscribe: () => void;
 
   /** Every addon's status, as it changes. */
   readonly statuses: ReadonlySignal<AddonStatus[]> = computed(() =>
@@ -170,7 +157,7 @@ export class AddonHost {
       enabled: signal(this.options.enabled ? this.options.enabled(addon) : true),
       status: signal({ id: addon.id, title: addon.title, layer, state: 'disabled', restarts: 0, errors: 0 }),
       generation: 0,
-      scope: null,
+      run: null,
       crashes: 0,
     };
     this.runtimes.value = new Map([...this.runtimes.peek(), [addon.id, rt]]);
@@ -212,13 +199,11 @@ export class AddonHost {
     this.update(rt, { errors: status.errors + 1, error: message(error), ...(active ? { state: 'degraded' as const, reason: 'something it added failed' } : {}) });
   }
 
-  /** A failure of the page's drawing (overweave's), told as the addon's that says what failed: its render, or its condition. */
-  fail(failure: Failure): void {
-    const { kind, name } = failure.definition;
-    const field = failure.phase === 'when' ? 'when' : failure.phase === 'match' ? 'target' : 'render';
-    const owner = this.ownerOf(kind, name, field);
-    if (owner) this.report(owner, failure.error);
-    else this.log(`${kind}/${name}: ${message(failure.error)}`);
+  /** A definition's function failed (a render, a condition, a column's value): told as the addon's that says that field. */
+  failed(definition: { kind: string; name: string }, field: string, error: unknown): void {
+    const owner = this.ownerOf(definition.kind, definition.name, field);
+    if (owner) this.report(owner, error);
+    else this.log(`${definition.kind}/${definition.name}: ${message(error)}`);
   }
 
   /** Who says a field of a definition: the strongest contribution saying it. */
@@ -232,6 +217,7 @@ export class AddonHost {
 
   /** Stop everything. */
   close(): void {
+    this.unsubscribe();
     for (const rt of this.runtimes.peek().values()) {
       rt.drive?.();
       this.stop(rt);
@@ -275,52 +261,46 @@ export class AddonHost {
     clearTimeout(rt.retry);
     const generation = ++rt.generation;
     const id = rt.addon.id;
-    const scope = new Scope((error) => this.log(`${id}: stopping: ${message(error)}`));
-    rt.scope = scope;
     this.update(rt, { state: 'starting', reason: undefined, errors: 0, error: undefined });
-
-    let result: unknown;
+    let run: AddonRun;
     try {
       const contributor = this.options.registry.contributor(id, standingOf(rt.layer)) as unknown as KubeContributor;
-      // Everything it said, taken back when it stops (first: its services and effects go before it).
-      scope.add(() => contributor.dispose());
-      const ctx = this.ctx(rt, scope, contributor);
-      for (const [name, make] of Object.entries(rt.addon.provides ?? {})) this.provide(rt, scope, name, make(ctx));
-      result = rt.addon.setup(ctx);
+      run = runAddon(rt.addon, contributor, this.env);
     } catch (error) {
       this.crash(rt, generation, error);
       return;
     }
-    const done = (dispose: unknown) => {
-      if (generation !== rt.generation) {
-        // Given up on meanwhile: what it gave back goes at once.
-        if (typeof dispose === 'function') this.guarded(id, scope, dispose as () => void)();
-        return;
-      }
-      clearTimeout(timer);
-      if (typeof dispose === 'function') scope.add(dispose as () => void);
+    rt.run = run;
+    const started = () => {
       rt.crashes = 0;
       const errors = rt.status.peek().errors;
       this.update(rt, { state: errors ? 'degraded' : 'running', reason: errors ? 'something it added failed' : undefined });
     };
+    if (!run.pending) {
+      started();
+      return;
+    }
+    // Given up on if it takes too long; finished late (stopped meanwhile), what it gave back goes at once (its run's).
     const timer = setTimeout(() => this.crash(rt, generation, new Error(`setup did not finish in ${this.options.startTimeoutMs} ms`)), this.options.startTimeoutMs);
-    if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
-      (result as PromiseLike<unknown>).then(done, (error) => {
+    run.ready.then(
+      () => {
+        clearTimeout(timer);
+        if (generation === rt.generation) started();
+      },
+      (error) => {
         clearTimeout(timer);
         this.crash(rt, generation, error);
-      });
-    } else {
-      done(result);
-    }
+      },
+    );
   }
 
   /** Let go of everything it took. */
   private stop(rt: Runtime): void {
     rt.generation++;
     clearTimeout(rt.retry);
-    const scope = rt.scope;
-    rt.scope = null;
-    scope?.dispose();
+    const run = rt.run;
+    rt.run = null;
+    run?.stop();
   }
 
   /** Setup failed: started again after a wait, or, after maxCrashes in a row, left failed. */
@@ -339,59 +319,5 @@ export class AddonHost {
     rt.retry = setTimeout(() => {
       if (rt.status.peek().state === 'crashloop') this.start(rt);
     }, wait);
-  }
-
-  private provide(rt: Runtime, scope: Scope, name: string, value: unknown): void {
-    const taken = this.services.peek().get(name);
-    if (taken && taken.provider !== rt.addon.id) {
-      this.log(`${rt.addon.id}: ${name} is provided by ${taken.provider} already; not provided again`);
-      return;
-    }
-    this.services.value = new Map([...this.services.peek(), [name, { provider: rt.addon.id, value }]]);
-    scope.add(() => {
-      if (this.services.peek().get(name)?.provider !== rt.addon.id) return;
-      const next = new Map(this.services.peek());
-      next.delete(name);
-      this.services.value = next;
-    });
-  }
-
-  /** A function of an addon's, its throw (or its promise's rejection) the addon's — or, after its run stopped, only said. */
-  private guarded<A extends unknown[], R>(id: string, scope: Scope, fn: (...args: A) => R): (...args: A) => GuardedResult<R> {
-    const failed = (error: unknown) => {
-      if (scope.closed) this.log(`${id}: after it stopped: ${message(error)}`);
-      else this.report(id, error);
-      return undefined;
-    };
-    return (...args) => {
-      try {
-        const out = fn(...args);
-        if (out && typeof (out as unknown as PromiseLike<unknown>).then === 'function') return Promise.resolve(out).catch(failed) as GuardedResult<R>;
-        return out as GuardedResult<R>;
-      } catch (error) {
-        return failed(error) as GuardedResult<R>;
-      }
-    };
-  }
-
-  private ctx(rt: Runtime, scope: Scope, contributor: KubeContributor): Ctx {
-    const id = rt.addon.id;
-    return {
-      contributor,
-      cluster: this.options.cluster.open({ id, onDispose: (dispose) => scope.add(dispose), signal: scope.controller.signal }),
-      services: { get: <T>(name: string) => this.service<T>(name) },
-      signal: scope.controller.signal,
-      onDispose: (dispose) => void scope.add(this.guarded(id, scope, dispose)),
-      effect: (fn) => {
-        if (scope.closed) return;
-        scope.add(
-          effect(() => {
-            const cleanup = this.guarded(id, scope, fn)() as unknown;
-            return typeof cleanup === 'function' ? this.guarded(id, scope, cleanup as () => void) : undefined;
-          }),
-        );
-      },
-      guard: (fn) => this.guarded(id, scope, fn),
-    };
   }
 }

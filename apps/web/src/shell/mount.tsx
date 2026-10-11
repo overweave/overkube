@@ -1,18 +1,11 @@
-import type { Client } from '@overkube/client';
-import { kindMatcher } from '@overkube/sdk';
-import { KubeProvider } from '@overkube/sdk/preact';
-import { css } from '@overkube/uikit';
+import { hashRouter, notifications, Shell } from '@overkube/shell';
+import { css, Notice } from '@overkube/uikit';
 import type { Registry } from '@overweave/core';
-import { OverweaveProvider } from '@overweave/ui/preact';
 import { render } from 'preact';
-import type { AddonHost } from '../host/addons.ts';
+import type { AddonHost, AddonStatus } from '../host/addons.ts';
 import type { ClusterAccess } from '../host/cluster.ts';
-import { App } from './App.tsx';
-import { HostContext } from './context.ts';
-import { placeOf } from './place.ts';
 
 export interface Page {
-  client: Client;
   // biome-ignore lint/suspicious/noExplicitAny: a registry of the dashboard's kinds.
   registry: Registry<any>;
   host: AddonHost;
@@ -28,13 +21,26 @@ function styles(doc: Document): void {
   doc.head.appendChild(style);
 }
 
+/** The core, not running: said over the page (all it draws is its, so a page without it is empty). */
+function CoreDown({ host }: { host: AddonHost }) {
+  const core: AddonStatus | undefined = host.status('core');
+  if (!core || core.state === 'running' || core.state === 'degraded' || core.state === 'starting') return null;
+  return (
+    <Notice level="error" icon="warning" title="The core addon is not running">
+      {core.state}
+      {core.reason ? ` — ${core.reason}` : ''}
+      {core.error ? `: ${core.error}` : ''}
+    </Notice>
+  );
+}
+
 /**
- * The page drawn into an element: the registry and how its slots choose
- * (overweave's provider, the kinds' matcher; a failure told as its
- * addon's), the cluster its components work with, the frame. Dark, or light
- * as the system is. What it gives back takes it away.
+ * The page drawn into an element: the shell (the frame, the route at the
+ * hash) over the registry and the cluster, what addons tell the user, their
+ * failures told as their own — and, should the core not run, that said.
+ * Dark, or light as the system is. What it gives back takes it away.
  */
-export function mount(element: HTMLElement, page: Page): () => void {
+export function mount(element: HTMLElement, page: Page, told = notifications()): () => void {
   const doc = element.ownerDocument;
   const win = doc.defaultView as Window;
   styles(doc);
@@ -46,22 +52,24 @@ export function mount(element: HTMLElement, page: Page): () => void {
   };
   theme();
   light?.addEventListener('change', theme);
-  const { place, close } = placeOf(win);
-  // Components hold kinds while drawn (useCollection), never for good: theirs has no collection().
-  const cluster = page.cluster.components();
+  const router = hashRouter(win);
   render(
-    <OverweaveProvider registry={page.registry} matcher={kindMatcher} onError={(f) => page.host.fail(f)}>
-      <HostContext.Provider value={page.host}>
-        <KubeProvider cluster={cluster}>
-          <App client={page.client} place={place} />
-        </KubeProvider>
-      </HostContext.Provider>
-    </OverweaveProvider>,
+    <>
+      <CoreDown host={page.host} />
+      <Shell
+        registry={page.registry}
+        cluster={page.cluster.components()}
+        router={router}
+        notifications={told}
+        onFailure={(definition, field, error) => page.host.failed(definition, field, error)}
+      />
+    </>,
     element,
   );
   return () => {
     render(null, element);
-    close();
+    router.close();
+    told.close();
     light?.removeEventListener('change', theme);
   };
 }
