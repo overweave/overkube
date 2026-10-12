@@ -48,7 +48,7 @@ A cluster and overkube over it, from the sources — only Docker is needed:
 make dev
 ```
 
-- [http://localhost:5173](http://localhost:5173): the page, reloaded as it is changed (`#/kind/v1/Namespace`, `#/kind/apps/v1/Deployment`, …)
+- [http://localhost:5173](http://localhost:5173): the page, reloaded as it is changed (`#/k/namespaces.v1`, `#/k/deployments.v1.apps?open=deployments.v1.apps/<namespace>/<name>`, …)
 - [http://localhost:8080](http://localhost:8080): the server — its gateway at `/kube`, `/healthz`, `/readyz`
 - the cluster: KubeSolo (`dev/kube`), its data kept between runs
 

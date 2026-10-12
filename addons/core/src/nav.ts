@@ -1,5 +1,5 @@
 import type { KindInfo } from '@overkube/kube-types';
-import { Category, type CategorySpec, KindView, type KindViewSpec, kindPath, kindRef, type Label, Route, type RouteSpec } from '@overkube/sdk';
+import { Category, type CategorySpec, KindView, type KindViewSpec, kindPath, kindRef, kindRefIn, type Label, Page, type PageSpec } from '@overkube/sdk';
 import { usePage, useSay, useServedKinds } from '@overkube/sdk/preact';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
@@ -11,7 +11,8 @@ import { T } from './texts.ts';
 /*
  * The navigation, as data: what can be gone to — every kind the cluster
  * serves (as its KindView says: its title, icon, category, order, whether
- * it is hidden or pinned) and every addon's page with a title (a Route) —
+ * it is hidden or pinned) and every page with a title (a Page: hidden or
+ * pinned as a kind is) —
  * in groups (a Category, else the kind's API group); and where the page is
  * now. navOf is the model, pure; useNav follows what it is made of (made
  * again only when that changes, not at each path). Drawn as tabs or as a
@@ -46,12 +47,12 @@ export interface Nav {
 
 const PAGES = 'pages';
 
-/** The navigation of these kinds, views, categories and routes: its groups and pinned (where the page is: currentOf). */
+/** The navigation of these kinds, views, categories and pages: its groups and pinned (where the page is: currentOf). */
 export function navOf(
   kinds: Iterable<KindInfo>,
   views: readonly Definition<KindViewSpec>[],
   categories: readonly Definition<CategorySpec>[],
-  routes: readonly Definition<RouteSpec>[],
+  pages: readonly Definition<PageSpec>[],
   /** How a label is said (the page's language). */
   said: (label: Label) => string,
   /** The language, as titles are ordered in it. */
@@ -75,16 +76,16 @@ export function navOf(
       group: view?.category ?? `group:${kind.group}`,
     });
   }
-  // An addon's pages: those with a title, at a path of their own (no parameters).
-  for (const r of routes) {
-    if (!r.spec.title || r.spec.path.includes(':')) continue;
+  // The pages: those with a title, at a path of their own (no parameters), not hidden — as a kind is, pinned or not.
+  for (const p of pages) {
+    if (!p.spec.title || p.spec.hidden || p.spec.path.includes(':')) continue;
     entries.push({
-      key: `route:${r.name}`,
-      title: said(r.spec.title),
-      path: r.spec.path.replace(/\/\*$/, '') || '/',
-      icon: r.spec.icon,
-      pinned: false,
-      order: r.spec.order ?? 500,
+      key: `page:${p.name}`,
+      title: said(p.spec.title),
+      path: p.spec.path.replace(/\/\*$/, '') || '/',
+      icon: p.spec.icon,
+      pinned: p.spec.pinned === true,
+      order: p.spec.order ?? 500,
       group: PAGES,
     });
   }
@@ -106,9 +107,10 @@ export function navOf(
   return { groups, pinned: entries.filter((e) => e.pinned).sort(byOrder), entries };
 }
 
-/** Where a path is, of these entries: a kind's table or one of its objects (/k/<ref>…), or an addon's page under its path. */
-export function currentOf(entries: readonly NavEntry[], path: string): NavEntry | undefined {
-  const ref = path.match(/^\/k\/([^/]+)/)?.[1];
+/** Where a path is, of these entries: a kind's page (/k/<ref>), or another page under its path (what is opened over it aside). */
+export function currentOf(entries: readonly NavEntry[], at: string): NavEntry | undefined {
+  const ref = kindRefIn(at);
+  const path = at.split('?')[0];
   if (ref) return entries.find((e) => e.kind && kindRef(e.kind) === ref);
   return entries.filter((e) => !e.kind && (path === e.path || path.startsWith(`${e.path}/`))).sort((a, b) => b.path.length - a.path.length)[0];
 }
@@ -117,9 +119,9 @@ export function useNav(): Nav {
   const { kinds } = useServedKinds();
   const views = useDefinitions(KindView);
   const categories = useDefinitions(Category);
-  const routes = useDefinitions(Route);
+  const pages = useDefinitions(Page);
   const path = usePage().path.value;
   const say = useSay();
-  const model = useMemo(() => navOf(kinds.values(), views, categories, routes, say, say.locale), [kinds, views, categories, routes, say]);
+  const model = useMemo(() => navOf(kinds.values(), views, categories, pages, say, say.locale), [kinds, views, categories, pages, say]);
   return { groups: model.groups, pinned: model.pinned, current: currentOf(model.entries, path) };
 }

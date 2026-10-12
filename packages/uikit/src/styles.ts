@@ -216,8 +216,10 @@ export const css = `
 .uk-catalog-search:focus-within { color: var(--uk-text); }
 .uk-catalog-search input { all: unset; flex: 1; min-width: 0; color: var(--uk-text); font: inherit; }
 .uk-catalog-search input::placeholder { color: var(--uk-muted); }
-.uk-catalog-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px 20px; padding: 12px; max-height: 55vh; overflow: auto; align-content: start; }
-.uk-catalog-group { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* The groups in columns, each after the one above it (no holes beside a short one), as many columns as fit; scrolled as one. */
+.uk-catalog-groups { padding: 12px; max-height: 55vh; overflow: auto; }
+.uk-catalog-columns { columns: 220px; column-gap: 20px; }
+.uk-catalog-group { display: flex; flex-direction: column; gap: 1px; min-width: 0; break-inside: avoid; padding-bottom: 16px; }
 .uk-catalog-group h4 { margin: 0 0 4px; padding: 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--uk-muted); }
 .uk-catalog-row { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 6px 0 8px; border-radius: var(--uk-radius-sm); transition: background .12s; }
 .uk-catalog-row:hover, .uk-catalog-row:focus-within { background: var(--uk-panel-2); }
@@ -339,6 +341,46 @@ export const css = `
 .uk-tab-bar[data-instant] { transition: none; }
 .uk-tab-bar { position: absolute; left: 0; top: -1px; height: 2px; background: var(--uk-text); border-radius: 2px; transition: transform .28s cubic-bezier(.4, 0, .2, 1), width .28s cubic-bezier(.4, 0, .2, 1), opacity .15s; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .uk-tab-bar { transition: none; } }
+/* Down a side: a column, each tab its whole width (its mark, its name, its tool at its end), the bar at its start. */
+.uk-tabs[data-orientation='vertical'] { flex-direction: column; border-bottom: 0; gap: 2px; flex: 0 1 auto; min-height: 0; }
+.uk-tab-list[data-orientation='vertical'] { flex-direction: column; overflow-x: hidden; overflow-y: auto; }
+.uk-tab-list[data-orientation='vertical'] .uk-tab, .uk-tabs[data-orientation='vertical'] > .uk-tab { display: flex; padding: 8px 10px; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.uk-tab-list[data-orientation='vertical'] .uk-tab::before, .uk-tabs[data-orientation='vertical'] > .uk-tab::before { inset: 1px 0; }
+.uk-tab-list[data-orientation='vertical'] .uk-tab-label { overflow: hidden; text-overflow: ellipsis; }
+.uk-tab-list[data-orientation='vertical'] .uk-tab-sep { width: auto; height: 1px; align-self: stretch; margin: 6px 10px; }
+.uk-tab-list[data-orientation='vertical'] .uk-tab-bar { top: 0; width: 2px; height: 0; transition: transform .28s cubic-bezier(.4, 0, .2, 1), height .28s cubic-bezier(.4, 0, .2, 1), opacity .15s; }
+.uk-tab-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; font-size: 11px; font-weight: 700; }
+.uk-tab-mark .uk-icon { width: 16px; height: 16px; }
+/* A page's side: narrow (icons), wide over the page (peeking), or wide beside it (pinned). What is in it is always as wide as it opens: the panel only shows more or less of it (nothing laid out again as it moves — its marks stay where they are). */
+.uk-rail { --uk-rail-narrow: 52px; --uk-rail-wide: 240px; --uk-rail-ease: cubic-bezier(.3, 0, 0, 1); --uk-rail-ms: 180ms; position: relative; flex: none; align-self: stretch; width: var(--uk-rail-narrow); transition: width var(--uk-rail-ms) var(--uk-rail-ease); }
+.uk-rail[data-state='pinned'] { width: var(--uk-rail-wide); }
+.uk-rail-panel { position: absolute; inset: 0 auto 0 0; z-index: 50; display: flex; flex-direction: column; width: var(--uk-rail-narrow); overflow: hidden; background: var(--uk-panel); border-right: 1px solid var(--uk-border); transition: width var(--uk-rail-ms) var(--uk-rail-ease), box-shadow var(--uk-rail-ms) ease-out; }
+.uk-rail:not([data-state='collapsed']) .uk-rail-panel { width: var(--uk-rail-wide); }
+/* Closing is quicker than opening. */
+.uk-rail[data-state='collapsed'], .uk-rail[data-state='collapsed'] .uk-rail-panel { --uk-rail-ms: 130ms; }
+.uk-rail[data-state='peek'] .uk-rail-panel { box-shadow: 0 12px 32px color-mix(in srgb, var(--uk-shadow) 35%, transparent), 0 1px 3px color-mix(in srgb, var(--uk-shadow) 20%, transparent); }
+/* What is in it in a column: tabs down it scroll in their list (a tab dragged to its foot scrolls it), what follows them stays in view. */
+.uk-rail-body { flex: 1; min-height: 0; box-sizing: border-box; width: var(--uk-rail-wide); display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; padding: 8px 6px; }
+.uk-rail-pin { all: unset; flex: none; margin: 8px 12px 0; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--uk-radius-sm); color: var(--uk-muted); cursor: pointer; transition: color .12s, background .12s; }
+.uk-rail-pin:hover { color: var(--uk-text); background: var(--uk-panel-2); }
+.uk-rail-pin:focus-visible { outline: 2px solid var(--uk-focus); }
+.uk-rail-pin[aria-pressed='true'] { color: var(--uk-text); }
+.uk-rail-pin .uk-icon { width: 16px; height: 16px; }
+/* What it opened from its side: beside its wide panel, its whole height — part of it (kept in view with it as the page scrolls). */
+.uk-popover.uk-rail-flyout { position: absolute; top: 0; bottom: 0; left: var(--uk-rail-wide); z-index: 49; display: flex; flex-direction: column; width: min(520px, calc(100vw - var(--uk-rail-wide) - var(--uk-shell-inset, 32px))); max-height: none; overflow: hidden; border-left: 0; border-radius: 0 var(--uk-radius) var(--uk-radius) 0; transform-origin: left; animation-name: uk-flyout-in; }
+/* A catalog in it: its whole height, what it lists scrolling under its search. */
+.uk-rail-flyout > .uk-catalog { flex: 1; min-height: 0; }
+.uk-rail-flyout .uk-catalog-groups { flex: 1; min-height: 0; max-height: none; }
+.uk-popover.uk-rail-flyout[data-state='closing'] { animation-name: uk-flyout-out; }
+@keyframes uk-flyout-in { from { opacity: 0; transform: translateX(-8px); } }
+@keyframes uk-flyout-out { to { opacity: 0; transform: translateX(-8px); } }
+/* Narrow: marks only — names and tools fading as it narrows, a tab's highlight and the divider as wide as a mark's place. */
+.uk-rail .uk-tab-label { transition: opacity var(--uk-rail-ms) ease-out; }
+.uk-rail .uk-tab::before, .uk-rail .uk-tab-sep { transition: right var(--uk-rail-ms) var(--uk-rail-ease), margin var(--uk-rail-ms) var(--uk-rail-ease), background .15s, box-shadow .15s; }
+.uk-rail[data-state='collapsed'] .uk-tab-label, .uk-rail[data-state='collapsed'] .uk-tab-close { opacity: 0; pointer-events: none; }
+.uk-rail[data-state='collapsed'] .uk-tab::before { right: calc(100% - (var(--uk-rail-narrow) - 12px)); }
+.uk-rail[data-state='collapsed'] .uk-tab-sep { margin-right: calc(100% - (var(--uk-rail-narrow) - 22px)); }
+@media (prefers-reduced-motion: reduce) { .uk-rail, .uk-rail[data-state='collapsed'], .uk-rail[data-state='collapsed'] .uk-rail-panel { --uk-rail-ms: 0ms; } }
 .uk-switch { all: unset; display: inline-flex; align-items: center; gap: 10px; min-height: 24px; cursor: pointer; font-size: 13px; color: var(--uk-text); }
 .uk-switch:focus-visible { outline: 2px solid var(--uk-focus); outline-offset: 2px; border-radius: var(--uk-radius); }
 /* Off: a track that shows on its panel (not the border's colour); on: the accent. Its label is the same either way. */
@@ -358,6 +400,11 @@ export const css = `
 @keyframes uk-fade-in { from { opacity: 0; } }
 @keyframes uk-modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 .uk-region { display: flex; flex-direction: column; gap: 12px; }
+.uk-region-title { margin: 0; font-size: 15px; font-weight: 600; }
+.uk-region[data-layout="row"] { flex-direction: row; flex-wrap: wrap; }
+.uk-region[data-layout="row"] > .uk-region-title { flex-basis: 100%; }
+.uk-region[data-layout="grid"] { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.uk-region[data-layout="grid"] > .uk-region-title { grid-column: 1 / -1; }
 .uk-bar { display: flex; align-items: center; gap: 10px; }
 .uk-form { display: flex; flex-direction: column; gap: 12px; }
 .uk-form-row { display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: 12px; }
@@ -431,11 +478,13 @@ button.uk-stat:hover .uk-stat-go, button.uk-stat:focus-visible .uk-stat-go { opa
 @keyframes uk-menu-blink { 50% { background: none; } }
 @media (prefers-reduced-motion: reduce) { .uk-menu, .uk-menu[data-state='closing'], .uk-menu-item[data-chosen] { animation: none; } .uk-menu-item:active { scale: none; } }
 .uk-popover { position: fixed; z-index: 900; background: var(--uk-panel); border: 1px solid var(--uk-border); border-radius: var(--uk-radius); box-shadow: 0 10px 30px color-mix(in srgb, var(--uk-shadow) 45%, transparent); padding: 12px; }
-.uk-shell { display: flex; flex-direction: column; gap: 12px; min-height: 100%; }
+/* As tall as the window (but what is around it: --uk-shell-inset, the host's padding, 16px each way by default): its body to the foot of it, the side down there. */
+.uk-shell { --uk-shell-inset: 32px; display: flex; flex-direction: column; gap: 12px; min-height: calc(100dvh - var(--uk-shell-inset)); }
 .uk-shell-header { display: flex; align-items: center; gap: 8px; }
 .uk-shell-header-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.uk-shell-body { display: flex; align-items: flex-start; gap: 16px; min-width: 0; }
-.uk-shell-side { flex: 0 0 220px; position: sticky; top: 16px; }
+.uk-shell-body { flex: 1; display: flex; align-items: flex-start; gap: 16px; min-width: 0; }
+/* Down to the page's foot, no taller than the window (kept in view as the page scrolls); over the page (a rail peeking over it — what opens from it, a popover, stays within this layer). */
+.uk-shell-side { flex: none; align-self: stretch; position: sticky; top: calc(var(--uk-shell-inset) / 2); z-index: 20; display: flex; max-height: calc(100dvh - var(--uk-shell-inset)); }
 .uk-shell-side:empty { display: none; }
 .uk-shell-main { flex: 1; min-width: 0; }
 .uk-shell-notifications { position: fixed; inset: auto 16px 16px auto; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; display: flex; flex-direction: column; gap: 8px; width: min(420px, calc(100vw - 32px)); z-index: 800; }

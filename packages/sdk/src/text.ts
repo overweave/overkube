@@ -23,7 +23,7 @@ export interface LabelRef {
 /** What is said: as it is (a string), or by a key (t()). */
 export type Label = string | LabelRef;
 
-/** A key: its addon's id, then its parts (images.tag, core.table.count). */
+/** A key: its addon's id, then its parts (images.tag, core.kind.table.count). */
 export const KEY = /^[a-z][a-z0-9-]*(\.[a-zA-Z0-9-]+)+$/;
 
 const CATEGORIES = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);

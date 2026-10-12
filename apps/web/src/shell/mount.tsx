@@ -1,6 +1,8 @@
 import { hashRouter, notifications, Shell } from '@overkube/shell';
 import { css, Notice } from '@overkube/uikit';
 import type { Registry } from '@overweave/core';
+import { mountSlotOverlay } from '@overweave/ui/overlay';
+import { slotTrace } from '@overweave/ui/preact';
 import { render } from 'preact';
 import type { AddonHost, AddonStatus } from '../host/addons.ts';
 import type { ClusterAccess } from '../host/cluster.ts';
@@ -10,6 +12,8 @@ export interface Page {
   registry: Registry<any>;
   host: AddonHost;
   cluster: ClusterAccess;
+  /** The slots over the page (where each is, the empty ones): its overlay open, ctrl+shift+s to close it. */
+  debug?: boolean;
 }
 
 /** The kit's styles, once per document. */
@@ -38,7 +42,8 @@ function CoreDown({ host }: { host: AddonHost }) {
  * The page drawn into an element: the shell (the frame, the route at the
  * hash) over the registry and the cluster, what addons tell the user, their
  * failures told as their own — and, should the core not run, that said.
- * How it looks is the shell's (the Appearance). What it gives back takes it away.
+ * How it looks is the shell's (the Appearance); debugged, the slots over
+ * it. What it gives back takes it away.
  */
 export function mount(element: HTMLElement, page: Page, told = notifications()): () => void {
   const doc = element.ownerDocument;
@@ -47,6 +52,8 @@ export function mount(element: HTMLElement, page: Page, told = notifications()):
   // The kit's root: its tokens' defaults; the shell sets the theme's over them (dark, light, as the system is).
   element.classList.add('uk-root');
   const router = hashRouter(win);
+  const trace = page.debug ? slotTrace() : undefined;
+  const overlay = trace && mountSlotOverlay({ trace, open: true, parent: doc.body });
   render(
     <>
       <CoreDown host={page.host} />
@@ -55,6 +62,7 @@ export function mount(element: HTMLElement, page: Page, told = notifications()):
         cluster={page.cluster.components()}
         router={router}
         notifications={told}
+        trace={trace}
         onFailure={(definition, field, error) => page.host.failed(definition, field, error)}
       />
     </>,
@@ -62,6 +70,7 @@ export function mount(element: HTMLElement, page: Page, told = notifications()):
   );
   return () => {
     render(null, element);
+    overlay?.stop();
     router.close();
     told.close();
   };

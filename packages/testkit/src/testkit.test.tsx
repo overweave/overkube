@@ -241,7 +241,7 @@ describe('drawing', () => {
     const Count = () => <b>{useCollection(Pod).items.value.size} pods</b>;
     w.addon(defineAddon({ id: 'pods', title: 'Pods', setup: ({ contributor }) => void contributor.add('Fill', 'pods.count', section({ kinds: [Pod], render: Count })) }));
     const pod = w.cluster.get(Pod, 'a', 'default');
-    expect(renderSlot(w, slots.object.sections, { kind: Pod, object: pod as never }).text()).toBe('2 pods');
-    expect(renderSlot(w, slots.object.sections, { kind: Deployment, object: make(Deployment) }).text()).toBe('');
+    expect(renderSlot(w, slots.resource.view.sections, { kind: Pod, object: pod as never }).text()).toBe('2 pods');
+    expect(renderSlot(w, slots.resource.view.sections, { kind: Deployment, object: make(Deployment) }).text()).toBe('');
   });
 });

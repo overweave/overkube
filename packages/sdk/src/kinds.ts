@@ -3,6 +3,9 @@ import { TOKENS, type Tokens } from '@overkube/uikit';
 import { defineKind, type Problem } from '@overweave/core';
 import { uiKinds } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
+import type { Notification } from './addon.ts';
+import type { Say } from './say.ts';
+import type { NavTabProps, ResourceProps } from './slots.ts';
 import { canonicalLocale, isLabel, isPhrase, KEY, type Label, type Phrase } from './text.ts';
 
 /*
@@ -54,8 +57,10 @@ const mapOf =
 const target: Check = (v) => typeof v === 'object' && v !== null && !Array.isArray(v) && ((v as Target).kinds === undefined || texts((v as Target).kinds));
 const sort: Check = (v) =>
   typeof v === 'object' && v !== null && text((v as { column?: unknown }).column) && [undefined, true, false].includes((v as { descending?: unknown }).descending as never);
-/** A region's name: a slot's part, so no ":" (page:<page>:<region>); its title, a label. */
-const regions: Check = (v) => Array.isArray(v) && v.every((r) => typeof r?.name === 'string' && /^[^:]+$/.test(r.name) && (r.title === undefined || isLabel(r.title)));
+/** A region's name: its slot's last part (page.<page>.<region>), so no "." or ":"; its title, a label. */
+const regions: Check = (v) => Array.isArray(v) && v.every((r) => typeof r?.name === 'string' && /^[^.:]+$/.test(r.name) && (r.title === undefined || isLabel(r.title)));
+/** A path: from the root, its parts fixed or :named, a last * taking the rest (no query: that is the page's own). */
+const path: Check = (v) => typeof v === 'string' && /^\/([^/*:?]+\/|:[\w-]+\/)*([^/*:?]*|:[\w-]+|\*)$/.test(v);
 
 /** A validation of some fields: each, if given, as it should be (its code: what it should be). */
 function fields(checks: Record<string, [Check, string]>) {
@@ -171,7 +176,7 @@ export const TableView = defineKind<TableViewSpec>()('TableView', {
   merge: { maps: ['hidden', 'widths'] },
 });
 
-/** A region of a page: a slot of its own, page:<page>:<region> (its name: no ":"). */
+/** A region of a page: a slot of its own, page.<page>.<region> (its name: no "." or ":"), drawn under what fills the page when something fills it. */
 export interface Region {
   name: string;
   title?: Label;
@@ -179,20 +184,51 @@ export interface Region {
   layout?: 'stack' | 'row' | 'grid';
 }
 
-/** A page: its regions are slots others fill (slots.page). */
+/**
+ * Where a page is, what its slots (and its regions') are given: the path's
+ * parameters, what its * took, the page's own path (its query too, but what
+ * is opened over it: that is the frame's); the kind its
+ * :kind names, found (none: not served, or not yet known — what fills the
+ * page says so).
+ */
+export interface PageProps {
+  params: Readonly<Record<string, string>>;
+  rest: string;
+  path: string;
+  kind?: KindInfo;
+}
+
+/**
+ * A page of the dashboard at a path: '/k/:kind' (KIND_PAGE: a :kind is a
+ * kind's ref), '/certs/*' (an addon's own, its pages under it:
+ * usePageProps().rest). Empty but for what fills it: its slot (page.<name>,
+ * slots.page(name)), in order — then its regions, each a slot of its own.
+ * Its name is its addon's, as any (cert-manager.certs); its path its own
+ * (none patches it: links to it stay links). Its slots are declared by its
+ * owner (Slot page.<name>, page.<name>.<region>) for the user to arrange
+ * what is in them — the core declares its own. The most specific path takes
+ * a path (more fixed parts first); between equals, the stronger layer's, by
+ * order, then name. A title: it is shown where pages are (the navigation),
+ * as a kind is — pinned (kept at hand: a tab), hidden (not listed). A
+ * resource opened (?open=) is drawn over any page.
+ */
 export interface PageSpec {
-  title: Label;
-  /** Shown as a tab of its own. */
-  tab?: boolean;
+  path: string;
+  title?: Label;
   icon?: string;
   order?: number;
-  regions: Region[];
+  /** Kept at hand: a tab of its own. */
+  pinned?: boolean;
+  /** Not listed in the navigation (still there at its path). */
+  hidden?: boolean;
+  regions?: Region[];
 }
 
 export const Page = defineKind<PageSpec>()('Page', {
-  required: ['title', 'regions'],
-  validate: fields({ ...looks, tab: [flag, 'notAFlag'], regions: [regions, 'notRegions'] }),
-  patchRights: { title: configure, tab: configure, icon: configure, order: configure, regions: configure },
+  required: ['path'],
+  createRight: behaviour,
+  validate: fields({ ...looks, path: [path, 'notAPath'], pinned: [flag, 'notAFlag'], hidden: [flag, 'notAFlag'], regions: [regions, 'notRegions'] }),
+  patchRights: { title: configure, icon: configure, order: configure, pinned: configure, hidden: configure, regions: configure },
   merge: { lists: { regions: { key: 'name' } } },
 });
 
@@ -221,8 +257,19 @@ export const Action = defineKind<ActionSpec>()('Action', {
  * this one: declare module '@overkube/sdk').
  */
 export interface MenuSubjects {
-  /** A tab of the navigation: where it leads, whether it is pinned, whether the page is there. */
-  'nav.tab': { key: string; title: string; path: string; kind?: KindInfo; pinned: boolean; current: boolean };
+  'resource.context': ResourceContext;
+  'nav.tabs.tab.context': NavTabContext;
+}
+
+/** A resource of the cluster, its menu opened (a table's row; one opened over the page: opened): its kind, the object. */
+export interface ResourceContext extends ResourceProps {
+  opened?: boolean;
+}
+
+/** A tab of the navigation, its menu opened: as it is drawn (where it leads, pinned, the page there), and what can be done to it — pinned or not, closed (focus kept on it, or given to its neighbour). */
+export interface NavTabContext extends NavTabProps {
+  pin(on: boolean): void;
+  close(): void;
 }
 export type MenuSubject = keyof MenuSubjects & string;
 
@@ -247,7 +294,15 @@ export interface MenuItemSpec {
   // biome-ignore lint/suspicious/noExplicitAny: given its subject's (menuItem() types it).
   when?: (subject: any) => boolean;
   // biome-ignore lint/suspicious/noExplicitAny: given its subject's (menuItem() types it).
-  run: (subject: any) => Promise<unknown> | unknown;
+  run: (subject: any, page: MenuPage) => Promise<unknown> | unknown;
+}
+
+/** What a menu's item may do on the page: where it is, go elsewhere, tell the user (in the page's language: say). */
+export interface MenuPage {
+  readonly path: string;
+  navigate(to: string): void;
+  notify(notification: Notification): string;
+  say: Say;
 }
 
 export const MenuItem = defineKind<MenuItemSpec>()('MenuItem', {
@@ -277,14 +332,15 @@ export const MenuItem = defineKind<MenuItemSpec>()('MenuItem', {
   },
 });
 
-/** How the page's navigation is drawn: as tabs across the top, or a menu down the side. One, named 'default'. */
+/** How the page's navigation is drawn: as tabs across the top, or down the side — there collapsed (marks only) or pinned (wide) at first. One, named 'default'. */
 export interface NavViewSpec {
   mode?: 'tabs' | 'side';
+  side?: 'collapsed' | 'pinned';
 }
 
 export const NavView = defineKind<NavViewSpec>()('NavView', {
-  validate: fields({ mode: [(v) => v === 'tabs' || v === 'side', 'notAMode'] }),
-  patchRights: { mode: configure },
+  validate: fields({ mode: [(v) => v === 'tabs' || v === 'side', 'notAMode'], side: [(v) => v === 'collapsed' || v === 'pinned', 'notASide'] }),
+  patchRights: { mode: configure, side: configure },
 });
 
 /**
@@ -322,38 +378,6 @@ export const Appearance = defineKind<AppearanceSpec>()('Appearance', {
   patchRights: { theme: configure, mode: configure },
 });
 
-/** What a route's render is given: the path's parameters (:kind), what its * took, the whole path. */
-export interface RouteProps {
-  params: Readonly<Record<string, string>>;
-  rest: string;
-  path: string;
-}
-
-/**
- * A page of the dashboard at a path: '/k/:kind', '/certs/*' (an addon's
- * own, its pages under it: useRoute().rest). The most specific path takes a
- * path (more fixed parts first); between equals, by order, then name. A
- * title: it is shown where pages are (the navigation).
- */
-export interface RouteSpec {
-  path: string;
-  title?: Label;
-  icon?: string;
-  order?: number;
-  /** Drawn with RouteProps. */
-  render: PreactComponent;
-}
-
-/** A path: from the root, its parts fixed or :named, a last * taking the rest. */
-const path: Check = (v) => typeof v === 'string' && /^\/([^/*:]+\/|:[\w-]+\/)*([^/*:]*|:[\w-]+|\*)$/.test(v);
-
-export const Route = defineKind<RouteSpec>()('Route', {
-  required: ['path', 'render'],
-  createRight: behaviour,
-  validate: fields({ ...looks, path: [path, 'notAPath'], render: [fn, 'notAFunction'] }),
-  patchRights: { path: behaviour, render: behaviour, title: configure, icon: configure, order: configure },
-});
-
 /**
  * What is said in a language, of one addon's keys: named <locale>:<addon>
  * (pl:images, de:core) — its language in its name, its keys that addon's
@@ -385,7 +409,7 @@ export const Language = defineKind<LanguageSpec>()('Language', {
 });
 
 /** The dashboard's own kinds (the UI's beside them). */
-export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, MenuItem, Route, NavView, Theme, Appearance, Messages, Language] as const;
+export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, MenuItem, NavView, Theme, Appearance, Messages, Language] as const;
 
 /** Every kind the dashboard has: its registry is made of them. */
 export const kubeKinds = [ui.Slot, ui.Fill, ui.Wrap, ...kubeOwnKinds] as const;

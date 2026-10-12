@@ -29,7 +29,7 @@
     "@overkube/shell": "0.1.0",
     "@overkube/testkit": "0.1.0",
     "@overkube/uikit": "0.1.0",
-    "@overweave/storybook": "0.2.0"
+    "@overweave/storybook": "0.4.0"
   },
   "peerDependencies": {
     "@preact/preset-vite": "^2.10.6",

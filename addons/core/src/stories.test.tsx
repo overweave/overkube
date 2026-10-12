@@ -10,7 +10,8 @@ afterEach(cleanup);
 const said: Record<string, string> = {
   Table: 'web-1',
   AnObject: 'Pod shop/web-1',
-  SideMenu: 'Workloads',
+  // The tabs down the side: the one the story is at among them.
+  SideMenu: 'Deployments',
   Forbidden: 'pods cannot be had: Forbidden',
   Light: 'web-2',
   Loading: 'Loading pods',

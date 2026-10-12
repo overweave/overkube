@@ -63,6 +63,40 @@ describe('TabLinks', () => {
     expect(document.activeElement).toBe(link('Nodes'));
   });
 
+  it('keeps a tab drawn by its own render (its class its own) among the tabs focus goes to — and only the tabs (a keyed element in one is no tab)', async () => {
+    const { link, user } = mount({
+      render: (tab, { attrs, close }) => (
+        <a {...attrs} class="mine">
+          {tab.label}
+          <span data-key="badge" />
+          {close}
+        </a>
+      ),
+    });
+    link('Nodes').focus();
+    await user.keyboard('{Delete}');
+    expect(document.activeElement).toBe(link('Jobs'));
+  });
+
+  it('goes down a side: each its mark (its icon, else its name’s first letter), moved by Alt and the arrows up and down', () => {
+    const { link } = mount({
+      orientation: 'vertical',
+      sections: [
+        { id: 'pinned', tabs: [{ ...PINNED[0], icon: 'cube' }], draggable: true },
+        { id: 'open', tabs: OPEN, draggable: true },
+      ],
+    });
+    const list = link('Pods').closest('.uk-tab-list') as HTMLElement;
+    expect([list.dataset.orientation, link('Pods').querySelector('.uk-tab-mark svg') !== null, link('Jobs').querySelector('.uk-tab-mark')?.textContent]).toEqual([
+      'vertical',
+      true,
+      'J',
+    ]);
+    expect(link('Nodes').getAttribute('aria-keyshortcuts')).toBe('Delete Alt+ArrowUp Alt+ArrowDown');
+    cleanup();
+    expect(mount().link('Nodes').querySelector('.uk-tab-mark')).toBeNull();
+  });
+
   it('has no tools with nobody to tell, and is followed as a link', () => {
     const { link, told } = mount({ onClose: undefined });
     expect(link('Jobs').querySelector('.uk-tab-close')).toBeNull();

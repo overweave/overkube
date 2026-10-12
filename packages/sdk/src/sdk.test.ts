@@ -5,7 +5,7 @@ import { mount, renderSlot } from '@overweave/testkit/preact';
 import { signal } from '@preact/signals';
 import { h } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
-import { action, type Cluster, column, defineAddon, kindMatcher, kubeOwnKinds, parseSlot, section, slots, standingOf, takes, tile, ui } from './index.ts';
+import { action, type Cluster, column, defineAddon, kindMatcher, kubeOwnKinds, section, slots, standingOf, takes, tile, ui, wrap } from './index.ts';
 import { KubeProvider, useCollection } from './preact/index.ts';
 
 /*
@@ -47,7 +47,7 @@ describe('the kinds, layered', () => {
     builtin.patch('TableView', Pod.id, { widths: { name: 200, age: 80 }, hidden: { node: true } });
     user.patch('TableView', Pod.id, { widths: { age: 60 }, hidden: { node: false } });
     expect(w.get('TableView', Pod.id)?.spec).toMatchObject({ widths: { name: 200, age: 60 }, hidden: { node: false } });
-    core.add('Page', 'overview', { title: 'Overview', regions: [{ name: 'main' }, { name: 'side' }] });
+    core.add('Page', 'overview', { path: '/overview', title: 'Overview', regions: [{ name: 'main' }, { name: 'side' }] });
     builtin.patch('Page', 'overview', { regions: [{ name: 'side', title: 'At a glance' }] });
     expect(w.get('Page', 'overview')?.spec.regions).toEqual([{ name: 'main' }, { name: 'side', title: 'At a glance' }]);
   });
@@ -90,7 +90,7 @@ describe('who may add what', () => {
     assertResult(b.add('TableView', Pod.id, { widths: { name: 'wide' } }), 'rejected', ['invalid']);
     assertResult(b.add('TableView', Deployment.id, { sort: { column: 'age', descending: 'yes' } }), 'rejected', ['invalid']);
     assertResult(b.add('Action', 'a1', { target: {}, title: 't', run: 'go' }), 'rejected', ['invalid']);
-    assertResult(b.add('Page', 'p1', { title: 'P', regions: [{ name: 'a:b' }] }), 'rejected', ['invalid']);
+    assertResult(b.add('Page', 'p1', { path: '/p1', title: 'P', regions: [{ name: 'a.b' }] }), 'rejected', ['invalid']);
     assertResult(b.add('KindView', Pod.id, { title: 'Pods', health: 'ok' }), 'rejected', ['invalid']);
   });
 });
@@ -106,14 +106,23 @@ describe('fills chosen by their kinds', () => {
     builtin.add('Fill', 'any.labels', section({ title: 'Labels', order: 2, render: () => h('b', null, 'labels') }));
     const pod = { apiVersion: 'v1', kind: 'Pod', metadata: { name: 'web' } };
     const deployment = { apiVersion: 'apps/v1', kind: 'Deployment', metadata: { name: 'web' } };
-    expect(renderSlot(w, slots.object.sections, { kind: Pod, object: pod }, { matcher: kindMatcher }).text()).toBe('containers of weblabels');
-    expect(renderSlot(w, slots.object.sections, { kind: Deployment, object: deployment }, { matcher: kindMatcher }).text()).toBe('labels');
+    expect(renderSlot(w, slots.resource.view.sections, { kind: Pod, object: pod }, { matcher: kindMatcher }).text()).toBe('containers of weblabels');
+    expect(renderSlot(w, slots.resource.view.sections, { kind: Deployment, object: deployment }, { matcher: kindMatcher }).text()).toBe('labels');
   });
 
   it('puts a tile on a page’s region', () => {
     const { w, builtin } = dashboard();
     builtin.add('Fill', 'kubernetes.nodes', tile('overview', 'main', { title: 'Nodes', render: () => h('p', null, '3 nodes') }));
-    expect(renderSlot(w, slots.page('overview', 'main'), {}).text()).toBe('3 nodes');
+    expect(renderSlot(w, slots.page('overview', 'main'), { params: {}, rest: '', path: '/overview' }).text()).toBe('3 nodes');
+  });
+
+  it('places a tile, a section and a wrap as fills are placed, for some kinds (a target) or every one', () => {
+    const render = () => null;
+    expect(tile('kind', 'side', { kinds: [Pod], before: 'core.x', render })).toMatchObject({ slot: 'page.kind.side', before: 'core.x', target: { kinds: [Pod.id] } });
+    expect(tile('kind', 'side', { render })).not.toHaveProperty('target');
+    expect(section({ kinds: [Pod], before: 'core.resource.view.yaml', render })).toMatchObject({ before: 'core.resource.view.yaml', target: { kinds: [Pod.id] } });
+    expect(wrap('core.name', { kinds: [Pod], order: 0, render })).toMatchObject({ wraps: 'core.name', order: 0, target: { kinds: [Pod.id] } });
+    expect(wrap('core.name', { render })).toEqual({ wraps: 'core.name', render });
   });
 });
 
@@ -142,9 +151,10 @@ describe('the usual definitions', () => {
     expect([takes(none.target, Pod), takes(column({ header: 'All', value: () => 1 }).target, Pod)]).toEqual([false, true]);
   });
 
-  it('a page’s region is a slot whose name reads back; names with ":" are refused', () => {
-    expect(parseSlot(slots.page('overview', 'main').name)).toEqual({ page: 'overview', region: 'main' });
-    expect(() => slots.page('a:b', 'c')).toThrow(/no ":"/);
+  it('a page and its region are slots of their own: a page named as its addon names it, a region’s name with no "." or ":"', () => {
+    expect([slots.page('cert-manager.certs').name, slots.page('cert-manager.certs', 'health').name]).toEqual(['page.cert-manager.certs', 'page.cert-manager.certs.health']);
+    expect(() => slots.page('')).toThrow(/not empty/);
+    expect(() => slots.page('a', 'b.c')).toThrow(/no "\." or ":"/);
     expect(() => slots.page('a', '')).toThrow(/not empty/);
   });
 });

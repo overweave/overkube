@@ -22,7 +22,7 @@ const shop = (c: Parameters<NonNullable<Parameters<typeof KubeStory>[0]['cluster
 
 export const Table = () => <KubeStory addons={[core]} path="/k/pods.v1" cluster={shop} />;
 
-export const AnObject = () => <KubeStory addons={[core]} path="/k/pods.v1/shop/web-1" cluster={shop} />;
+export const AnObject = () => <KubeStory addons={[core]} path="/k/pods.v1?open=pods.v1/shop/web-1" cluster={shop} />;
 
 export const SideMenu = () => <KubeStory addons={[core]} path="/k/deployments.v1.apps" cluster={shop} user={(u) => u.patch('NavView', 'default', { mode: 'side' })} />;
 
@@ -83,7 +83,7 @@ const polish = defineAddon({
         'core.column.namespace': 'Przestrzeń nazw',
         'core.column.age': 'Wiek',
         'core.nav.kinds': 'Rodzaje',
-        'core.nav.all': 'Wszystkie rodzaje',
+        'core.nav.picker.all': 'Wszystkie rodzaje',
       },
     }),
 });

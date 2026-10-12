@@ -1,9 +1,9 @@
-import type { RouteProps, RouteSpec } from '@overkube/sdk';
+import type { PageProps, PageSpec } from '@overkube/sdk';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 
 /*
- * Which Route takes a path: the most specific, part by part — a fixed part
+ * Which Page takes a path: the most specific, part by part — a fixed part
  * over a :parameter over a * — and between equals, the one whose path is
  * said by the stronger layer (an addon's over the core's, the user's over
  * all), then by order, then name. Its parameters read back (decoded); a
@@ -11,8 +11,9 @@ import { inOrder } from '@overweave/ui';
  */
 
 export interface Matched {
-  route: Definition<RouteSpec>;
-  props: RouteProps;
+  page: Definition<PageSpec>;
+  /** Its props, but the kind (the page finds it). */
+  props: Omit<PageProps, 'kind'>;
 }
 
 interface Pattern {
@@ -26,9 +27,9 @@ function patternOf(path: string): Pattern {
   return { parts: rest ? parts.slice(0, -1) : parts, rest };
 }
 
-/** How specific a pattern is, part by part: fixed 3, :parameter 2, * 1 (none after: 0). */
+/** How specific a pattern is, part by part: fixed 3, :parameter 2, none after 0, * -1 (a path that ends there is the exact one's, not the rest's). */
 function specificity(p: Pattern): number[] {
-  return [...p.parts.map((x) => (x.startsWith(':') ? 2 : 3)), ...(p.rest ? [1] : [])];
+  return [...p.parts.map((x) => (x.startsWith(':') ? 2 : 3)), ...(p.rest ? [-1] : [])];
 }
 
 function compare(a: number[], b: number[]): number {
@@ -36,8 +37,8 @@ function compare(a: number[], b: number[]): number {
   return 0;
 }
 
-/** The priority of whoever says a route's path. */
-const layerOf = (route: Definition<RouteSpec>) => route.provenanceOf(['path'])?.priority ?? 0;
+/** The priority of whoever says a page's path. */
+const layerOf = (page: Definition<PageSpec>) => page.provenanceOf(['path'])?.priority ?? 0;
 
 function decode(part: string): string | undefined {
   try {
@@ -48,7 +49,7 @@ function decode(part: string): string | undefined {
 }
 
 /** A path's parameters by a pattern, or undefined: it does not take it. */
-export function matchPath(pattern: string, path: string): Omit<RouteProps, 'path'> | undefined {
+export function matchPath(pattern: string, path: string): Omit<PageProps, 'path' | 'kind'> | undefined {
   const p = patternOf(pattern);
   const parts = path.split('?')[0].split('/').filter(Boolean);
   if (parts.length < p.parts.length || (!p.rest && parts.length !== p.parts.length)) return undefined;
@@ -63,12 +64,12 @@ export function matchPath(pattern: string, path: string): Omit<RouteProps, 'path
   return { params, rest: p.rest ? `/${parts.slice(p.parts.length).join('/')}` : '' };
 }
 
-/** The Route that takes a path, of these. */
-export function matchRoute(routes: readonly Definition<RouteSpec>[], path: string): Matched | undefined {
-  const ranked = inOrder(routes).sort((a, b) => compare(specificity(patternOf(a.spec.path)), specificity(patternOf(b.spec.path))) || layerOf(b) - layerOf(a));
-  for (const route of ranked) {
-    const got = matchPath(route.spec.path, path);
-    if (got) return { route, props: { ...got, path } };
+/** The Page that takes a path, of these. */
+export function matchPage(pages: readonly Definition<PageSpec>[], path: string): Matched | undefined {
+  const ranked = inOrder(pages).sort((a, b) => compare(specificity(patternOf(a.spec.path)), specificity(patternOf(b.spec.path))) || layerOf(b) - layerOf(a));
+  for (const page of ranked) {
+    const got = matchPath(page.spec.path, path);
+    if (got) return { page, props: { ...got, path } };
   }
   return undefined;
 }

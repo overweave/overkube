@@ -2,19 +2,22 @@
  * What overkube's addons are written with: the dashboard's kinds over
  * overweave (KindView, Category, Column, TableView, Page, Action, MenuItem
  * and the UI's Slot, Fill, Wrap), its slots, the usual definitions (column,
- * section, action, menuItem, tile), defineAddon and what an addon is given — its
+ * section, action, menuItem, tile, wrap), defineAddon and what an addon is given — its
  * contributor and the cluster. Components: '@overkube/sdk/preact'.
  *
  * Who draws what: the shell (@overkube/shell) the frame — its header,
- * navigation, overlay, menu and notifications slots, the Route at the path; the
- * core addon the rest, each a default another's takes the place of — a
- * kind's page (kind.page: its table — Column, TableView, kind.bar), an
- * object over it (object.view: object.*, Action), the navigation
- * (KindView, Category, NavView), context menus (menu: MenuItem, menuOf), how it looks (Appearance: a Theme, dark or
- * light). An addon's own components are drawn in the kit's tokens
- * (var(--uk-accent), var(--uk-panel)…), never colours of their own: so a
- * theme reaches them too. Page (its regions, tile) and the picker's
- * rows are declared, not drawn yet.
+ * navigation, overlay, menu and notifications slots; the Page at the path
+ * (its slot, page.<name>, empty but for what fills it; its regions; the
+ * kind its :kind names; a resource opened over it, ?open=); the core addon
+ * the rest, each a default another's takes the place of — the start
+ * (page.home), a kind's page (page.kind: its table among what is on it), a
+ * kind's table wherever drawn (kind.table, <KindTable>: Column, TableView,
+ * kind.table.*), a resource opened (resource.view and its parts, Action),
+ * the navigation (KindView, Category, NavView; a Page with a title),
+ * context menus (menu: MenuItem, menuOf), how it looks (Appearance: a
+ * Theme, dark or light). An addon's own components are drawn in the kit's
+ * tokens (var(--uk-accent), var(--uk-panel)…), never colours of their own:
+ * so a theme reaches them too.
  */
 
 export {
@@ -34,7 +37,7 @@ export {
   standingOf,
 } from './addon.ts';
 export type { Cluster, ComponentCluster, Discovery, ObjectChange } from './cluster.ts';
-export { action, column, menuItem, section, tile } from './helpers.ts';
+export { action, column, menuItem, section, tile, wrap } from './helpers.ts';
 export {
   Action,
   type ActionSpec,
@@ -55,21 +58,22 @@ export {
   type LanguageSpec,
   MenuItem,
   type MenuItemSpec,
+  type MenuPage,
   type MenuSubject,
   type MenuSubjects,
   Messages,
   type MessagesSpec,
+  type NavTabContext,
   NavView,
   type NavViewSpec,
   Page,
+  type PageProps,
   type PageSpec,
   PENDING,
   type Region,
+  type ResourceContext,
   RIGHTS,
   type Right,
-  Route,
-  type RouteProps,
-  type RouteSpec,
   TableView,
   type TableViewSpec,
   type Target,
@@ -77,9 +81,22 @@ export {
   type ThemeSpec,
   ui,
 } from './kinds.ts';
-export { kindOfRef, kindPath, kindRef, objectPathOf } from './links.ts';
+export { closeIn, KIND_PAGE, kindOfRef, kindPath, kindRef, kindRefIn, openedIn, openIn } from './links.ts';
 export { DANGER, MENU_GROUPS, type MenuGroupOf, menuOf } from './menu.ts';
 export { type MessagesOf, messagesName, type Params, type Say, sayer } from './say.ts';
-export { type KindProps, type ListState, type ObjectProps, type ObjectRef, parseSlot, slots } from './slots.ts';
+export {
+  type KindProps,
+  type KindTableProps,
+  type ListState,
+  type MissingState,
+  type NavPickerItemProps,
+  type NavPickerPartProps,
+  type NavPickerProps,
+  type NavTabProps,
+  type NavTabsProps,
+  type ResourceProps,
+  type ResourceRef,
+  slots,
+} from './slots.ts';
 export { forKinds, kindMatcher, takes } from './target.ts';
 export { canonicalLocale, isLabel, isPhrase, type Label, type LabelRef, type Phrase, type PluralForms, t } from './text.ts';

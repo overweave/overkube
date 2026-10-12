@@ -22,6 +22,12 @@ export const ICONS = {
   copy: 'copy',
   grid: 'layout-grid',
   puzzle: 'puzzle',
+  daemon: 'hierarchy-2',
+  run: 'player-play',
+  folder: 'folder',
+  activity: 'activity',
+  packages: 'packages',
+  volume: 'database-export',
   // Controls
   search: 'search',
   plus: 'plus',

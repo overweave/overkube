@@ -3,8 +3,8 @@ import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { activeElement, focusable } from '../lib/focus';
 
 /**
- * Something open over the page beside what opened it (its anchor): fixed to
- * the window, so no container of the host page cuts it; kept inside the window.
+ * Something open over the page beside what opened it (its anchor): under it
+ * — or where its place puts it (placed: false, its CSS's) — fixed to the window, so no container of the host page cuts it; kept inside the window.
  * Escape or a click outside closes it, and focus goes back to what opened
  * it. The first field (or button) in it takes focus when it opens.
  */
@@ -12,6 +12,7 @@ export function Popover({
   onClose,
   anchor,
   align = 'start',
+  placed = true,
   matchWidth = false,
   label,
   state = 'open',
@@ -21,6 +22,8 @@ export function Popover({
   onClose: () => void;
   anchor: { current: HTMLElement | null };
   align?: 'start' | 'end';
+  /** Placed under its anchor (the default); false: where its CSS puts it (a side's flyout), focus, Escape and a click outside as ever. */
+  placed?: boolean;
   /** At least as wide as the anchor (a select's list). */
   matchWidth?: boolean;
   label?: string;
@@ -35,7 +38,11 @@ export function Popover({
     const place = () => {
       const a = anchor.current?.getBoundingClientRect();
       const el = box.current;
-      if (!a || !el) return;
+      if (!el) return;
+      if (!placed || !a) {
+        el.style.visibility = placed ? 'hidden' : 'visible';
+        return;
+      }
       if (matchWidth) el.style.minWidth = `${a.width}px`;
       const width = el.offsetWidth;
       const left = align === 'end' ? a.right - width : a.left;
@@ -50,7 +57,7 @@ export function Popover({
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [anchor, align, matchWidth]);
+  }, [anchor, align, placed, matchWidth]);
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
@@ -62,7 +69,8 @@ export function Popover({
     const arm = setTimeout(() => {
       armed = true;
     });
-    const outside = (e: Event) => armed && root && !e.composedPath().includes(root) && close.current();
+    // Not a press on what opened it either (it closes it itself: no closing, then opening again).
+    const outside = (e: Event) => armed && root && !e.composedPath().some((t) => t === root || t === anchor.current) && close.current();
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();

@@ -30,7 +30,7 @@ export function Menu() {
       danger: d.spec.danger,
       onSelect: () => {
         try {
-          Promise.resolve(d.spec.run(menu.subject)).catch((e) => page.report(d, 'run', e));
+          Promise.resolve(d.spec.run(menu.subject, { path: page.path.peek(), navigate: page.navigate, notify: page.notify, say })).catch((e) => page.report(d, 'run', e));
         } catch (e) {
           page.report(d, 'run', e);
         }

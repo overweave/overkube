@@ -18,8 +18,8 @@
     "@overkube/sdk": "0.1.0",
     "@overkube/shell": "0.1.0",
     "@overkube/uikit": "0.1.0",
-    "@overweave/core": "0.2.0",
-    "@overweave/ui": "0.2.0",
+    "@overweave/core": "0.4.0",
+    "@overweave/ui": "0.4.0",
     "@preact/signals": "2.11.2",
     "preact": "10.29.8"
   },

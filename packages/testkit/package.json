@@ -30,7 +30,7 @@
     "@overkube/runtime": "0.1.0",
     "@overkube/sdk": "0.1.0",
     "@overkube/shell": "0.1.0",
-    "@overweave/testkit": "0.2.0"
+    "@overweave/testkit": "0.4.0"
   },
   "peerDependencies": {
     "@preact/signals": "^2.11.2",

@@ -21,15 +21,28 @@ export { Select } from './forms/Select';
 export { type FormSetting, SettingsForm } from './forms/SettingsForm';
 export { Switch } from './forms/Switch';
 export { Section } from './layout/Section';
+export { LEAVE_MS, PEEK_MS, SIDE_RAIL_LABELS, SideRail, type SideRailLabels, type SideRailProps, type SideRailState } from './layout/SideRail';
+export { copyText } from './lib/clipboard';
 export type { Level } from './lib/level';
 export { EXIT_MS, usePresence } from './lib/motion';
 export { keepHidden } from './lib/order';
 export { type SortableOptions, useSortable } from './lib/sortable';
 export { toYaml } from './lib/yaml';
-export { Catalog, type CatalogGroup, type CatalogItem, type CatalogProps } from './navigation/Catalog';
+export {
+  Catalog,
+  CatalogBox,
+  type CatalogGroup,
+  CatalogGroups,
+  type CatalogItem,
+  type CatalogItemParts,
+  type CatalogProps,
+  CatalogSearch,
+  CatalogTop,
+} from './navigation/Catalog';
 export { NavList, type NavListGroup, type NavListItem, type NavListProps } from './navigation/NavList';
 export { TAB_LABELS, Tab, type TabLabels, type TabProps } from './navigation/Tab';
-export { type TabLink, TabLinks, type TabLinksProps } from './navigation/TabLinks';
+export { TabButton } from './navigation/TabButton';
+export { type TabLink, TabLinks, type TabLinksProps, TabMark, type TabParts } from './navigation/TabLinks';
 export { closeFocused, keepFocused } from './navigation/TabStrip';
 export { type TabItem, type TabSection, Tabs, type TabsProps } from './navigation/Tabs';
 export { closeTab, moveTab, nextTab, openTab, pinTab, type TabLists } from './navigation/tabState';

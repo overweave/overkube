@@ -60,6 +60,11 @@ describe('Popover: where it is', () => {
     expect(mount({ align: 'end' }).popover().style.left).toBe(`${500 - 200}px`);
   });
 
+  it('is left where its CSS puts it, placed so (a side’s flyout): shown at once, nothing set of its place', () => {
+    const p = mount({ placed: false }).popover();
+    expect([p.style.visibility, p.style.top, p.style.left]).toEqual(['visible', '', '']);
+  });
+
   it('is kept inside the window, 8px from either edge', () => {
     anchorBox = { left: 2, right: 40, top: 0, bottom: 30, width: 38, height: 30 };
     expect(mount().popover().style.left).toBe('8px');
@@ -126,10 +131,10 @@ describe('Popover: a click outside', () => {
     expect(told).toEqual(['close']);
   });
 
-  it('takes a click on its anchor as outside (known: it closes, the anchor’s click opens it again)', async () => {
+  it('leaves a press on its anchor to the anchor (it closes it itself: not closed, then opened again)', async () => {
     const { getByText, told } = mount();
     await new Promise((r) => setTimeout(r, 5));
     fireEvent.pointerDown(getByText('open'));
-    expect(told).toEqual(['close']);
+    expect(told).toEqual([]);
   });
 });

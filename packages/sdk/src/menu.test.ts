@@ -6,7 +6,7 @@ import { menuOf } from './menu.ts';
 /* A context menu as its items make it: on its subject, shown where when says, in its groups in their order, the dangerous last. */
 
 const item = (name: string, spec: Partial<MenuItemSpec> = {}): Definition<MenuItemSpec> =>
-  ({ kind: 'MenuItem', name, spec: { on: 'nav.tab', title: name, run: () => {}, ...spec } }) as Definition<MenuItemSpec>;
+  ({ kind: 'MenuItem', name, spec: { on: 'nav.tabs.tab.context', title: name, run: () => {}, ...spec } }) as Definition<MenuItemSpec>;
 const shape = (groups: ReturnType<typeof menuOf>) => groups.map((g) => `${g.group}: ${g.items.map((d) => d.name).join(' ')}`);
 
 describe('menuOf', () => {
@@ -20,12 +20,12 @@ describe('menuOf', () => {
       item('lone'),
       item('metrics', { group: 'metrics', order: 5 }),
     ];
-    expect(shape(menuOf(items, 'nav.tab', {}))).toEqual(['open: open', 'state: pin', 'copy: copy', 'metrics: metrics', 'logs: logs', 'other: lone', 'danger: delete']);
+    expect(shape(menuOf(items, 'nav.tabs.tab.context', {}))).toEqual(['open: open', 'state: pin', 'copy: copy', 'metrics: metrics', 'logs: logs', 'other: lone', 'danger: delete']);
   });
 
   it('in a group, by order, then name', () => {
     const items = [item('b', { group: 'state' }), item('a', { group: 'state' }), item('z', { group: 'state', order: 1 })];
-    expect(shape(menuOf(items, 'nav.tab', {}))).toEqual(['state: z a b']);
+    expect(shape(menuOf(items, 'nav.tabs.tab.context', {}))).toEqual(['state: z a b']);
   });
 
   it('only its subject’s, not hidden, where when says; a group none is in, not there', () => {
@@ -35,7 +35,7 @@ describe('menuOf', () => {
       item('copy', { group: 'copy', hidden: true }),
       item('row', { on: 'table.row' }),
     ];
-    expect(shape(menuOf(items, 'nav.tab', { pinned: true }))).toEqual(['state: unpin']);
+    expect(shape(menuOf(items, 'nav.tabs.tab.context', { pinned: true }))).toEqual(['state: unpin']);
     expect(menuOf(items, 'nothing', {})).toEqual([]);
   });
 
@@ -49,7 +49,7 @@ describe('menuOf', () => {
       }),
       item('fine'),
     ];
-    expect(shape(menuOf(items, 'nav.tab', {}, (d) => failed.push(d.name)))).toEqual(['other: fine']);
+    expect(shape(menuOf(items, 'nav.tabs.tab.context', {}, (d) => failed.push(d.name)))).toEqual(['other: fine']);
     expect(failed).toEqual(['broken']);
   });
 });

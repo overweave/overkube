@@ -2,7 +2,7 @@ import { type ComponentCluster, kindMatcher } from '@overkube/sdk';
 import { KubeProvider, type OpenMenu, PageProvider, type PageValue } from '@overkube/sdk/preact';
 import type { Registry } from '@overweave/core';
 import type { Failure } from '@overweave/ui';
-import { OverweaveProvider } from '@overweave/ui/preact';
+import { OverweaveProvider, type SlotTrace } from '@overweave/ui/preact';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef } from 'preact/hooks';
@@ -86,13 +86,15 @@ export interface ShellProps extends ShellOptions {
   // biome-ignore lint/suspicious/noExplicitAny: a registry of the dashboard's kinds.
   registry: Registry<any>;
   cluster: ComponentCluster;
+  /** The slots followed, for an overlay that shows them (slotTrace()); none: nothing kept. */
+  trace?: SlotTrace;
 }
 
 /** The whole page: the registry and how its slots choose, the cluster, the page's own (ShellProvider), the frame. */
-export function Shell({ registry, cluster, ...options }: ShellProps) {
+export function Shell({ registry, cluster, trace, ...options }: ShellProps) {
   const onFailure = options.onFailure ?? warn;
   return (
-    <OverweaveProvider registry={registry} matcher={kindMatcher} onError={(f: Failure) => onFailure(f.definition, failureField(f), f.error)}>
+    <OverweaveProvider registry={registry} matcher={kindMatcher} trace={trace} onError={(f: Failure) => onFailure(f.definition, failureField(f), f.error)}>
       <KubeProvider cluster={cluster}>
         <ShellProvider {...options}>
           <Frame />

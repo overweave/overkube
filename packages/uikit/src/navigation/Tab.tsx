@@ -54,7 +54,6 @@ export function Tab({ tab, selected = false, stop = selected, panel, labels = TA
       role="tab"
       class="uk-tab"
       data-tab={tab.key}
-      data-key={tab.key}
       data-transient={tab.transient ? '' : undefined}
       data-tool={closes ? 'close' : undefined}
       aria-selected={selected}

@@ -10,13 +10,15 @@ import { mount } from './shell/mount.tsx';
 /*
  * The page: the client (the gateway at /kube, as overkube's server serves
  * it), the registry of the dashboard's kinds, the addons run in it (only
- * the core's and the built-in ones with ?safe), the shell drawn into #app.
+ * the core's and the built-in ones with ?safe), the shell drawn into #app
+ * (?debug: the slots over it).
  */
 
 const client = createClient({ api: { base: '/kube' } });
 const registry = createRegistry({ kinds: kubeKinds });
 const cluster = clusterAccess(client);
 const told = notifications();
-const host = new AddonHost({ registry, cluster, notify: (n, from) => told.notify(n, from), safe: new URLSearchParams(window.location.search).has('safe') });
+const asked = new URLSearchParams(window.location.search);
+const host = new AddonHost({ registry, cluster, notify: (n, from) => told.notify(n, from), safe: asked.has('safe') });
 for (const addon of addons) host.register(addon);
-mount(document.getElementById('app') as HTMLElement, { registry, host, cluster }, told);
+mount(document.getElementById('app') as HTMLElement, { registry, host, cluster, debug: asked.has('debug') }, told);

@@ -21,7 +21,7 @@ export function mount(world: KubeWorld, node: ComponentChildren, given?: MountOp
   return mountTree(world, node, options(world, given));
 }
 
-/** A slot of the world drawn on its own: renderSlot(w, slots.object.sections, { kind: Pod, object: pod }). */
+/** A slot of the world drawn on its own: renderSlot(w, slots.resource.view.sections, { kind: Pod, object: pod }). */
 export function renderSlot<P>(world: KubeWorld, slot: SlotRef<P> | string, props?: P, given?: MountOptions): RenderedSlot<P> {
   return (renderOne as (w: KubeWorld, s: SlotRef<P> | string, p?: P, o?: MountOptions) => RenderedSlot<P>)(world, slot, props, options(world, given));
 }
@@ -59,13 +59,13 @@ export interface RenderedPage extends Omit<Mounted, 'failures'> {
 const textOf = (el: Element) => (el.textContent ?? '').trim();
 
 /**
- * The page as the shell draws it — its frame, the Route at the path, what
+ * The page as the shell draws it — its frame, the Page at the path, what
  * fills its slots — over the world's addons and cluster:
- * renderRoute(w, '/k/pods.v1'). The path is held in memory (no window's
+ * renderPage(w, '/k/pods.v1'). The path is held in memory (no window's
  * hash); what addons tell the user is the world's. Read by roles and names
  * (a table's, a navigation's), not by how the core lays them out.
  */
-export function renderRoute(world: KubeWorld, path = '/', given?: MountOptions): RenderedPage {
+export function renderPage(world: KubeWorld, path = '/', given?: MountOptions): RenderedPage {
   const router = memoryRouter(path);
   const reported: Reported[] = [];
   const onFailure = (definition: Reported['definition'], field: string, error: unknown) => void reported.push({ definition, field, error });

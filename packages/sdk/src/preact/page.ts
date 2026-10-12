@@ -2,13 +2,13 @@ import type { ReadonlySignal } from '@preact/signals';
 import { type ComponentChildren, createContext, h } from 'preact';
 import { useContext } from 'preact/hooks';
 import type { Notification } from '../addon.ts';
-import type { RouteProps } from '../kinds.ts';
+import type { PageProps } from '../kinds.ts';
 
 /*
  * What the page gives its components, whoever draws it (the shell: the
  * page, a test, a story): where it is and how to go elsewhere, the user
- * told things, a definition's failure told as its owner's — and, under a
- * route, that route's parameters.
+ * told things, a definition's failure told as its owner's — under a page,
+ * that page's props; over it, the resource opened (closing it).
  */
 
 /** A notification shown: its id, and who told it. */
@@ -56,7 +56,8 @@ export interface PageValue {
 }
 
 const PageContext = createContext<PageValue | null>(null);
-const RouteContext = createContext<RouteProps | null>(null);
+const PagePropsContext = createContext<PageProps | null>(null);
+const OpenedContext = createContext<Opened | null>(null);
 
 /** What the components below are given: the shell's (or a test's). */
 export function PageProvider({ value, children }: { value: PageValue; children?: ComponentChildren }) {
@@ -64,11 +65,22 @@ export function PageProvider({ value, children }: { value: PageValue; children?:
 }
 PageProvider.displayName = 'Overkube.PageProvider';
 
-/** A route's parameters, for what is drawn under it. */
-export function RouteProvider({ value, children }: { value: RouteProps; children?: ComponentChildren }) {
-  return h(RouteContext.Provider, { value }, children);
+/** A page's props, for what is drawn on it. */
+export function PagePropsProvider({ value, children }: { value: PageProps; children?: ComponentChildren }) {
+  return h(PagePropsContext.Provider, { value }, children);
 }
-RouteProvider.displayName = 'Overkube.RouteProvider';
+PagePropsProvider.displayName = 'Overkube.PagePropsProvider';
+
+/** A resource opened over the page (?open=): closing it — back to the page as it was when it was opened from it, else the page with nothing open; gone elsewhere since, nothing. */
+export interface Opened {
+  close(): void;
+}
+
+/** The resource opened, for what draws it (resource.view's fills). */
+export function OpenedProvider({ value, children }: { value: Opened; children?: ComponentChildren }) {
+  return h(OpenedContext.Provider, { value }, children);
+}
+OpenedProvider.displayName = 'Overkube.OpenedProvider';
 
 export function usePage(): PageValue {
   const page = useContext(PageContext);
@@ -76,11 +88,18 @@ export function usePage(): PageValue {
   return page;
 }
 
-/** The route drawn: its parameters (:kind), what its * took (an addon's own pages), the path. */
-export function useRoute(): RouteProps {
-  const route = useContext(RouteContext);
-  if (!route) throw new Error('not under a route: useRoute is for what a Route draws');
-  return route;
+/** The page drawn: its parameters (:kind), what its * took (an addon's own pages), the path, the kind. */
+export function usePageProps(): PageProps {
+  const props = useContext(PagePropsContext);
+  if (!props) throw new Error('not under a page: usePageProps is for what fills a Page');
+  return props;
+}
+
+/** The resource opened over the page: closing it (drawn as resource.view's fill). */
+export function useOpened(): Opened {
+  const opened = useContext(OpenedContext);
+  if (!opened) throw new Error('nothing opened: useOpened is for what draws resource.view');
+  return opened;
 }
 
 /** Go somewhere: navigate('/k/pods.v1'). */

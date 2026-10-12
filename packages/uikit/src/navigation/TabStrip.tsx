@@ -9,7 +9,8 @@ import { useSortable } from '../lib/sortable';
  * that slides to the next. The tabs of the draggable sections are one row
  * to drag in (useSortable: lifted, leaning, the others moving aside on
  * springs): a tab dragged past the divider of two sections is in the next;
- * one that stays (a page's own) moves only within its own. What each tab
+ * one that stays (a page's own) moves only within its own. Across (a row,
+ * the bar under the active one) or down (a column, the bar beside it). What each tab
  * is (a tab of a tablist, a link) is the caller's: it draws each, given what
  * makes it draggable.
  */
@@ -38,6 +39,8 @@ export interface TabStripProps<T extends StripTab> {
   list?: Omit<JSX.HTMLAttributes<HTMLDivElement>, 'ref' | 'class'>;
   /** The list element, for the caller (its tabs, to focus). */
   listRef?: Ref<HTMLDivElement>;
+  /** Across (a row: the default) or down (a column: dragged up and down, the bar beside the active one). */
+  orientation?: 'horizontal' | 'vertical';
   /**
    * A tab drawn: given what makes it draggable (none where its section is
    * not); the one dragged, the section it would land in now, if another
@@ -58,8 +61,8 @@ const BAR_INSET = 12;
  */
 export function closeFocused(list: HTMLElement | null, key: string, close: (key: string) => void) {
   const strip = list ?? activeElement()?.closest<HTMLElement>('.uk-tab-list');
-  const tabs = [...(strip?.querySelectorAll<HTMLElement>('.uk-tab[data-key]') ?? [])];
-  const at = tabs.findIndex((t) => t.dataset.key === key);
+  const tabs = [...(strip?.querySelectorAll<HTMLElement>('[data-tab]') ?? [])];
+  const at = tabs.findIndex((t) => t.dataset.tab === key);
   const had = at >= 0 && activeElement() === tabs[at];
   close(key);
   if (had) (tabs[at + 1] ?? tabs[at - 1])?.focus();
@@ -72,12 +75,12 @@ export function closeFocused(list: HTMLElement | null, key: string, close: (key:
  */
 export function keepFocused(key: string, move: () => void) {
   const el = activeElement() as HTMLElement | null;
-  const strip = el?.dataset.key === key ? el.closest<HTMLElement>('.uk-tab-list') : null;
-  const keys = [...(strip?.querySelectorAll<HTMLElement>('.uk-tab[data-key]') ?? [])].map((t) => t.dataset.key);
+  const strip = el?.dataset.tab === key ? el.closest<HTMLElement>('.uk-tab-list') : null;
+  const keys = [...(strip?.querySelectorAll<HTMLElement>('[data-tab]') ?? [])].map((t) => t.dataset.tab);
   const at = keys.indexOf(key);
   move();
   if (!strip) return;
-  const find = (k: string | undefined) => (k === undefined ? null : strip.querySelector<HTMLElement>(`.uk-tab[data-key="${CSS.escape(k)}"]`));
+  const find = (k: string | undefined) => (k === undefined ? null : strip.querySelector<HTMLElement>(`[data-tab="${CSS.escape(k)}"]`));
   Promise.resolve().then(() => (find(key) ?? find(keys[at + 1]) ?? find(keys[at - 1]))?.focus());
 }
 
@@ -102,9 +105,10 @@ function landing(order: readonly string[], key: string, first: string | undefine
   return [section, index];
 }
 
-export function TabStrip<T extends StripTab>({ sections, active, onMove, list, listRef, tab }: TabStripProps<T>) {
+export function TabStrip<T extends StripTab>({ sections, active, onMove, list, listRef, orientation = 'horizontal', tab }: TabStripProps<T>) {
   const strip = useRef<HTMLDivElement | null>(null);
-  const [bar, setBar] = useState<{ x: number; y: number; width: number } | null>(null);
+  const down = orientation === 'vertical';
+  const [bar, setBar] = useState<{ x: number; y: number; size: number } | null>(null);
   const all = sections.flatMap((s) => s.tabs);
 
   // The row dragged in: the draggable sections' tabs, a divider before each but the first; and where each section's part of it is.
@@ -120,6 +124,7 @@ export function TabStrip<T extends StripTab>({ sections, active, onMove, list, l
   const sortable = useSortable({
     ids,
     scroller: strip,
+    axis: down ? 'y' : 'x',
     disabled: !onMove,
     swap: 'edge',
     tilt: true,
@@ -149,22 +154,26 @@ export function TabStrip<T extends StripTab>({ sections, active, onMove, list, l
     sorting.current = sortable.active;
   }, [sortable.active]);
 
-  // The bar: under the active tab (on whichever line it is), sliding as it changes (and as the strip changes size).
+  // The bar: under the active tab (on whichever line it is) — down a column, at its start — sliding as it changes (and as the strip changes size).
   useLayoutEffect(() => {
     const root = strip.current;
     if (!root) return;
     const place = () => {
-      const el = active ? root.querySelector<HTMLElement>(`[data-key="${CSS.escape(active)}"]`) : null;
-      // A little narrower than the tab, under its middle.
-      const inset = el ? Math.min(BAR_INSET, el.offsetWidth / 4) : 0;
-      setBar(el ? { x: el.offsetLeft + inset, y: el.offsetTop + el.offsetHeight, width: el.offsetWidth - 2 * inset } : null);
+      const el = active ? root.querySelector<HTMLElement>(`[data-tab="${CSS.escape(active)}"]`) : null;
+      if (!el) return setBar(null);
+      // A little shorter than the tab, along its middle.
+      const along = down ? el.offsetHeight : el.offsetWidth;
+      const inset = Math.min(BAR_INSET, along / 4);
+      setBar(
+        down ? { x: el.offsetLeft, y: el.offsetTop + inset, size: along - 2 * inset } : { x: el.offsetLeft + inset, y: el.offsetTop + el.offsetHeight, size: along - 2 * inset },
+      );
     };
     place();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(place);
     observer.observe(root);
     return () => observer.disconnect();
-  }, [active, all.map((t) => `${t.key}${t.transient}`).join(',')]);
+  }, [active, down, all.map((t) => `${t.key}${t.transient}`).join(',')]);
 
   // Where sections meet, a divider: seen while tabs are on both sides of it (or while dragging, to drop past it).
   const before = (i: number) => sections.slice(0, i).some((s) => s.tabs.length > 0);
@@ -173,6 +182,7 @@ export function TabStrip<T extends StripTab>({ sections, active, onMove, list, l
     <div
       {...list}
       class="uk-tab-list"
+      data-orientation={orientation}
       ref={(el) => {
         strip.current = el;
         sortable.root.current = el;
@@ -197,7 +207,12 @@ export function TabStrip<T extends StripTab>({ sections, active, onMove, list, l
         );
       })}
       {bar && (
-        <span class="uk-tab-bar" aria-hidden="true" data-instant={instant ? '' : undefined} style={{ transform: `translate(${bar.x}px, ${bar.y}px)`, width: `${bar.width}px` }} />
+        <span
+          class="uk-tab-bar"
+          aria-hidden="true"
+          data-instant={instant ? '' : undefined}
+          style={{ transform: `translate(${bar.x}px, ${bar.y}px)`, [down ? 'height' : 'width']: `${bar.size}px` }}
+        />
       )}
     </div>
   );

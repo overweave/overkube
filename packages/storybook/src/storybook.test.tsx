@@ -1,6 +1,6 @@
 import core from '@overkube/addon-core';
 import { kinds } from '@overkube/kube-types';
-import { column, defineAddon } from '@overkube/sdk';
+import { column, defineAddon, slots } from '@overkube/sdk';
 import { cleanup, render, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { storybook } from './index.ts';
@@ -52,7 +52,7 @@ describe('KubeStory', () => {
       />,
     );
     await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Image', 'Age']));
-    expect(view.container.querySelector('.uk-navlist')).not.toBeNull();
+    expect(view.container.querySelector('aside.uk-rail')).not.toBeNull();
   });
 });
 
@@ -61,7 +61,14 @@ describe('KubeStory’s look', () => {
     const light = render(<KubeStory addons={[core]} path="/k/pods.v1" cluster={pods} theme="light" />);
     await waitFor(() => expect((light.container.querySelector('.uk-root') as HTMLElement).dataset.theme).toBe('light'));
     cleanup();
-    const bare = defineAddon({ id: 'bare', title: 'Bare', setup: ({ contributor }) => void contributor.add('Route', 'bare.home', { path: '/', render: () => <p>bare</p> }) });
+    const bare = defineAddon({
+      id: 'bare',
+      title: 'Bare',
+      setup: ({ contributor }) => {
+        contributor.add('Page', 'home', { path: '/' });
+        contributor.add('Fill', 'bare.home', { slot: slots.page('home').name, render: () => <p>bare</p> });
+      },
+    });
     const none = render(<KubeStory addons={[bare]} theme="light" />);
     await waitFor(() => expect(none.container.textContent).toContain('bare'));
     expect((none.container.querySelector('.uk-root') as HTMLElement).dataset.theme).toBe('light');

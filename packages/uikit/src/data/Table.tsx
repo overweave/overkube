@@ -68,6 +68,8 @@ export interface TableProps<T> {
   onReorder?: (ids: string[]) => void;
   /** Rows may be picked. */
   selection?: TableSelection;
+  /** A row's context menu asked for (a right click on it; the menu key, Shift+F10 in it): the page's to open, or not (the browser's then). */
+  onRowMenu?: (row: T, event: MouseEvent | KeyboardEvent) => void;
 }
 
 /** The height the body is taken to have before it is measured (and where nothing measures: tests). */
@@ -124,6 +126,7 @@ export function Table<T>({
   reorderable = true,
   onReorder,
   selection,
+  onRowMenu,
   columns: given,
 }: TableProps<T>) {
   const ids = useMemo(() => ({ header: uid('uk-table-h') }), []);
@@ -613,7 +616,11 @@ export function Table<T>({
                     style={{ gridTemplateColumns: template, minHeight: `${rowHeight}px` }}
                     tabIndex={onRowClick ? 0 : undefined}
                     onClick={onRowClick && (() => onRowClick(row))}
-                    onKeyDown={onRowClick && ((e) => e.target === e.currentTarget && e.key === 'Enter' && onRowClick(row))}
+                    onContextMenu={onRowMenu && ((e) => onRowMenu(row, e))}
+                    onKeyDown={(e) => {
+                      onRowMenu?.(row, e);
+                      if (onRowClick && e.target === e.currentTarget && e.key === 'Enter') onRowClick(row);
+                    }}
                   >
                     {selection && (
                       // biome-ignore lint/a11y/useKeyWithClickEvents: it only keeps a click on the check from being the row's.
