@@ -3,7 +3,7 @@ import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import type { FillSpec, Placement, WrapSpec } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
 import type { ComponentChildren, ComponentType } from 'preact';
-import type { ActionSpec, ColumnRenderProps, ColumnSpec, MenuItemSpec, MenuPage, MenuSubject, MenuSubjects, PageProps, Target } from './kinds.ts';
+import type { ActionSpec, ColumnContext, ColumnRenderProps, ColumnSpec, MenuItemSpec, MenuPage, MenuSubject, MenuSubjects, PageProps, Target } from './kinds.ts';
 import { type ResourceProps, slots } from './slots.ts';
 import { forKinds } from './target.ts';
 import type { Label } from './text.ts';
@@ -26,8 +26,11 @@ const targetOf = (kinds: readonly KindInfo[] | undefined): Target => (kinds === 
 
 interface ColumnOf<O extends KubeObject> {
   header: Label;
-  value: (object: O) => unknown;
+  value: (object: O, context: ColumnContext<O>) => unknown;
+  display: (object: O, context: ColumnContext<O>) => string;
   render?: ComponentType<ColumnRenderProps<O>>;
+  when?: (kind: KindInfo) => boolean;
+  hidden?: boolean | ((kind: KindInfo) => boolean);
   width?: number;
   order?: number;
 }

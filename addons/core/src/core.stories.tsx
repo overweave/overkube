@@ -40,7 +40,11 @@ const metrics = defineAddon({
   id: 'metrics',
   title: 'Metrics',
   setup: ({ contributor }) =>
-    void contributor.add('Column', 'metrics.cpu', column({ kinds: [Pod], header: 'CPU', order: 20, value: (p) => (p.metadata?.name === 'db-0' ? PENDING : '12m') })),
+    void contributor.add(
+      'Column',
+      'metrics.cpu',
+      column({ kinds: [Pod], header: 'CPU', order: 20, value: (p) => (p.metadata?.name === 'db-0' ? PENDING : 12), display: () => '12m' }),
+    ),
 });
 export const PendingCells = () => <KubeStory addons={[core, metrics]} path="/k/pods.v1" cluster={shop} />;
 

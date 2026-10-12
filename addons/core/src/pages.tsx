@@ -83,10 +83,10 @@ function Held({ next, opening }: { next: KindInfo; opening: boolean }) {
 }
 
 /** An object's name, as a link opening it over the page it is on (drawn again when the page goes elsewhere, not as things open over it). */
-export function NameCell({ object, kind, value }: { object: KubeObject; kind: Parameters<typeof openIn>[1]; value: unknown }) {
+export function NameCell({ object, kind, display }: { object: KubeObject; kind: Parameters<typeof openIn>[1]; display: string }) {
   const page = usePage();
   const here = useComputed(() => closeIn(page.path.value)).value;
-  return <a href={page.href(openIn(here, kind, object))}>{String(value ?? '')}</a>;
+  return <a href={page.href(openIn(here, kind, object))}>{display}</a>;
 }
 
 /** The start (core.page.home): the first pinned kind's page — unless another's is on it too: then it is a page of its own, and this nothing. */

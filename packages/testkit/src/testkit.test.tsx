@@ -70,7 +70,11 @@ describe('kubeWorld', () => {
     title: 'Images',
     setup(ctx) {
       ctx.cluster.collection(Pod);
-      ctx.contributor.add('Column', 'images.tag', column({ kinds: [Pod], header: 'Tag', value: (p) => p.spec?.containers[0]?.image?.split(':')[1] }));
+      ctx.contributor.add(
+        'Column',
+        'images.tag',
+        column({ kinds: [Pod], header: 'Tag', value: (p) => p.spec?.containers[0]?.image?.split(':')[1], display: (p) => p.spec?.containers[0]?.image?.split(':')[1] ?? '' }),
+      );
       ctx.contributor.patch('Column', 'core.name', { header: 'Pod' });
     },
   });
@@ -78,7 +82,7 @@ describe('kubeWorld', () => {
     id: 'core',
     title: 'Core',
     layer: 'core',
-    setup: ({ contributor }) => void contributor.add('Column', 'core.name', column({ header: 'Name', value: (o) => o.metadata?.name })),
+    setup: ({ contributor }) => void contributor.add('Column', 'core.name', column({ header: 'Name', value: (o) => o.metadata?.name, display: (o) => o.metadata?.name ?? '' })),
   });
 
   it('runs addons as the page does: at their layers, what they said and held taken back when they stop', () => {
@@ -92,7 +96,7 @@ describe('kubeWorld', () => {
     assertSays(w, 'Column', 'core.name', ['header'], 'images');
     expect(w.cluster.held()).toEqual(['v1/Pod']);
     const pod = make(Pod, { spec: { containers: [{ name: 'app', image: 'nginx:latest' }] } });
-    expect(w.get('Column', 'images.tag')?.spec.value(pod)).toBe('latest');
+    expect(w.get('Column', 'images.tag')?.spec.value(pod, { now: 0, objects: [], kind: Pod })).toBe('latest');
     w.stop('images');
     expect([w.get('Column', 'images.tag'), w.get('Column', 'core.name')?.spec.header, w.cluster.held()]).toEqual([undefined, 'Name', []]);
   });
@@ -172,7 +176,7 @@ describe('kubeWorld', () => {
         id: 'broken',
         title: 'Broken',
         async setup({ contributor, cluster }) {
-          contributor.add('Column', 'broken.c', column({ header: 'C', value: () => 1 }));
+          contributor.add('Column', 'broken.c', column({ header: 'C', value: () => 1, display: () => '1' }));
           cluster.collection(Pod);
           throw new Error('no luck');
         },

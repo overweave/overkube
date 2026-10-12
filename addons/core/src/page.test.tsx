@@ -20,6 +20,7 @@ import core from './index.tsx';
 afterEach(cleanup);
 
 const { Pod, Namespace, Node } = kinds.core.v1;
+const { StorageClass } = kinds.storage.v1;
 const { Deployment } = kinds.apps.v1;
 
 /** A world with the core and some pods. */
@@ -60,7 +61,7 @@ describe('a kind’s table', () => {
       }),
     );
     const page = renderPage(w, '/k/pods.v1');
-    expect(page.headers()).toEqual(['Name', 'Namespace', 'Age?']);
+    expect(page.headers()).toEqual(['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Age?']);
     expect(page.column('Name').sort()).toEqual(['! web', 'db']);
     expect(page.container.querySelector('.count')?.textContent).toBe('2/2 live');
     page.act(() => w.cluster.state(Pod, 'stale', { status: 0, code: 'network', message: 'lost' }));
@@ -90,24 +91,192 @@ describe('a kind’s table', () => {
     await vi.waitFor(() => expect(page.path).toBe('/k/pods.v1?open=pods.v1/shop/web'));
   });
 
-  it('has every kind’s columns; an object’s name links to it', () => {
+  it('has every kind’s columns, and a built-in kind’s as kubectl has them; an object’s name links to it', () => {
     const page = renderPage(world('web', 'db'), '/k/pods.v1');
-    expect(page.headers()).toEqual(['Name', 'Namespace', 'Age']);
+    expect(page.headers()).toEqual(['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Age']);
     expect(page.column('Name').sort()).toEqual(['db', 'web']);
     expect(page.container.querySelector('a[href="#/k/pods.v1?open=pods.v1/shop/web"]')?.textContent).toBe('web');
+  });
+
+  it('draws an age as the time since — again as the clock goes, only where its text changes; a text that reads no time, once', () => {
+    vi.useFakeTimers({ now: Date.parse('2026-01-01T00:01:00Z') });
+    const w = world();
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop', creationTimestamp: '2026-01-01T00:00:00Z' } }));
+    let drawn = 0;
+    w.addon(
+      addon('count', ({ contributor }) => {
+        contributor.add(
+          'Column',
+          'count.c',
+          column({
+            kinds: [Pod],
+            header: 'C',
+            value: () => 1,
+            display: () => {
+              drawn++;
+              return 'c';
+            },
+          }),
+        );
+      }),
+    );
+    const page = renderPage(w, '/k/pods.v1');
+    expect(page.column('Age')).toEqual(['60s']);
+    const once = drawn;
+    page.act(() => void vi.advanceTimersByTime(2000));
+    expect([page.column('Age'), drawn]).toEqual([['62s'], once]);
+    vi.useRealTimers();
+  });
+
+  it('gives a column’s render, and a Wrap of its cell, its display — live as it is', () => {
+    vi.useFakeTimers({ now: Date.parse('2026-01-01T00:01:00Z') });
+    const w = world();
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop', creationTimestamp: '2026-01-01T00:00:00Z' }, status: { phase: 'Running' } }));
+    w.addon(
+      addon('looks', ({ contributor }) => {
+        contributor.patch('Column', 'core.age', { render: ({ display }: ColumnRenderProps) => <b>{display}</b> });
+        contributor.add('Wrap', 'looks.status', wrap<ColumnRenderProps>('core.v1/Pod.status', { order: 0, render: ({ display }) => <i>{display.toUpperCase()}</i> }));
+      }),
+    );
+    const page = renderPage(w, '/k/pods.v1');
+    expect([page.column('Age'), page.column('Status'), page.container.querySelectorAll('[role="cell"] b, [role="cell"] i').length]).toEqual([['60s'], ['RUNNING'], 2]);
+    page.act(() => void vi.advanceTimersByTime(2000));
+    expect(page.column('Age')).toEqual(['62s']);
+    vi.useRealTimers();
+  });
+
+  it('tells a live display’s failure once, not as each second works it out again — again once another is in its place and fails', async () => {
+    vi.useFakeTimers({ now: Date.parse('2026-01-01T00:01:00Z'), toFake: ['setInterval', 'clearInterval', 'Date'] });
+    const w = world('web');
+    let tries = 0;
+    const late = (message: string) =>
+      column({
+        kinds: [Pod],
+        header: 'Late',
+        value: () => 1,
+        display: (_o, { now }) => {
+          tries++;
+          if (now) throw new Error(message);
+          return '';
+        },
+      });
+    let fix: (spec: object) => void = () => {};
+    w.addon(
+      addon('late', ({ contributor }) => {
+        contributor.add('Column', 'late.c', late('first'));
+        fix = (spec) => void contributor.patch('Column', 'late.c', spec);
+      }),
+    );
+    const page = renderPage(w, '/k/pods.v1');
+    const first = tries;
+    for (let i = 0; i < 3; i++) {
+      page.act(() => void vi.advanceTimersByTime(1000));
+      await Promise.resolve();
+    }
+    await expect.poll(() => page.failures.length).toBe(1);
+    // Worked out again each second, told once.
+    expect([tries - first, page.failures[0]]).toEqual([3, expect.objectContaining({ definition: expect.objectContaining({ name: 'late.c' }), field: 'display' })]);
+    // Fixed, then broken another way: told again.
+    page.act(() => fix({ display: () => 'ok' }));
+    page.act(() => fix({ display: late('second').display }));
+    await expect.poll(() => page.failures.length).toBe(2);
+    expect(String(page.failures[1].error)).toContain('second');
+    vi.useRealTimers();
+  });
+
+  it('sorts by now as it is, with no cell following the clock (its ages hidden)', () => {
+    vi.useFakeTimers({ now: Date.parse('2030-06-01T00:00:00Z') });
+    const w = world();
+    w.cluster.add(Namespace, make(Namespace, { metadata: { name: 'shop' } }));
+    let seen = 0;
+    const when = column({
+      kinds: [Namespace],
+      header: 'When',
+      value: (_o, { now }) => {
+        seen = now;
+        return now;
+      },
+      display: () => 'when',
+    });
+    w.addon(
+      addon('when', ({ contributor }) => {
+        contributor.add('Column', 'when.c', when);
+        contributor.patch('TableView', Namespace.id, { sort: { column: 'when.c' }, hidden: { 'core.age': true } });
+      }),
+    );
+    renderPage(w, '/k/namespaces.v1');
+    expect(seen).toBe(Date.parse('2030-06-01T00:00:00Z'));
+    vi.useRealTimers();
+  });
+
+  it('marks the default storage class as kubectl does, of all those listed (not only those shown); the name a link either way', () => {
+    const w = world();
+    const marked = { 'storageclass.kubernetes.io/is-default-class': 'true' };
+    w.cluster.add(StorageClass, make(StorageClass, { metadata: { name: 'old', annotations: marked, creationTimestamp: '2026-01-01T00:00:00Z' }, provisioner: 'p' }));
+    w.cluster.add(StorageClass, make(StorageClass, { metadata: { name: 'new', annotations: marked, creationTimestamp: '2026-01-02T00:00:00Z' }, provisioner: 'p' }));
+    const page = renderPage(w, '/k/storageclasses.v1.storage.k8s.io');
+    expect(page.column('Name').sort()).toEqual(['new (default)', 'old']);
+    expect(page.container.querySelector('a[href*="open=storageclasses.v1.storage.k8s.io/new"]')?.textContent).toBe('new (default)');
+    w.addon(addon('only-old', ({ contributor }) => void contributor.patch('TableView', StorageClass.id, { filter: (o) => o.metadata?.name === 'old' })));
+    expect(renderPage(w, '/k/storageclasses.v1.storage.k8s.io').column('Name')).toEqual(['old']);
+  });
+
+  it('shows an Event’s name only when asked, as kubectl — whoever sets out its table; its columns as kubectl has them', () => {
+    const w = world();
+    const page = renderPage(w, '/k/events.v1');
+    expect(page.headers()).toEqual(['Namespace', 'Last Seen', 'Type', 'Reason', 'Object', 'Message']);
+    page.act(() => void w.addon(addon('wide', ({ contributor }) => void contributor.add('TableView', kinds.core.v1.Event.id, { widths: { 'core.v1/Event.message': 400 } }))));
+    expect(page.headers()).toEqual(['Namespace', 'Last Seen', 'Type', 'Reason', 'Object', 'Message']);
+    page.act(() => void w.as('user', { priority: 1000, rights: ['configure'] }).patch('TableView', kinds.core.v1.Event.id, { hidden: { 'core.name': false } }));
+    expect(page.headers()[0]).toBe('Name');
+  });
+
+  it('shows an empty cell as "—", a 0 as a 0', () => {
+    const w = world('web');
+    const counted = (n: number | undefined) => column({ kinds: [Pod], header: `N${n}`, value: () => n, display: () => (n === undefined ? '' : String(n)) });
+    w.addon(
+      addon('n', ({ contributor }) => {
+        contributor.add('Column', 'n.zero', counted(0));
+        contributor.add('Column', 'n.none', counted(undefined));
+      }),
+    );
+    const page = renderPage(w, '/k/pods.v1');
+    expect([page.column('N0'), page.column('Nundefined')]).toEqual([['0'], ['—']]);
+  });
+
+  it('gives the core’s columns as defaults: another’s of the same name takes its place, and gives it back as it goes', () => {
+    const w = world('web');
+    let result: unknown;
+    w.addon(
+      addon('restarts', ({ contributor }) => {
+        result = contributor.add('Column', 'core.v1/Pod.restarts', column({ kinds: [Pod], header: 'Restarts!', order: 130, value: () => 0, display: () => 'none' }));
+      }),
+    );
+    const page = renderPage(w, '/k/pods.v1');
+    expect([result, page.column('Restarts!')]).toEqual([expect.objectContaining({ status: 'included' }), ['none']]);
+    page.act(() => w.stop('restarts'));
+    expect(page.column('Restarts')).toEqual(['0']);
   });
 
   it('sets out another addon’s columns as the kind’s TableView says, over the core’s', () => {
     const w = world('web');
     w.addon(
       addon('images', ({ contributor }) => {
-        contributor.add('Column', 'images.node', column({ kinds: [Pod], header: 'Node', order: 20, value: (p) => p.spec?.nodeName ?? 'none' }));
-        contributor.add('Column', 'images.replicas', column({ kinds: [Deployment], header: 'Replicas', value: (d) => d.spec?.replicas }));
+        contributor.add(
+          'Column',
+          'images.node',
+          column({ kinds: [Pod], header: 'Node', order: 20, value: (p) => p.spec?.nodeName ?? 'none', display: (p) => p.spec?.nodeName ?? 'none' }),
+        );
+        contributor.add(
+          'Column',
+          'images.replicas',
+          column({ kinds: [Deployment], header: 'Replicas', value: (d) => d.spec?.replicas, display: (d) => String(d.spec?.replicas ?? '') }),
+        );
         contributor.patch('TableView', Pod.id, { columns: ['core.age'], hidden: { 'core.namespace': true } });
       }),
     );
     const page = renderPage(w, '/k/pods.v1');
-    expect(page.headers()).toEqual(['Age', 'Name', 'Node']);
+    expect(page.headers()).toEqual(['Age', 'Name', 'Node', 'Ready', 'Status', 'Restarts']);
     expect(page.column('Node')).toEqual(['none']);
   });
 
@@ -125,11 +294,13 @@ describe('a kind’s table', () => {
 
   it('tells a column’s failure as its own, once a drawing however many cells, and draws the rest', async () => {
     const w = world('a', 'b', 'c');
-    w.addon(addon('big', ({ contributor }) => void contributor.add('Column', 'big.n', column({ header: 'Big', value: () => ({ n: 1n }) }))));
+    w.addon(
+      addon('big', ({ contributor }) => void contributor.add('Column', 'big.n', column({ header: 'Big', value: () => ({ n: 1n }), display: () => JSON.stringify({ n: 1n }) }))),
+    );
     const page = renderPage(w, '/k/pods.v1');
     expect(page.column('Name').sort()).toEqual(['a', 'b', 'c']);
     await expect.poll(() => page.failures.length).toBe(1);
-    expect(page.failures[0]).toMatchObject({ definition: { kind: 'Column', name: 'big.n' }, field: 'value' });
+    expect(page.failures[0]).toMatchObject({ definition: { kind: 'Column', name: 'big.n' }, field: 'display' });
   });
 
   it('draws a render that failed again once its object changes', () => {
@@ -143,6 +314,7 @@ describe('a kind’s table', () => {
             kinds: [Pod],
             header: 'Image',
             value: (p) => p.spec?.containers?.[0]?.image,
+            display: (p) => p.spec?.containers?.[0]?.image ?? '',
             render: ({ value }) => {
               if (!value) throw new Error('no image yet');
               return <b>{String(value)}</b>;
@@ -173,12 +345,17 @@ describe('waiting', () => {
   it('shows the table as it will be while its rows are slow: its columns (another’s too), then rows waiting; the rows in their place', () => {
     vi.useFakeTimers();
     const w = world();
-    w.addon(addon('images', ({ contributor }) => void contributor.add('Column', 'images.image', column({ kinds: [Pod], header: 'Image', order: 20, value: () => 'nginx' }))));
+    w.addon(
+      addon(
+        'images',
+        ({ contributor }) => void contributor.add('Column', 'images.image', column({ kinds: [Pod], header: 'Image', order: 20, value: () => 'nginx', display: () => 'nginx' })),
+      ),
+    );
     w.cluster.state(Pod, 'loading');
     const page = renderPage(w, '/k/pods.v1');
     const table = page.container.querySelector('[role="table"]');
     expect([page.headers(), table?.getAttribute('aria-busy'), page.container.querySelectorAll('[data-skeleton]').length]).toEqual([
-      ['Name', 'Namespace', 'Image', 'Age'],
+      ['Name', 'Namespace', 'Image', 'Ready', 'Status', 'Restarts', 'Age'],
       'true',
       0,
     ]);
@@ -218,7 +395,11 @@ describe('waiting', () => {
     const cpu = signal<Record<string, number>>({ a: 30, c: 10 });
     w.addon(
       addon('metrics', ({ contributor }) => {
-        contributor.add('Column', 'metrics.cpu', column({ kinds: [Pod], header: 'CPU', value: (p) => cpu.value[p.metadata?.name ?? ''] ?? PENDING }));
+        contributor.add(
+          'Column',
+          'metrics.cpu',
+          column({ kinds: [Pod], header: 'CPU', value: (p) => cpu.value[p.metadata?.name ?? ''] ?? PENDING, display: (p) => String(cpu.value[p.metadata?.name ?? ''] ?? '') }),
+        );
         contributor.patch('TableView', Pod.id, { sort: { column: 'metrics.cpu' } });
       }),
     );
@@ -304,7 +485,7 @@ describe('putting one’s own in the core’s place', () => {
     const pods = renderPage(w, '/k/pods.v1');
     expect([pods.text().includes('my pods page'), pods.container.querySelector('[role="table"]')]).toEqual([true, null]);
     const deployments = renderPage(w, '/k/deployments.v1.apps');
-    expect([deployments.text().includes('my pods page'), deployments.headers()]).toEqual([false, ['Name', 'Namespace', 'Age']]);
+    expect([deployments.text().includes('my pods page'), deployments.headers()]).toEqual([false, ['Name', 'Namespace', 'Ready', 'Up-to-date', 'Available', 'Age']]);
     expect(deployments.container.querySelector('main')?.textContent?.endsWith('a note')).toBe(true);
   });
 
@@ -389,7 +570,7 @@ describe('putting one’s own in the core’s place', () => {
     );
     w.as('user', { priority: 1000, rights: ['configure'] }).patch('TableView', Pod.id, { hidden: { 'core.namespace': true } });
     expect(result).toMatchObject({ status: 'included' });
-    expect(renderPage(w, '/k/pods.v1').headers()).toEqual(['Age', 'Name']);
+    expect(renderPage(w, '/k/pods.v1').headers()).toEqual(['Age', 'Name', 'Ready', 'Status', 'Restarts']);
   });
 
   it('keeps the table as it is when an object is opened over it, and closed', () => {
@@ -460,7 +641,9 @@ describe('an object', () => {
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     expect(page.text()).toContain('Pod shop/web');
     expect(page.text()).toContain('name: web');
-    const button = (text: string) => [...page.container.querySelectorAll('button')].find((b) => b.textContent?.includes(text)) as HTMLButtonElement;
+    // Its buttons (not the table's headers: Restarts).
+    const button = (text: string) =>
+      [...page.container.querySelectorAll('button')].find((b) => !b.closest('[role="columnheader"]') && b.textContent?.includes(text)) as HTMLButtonElement;
     expect(button('Scale')).toBeUndefined();
     page.act(() => button('Restart').click());
     expect([restarted, button('Restart').textContent]).toEqual([[], 'Restart: sure?']);
@@ -1007,8 +1190,8 @@ describe('in another language', () => {
     const w = world('web');
     w.addon(pl());
     w.language('pl');
-    const page = renderPage(w, '/k/nodes.v1');
-    expect(page.headers()).toEqual(['Nazwa', 'Namespace', 'Age']);
+    const page = renderPage(w, '/k/pods.v1');
+    expect(page.headers()).toEqual(['Nazwa', 'Namespace', 'Ready', 'Status', 'Restarts', 'Age']);
     expect(page.links('Rodzaje')).toContain('Nodes');
     expect((page.container.querySelector('.uk-root') as HTMLElement).lang).toBe('pl');
   });
@@ -1026,7 +1209,7 @@ describe('in another language', () => {
       w.language('en');
       w.as('user', { priority: 1000, rights: ['configure'] }).patch('Messages', 'en:core', { messages: { 'core.column.age': 'Created' } });
     });
-    expect(page.headers()).toEqual(['Name', 'Namespace', 'Created']);
+    expect(page.headers()).toEqual(['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Created']);
   });
 
   it('finds and orders kinds by their titles as the language reads them', () => {

@@ -46,6 +46,7 @@ export {
   Category,
   type CategorySpec,
   Column,
+  type ColumnContext,
   type ColumnRenderProps,
   type ColumnSpec,
   type Health,

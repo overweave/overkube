@@ -19,7 +19,12 @@ const { Pod } = kinds.core.v1;
 const images = defineAddon({
   id: 'images',
   title: 'Images',
-  setup: ({ contributor }) => void contributor.add('Column', 'images.image', column({ kinds: [Pod], header: 'Image', value: (p) => p.spec?.containers?.[0]?.image })),
+  setup: ({ contributor }) =>
+    void contributor.add(
+      'Column',
+      'images.image',
+      column({ kinds: [Pod], header: 'Image', value: (p) => p.spec?.containers?.[0]?.image, display: (p) => p.spec?.containers?.[0]?.image ?? '' }),
+    ),
 });
 
 const pods = (c: Parameters<NonNullable<Parameters<typeof KubeStory>[0]['cluster']>>[0]) => {
@@ -31,12 +36,12 @@ const headers = (el: Element) => [...el.querySelectorAll('[role="columnheader"]'
 describe('KubeStory', () => {
   it('draws the page at its path, the addons beside one another over the story’s cluster', async () => {
     const view = render(<KubeStory addons={[core, images]} path="/k/pods.v1" cluster={pods} />);
-    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Namespace', 'Image', 'Age']));
+    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Image', 'Age']));
     expect(view.container.textContent).toContain('nginx:1.27');
     expect((view.container.querySelector('input[aria-label="Path"]') as HTMLInputElement).value).toBe('/k/pods.v1');
     // Without it: what it added is gone, the rest as it was.
     view.rerender(<KubeStory addons={[core]} path="/k/pods.v1" cluster={pods} />);
-    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Namespace', 'Age']));
+    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Age']));
   });
 
   it('lays the user’s changes over every addon’s', async () => {
@@ -51,7 +56,7 @@ describe('KubeStory', () => {
         }}
       />,
     );
-    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Image', 'Age']));
+    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Ready', 'Status', 'Restarts', 'Image', 'Age']));
     expect(view.container.querySelector('aside.uk-rail')).not.toBeNull();
   });
 });
@@ -79,21 +84,21 @@ describe('KubeStory, started anew', () => {
   it('reads its start once; another resetKey starts it again with what it is then', async () => {
     const hide = (name: string) => (u: Parameters<NonNullable<Parameters<typeof KubeStory>[0]['user']>>[0]) => u.patch('TableView', Pod.id, { hidden: { [name]: true } });
     const view = render(<KubeStory addons={[core, images]} path="/k/pods.v1" cluster={pods} user={hide('core.namespace')} resetKey={1} />);
-    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Image', 'Age']));
+    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Ready', 'Status', 'Restarts', 'Image', 'Age']));
     view.rerender(<KubeStory addons={[core, images]} path="/k/pods.v1" cluster={pods} user={hide('images.image')} resetKey={1} />);
-    expect(headers(view.container)).toEqual(['Name', 'Image', 'Age']);
+    expect(headers(view.container)).toEqual(['Name', 'Ready', 'Status', 'Restarts', 'Image', 'Age']);
     view.rerender(<KubeStory addons={[core, images]} path="/k/pods.v1" cluster={pods} user={hide('images.image')} resetKey={2} />);
-    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Namespace', 'Age']));
+    await waitFor(() => expect(headers(view.container)).toEqual(['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Age']));
   });
 
   it('lists a definition’s failure under the story', async () => {
     const broken = defineAddon({
       id: 'broken',
       title: 'Broken',
-      setup: ({ contributor }) => void contributor.add('Column', 'broken.c', column({ header: 'B', value: () => ({ n: 1n }) })),
+      setup: ({ contributor }) => void contributor.add('Column', 'broken.c', column({ header: 'B', value: () => ({ n: 1n }), display: () => JSON.stringify({ n: 1n }) })),
     });
     const view = render(<KubeStory addons={[core, broken]} path="/k/pods.v1" cluster={pods} />);
-    await waitFor(() => expect(view.container.querySelector('[data-overkube-failures]')?.textContent).toContain('Column/broken.c (value)'));
+    await waitFor(() => expect(view.container.querySelector('[data-overkube-failures]')?.textContent).toContain('Column/broken.c (display)'));
   });
 });
 

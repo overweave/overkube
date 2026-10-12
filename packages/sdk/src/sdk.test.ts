@@ -56,7 +56,7 @@ describe('the kinds, layered', () => {
 describe('who may add what', () => {
   it('the user adds nothing that does anything, nor moves what does to other kinds — it arranges', () => {
     const { builtin, user } = dashboard();
-    const name = column({ kinds: [Pod], header: 'Node', value: (p) => p.spec?.nodeName });
+    const name = column({ kinds: [Pod], header: 'Node', value: (p) => p.spec?.nodeName, display: (p) => p.spec?.nodeName ?? '' });
     const restart = action({ kinds: [Pod], title: 'Restart', run: () => {} });
     assertResult(builtin.add('Column', 'pods.node', name), 'included');
     assertResult(builtin.add('Action', 'pods.restart', restart), 'included');
@@ -84,9 +84,9 @@ describe('who may add what', () => {
   it('checks the fields’ values: what would only break when drawn is refused when said', () => {
     const { builtin } = dashboard();
     const b = builtin as unknown as { add(kind: string, name: string, spec: object): ReturnType<typeof builtin.add> };
-    assertResult(b.add('Column', 'c1', { target: { kinds: 'apps/v1/Deployment' }, header: 'h', value: () => 1 }), 'rejected', ['invalid']);
-    assertResult(b.add('Column', 'c2', { target: {}, header: 'h', value: 3 }), 'rejected', ['invalid']);
-    assertResult(b.add('Column', 'c3', { target: {}, header: 'h', value: () => 1, width: Number.NaN }), 'rejected', ['invalid']);
+    assertResult(b.add('Column', 'c1', { target: { kinds: 'apps/v1/Deployment' }, header: 'h', value: () => 1, display: () => '' }), 'rejected', ['invalid']);
+    assertResult(b.add('Column', 'c2', { target: {}, header: 'h', value: 3, display: () => '' }), 'rejected', ['invalid']);
+    assertResult(b.add('Column', 'c3', { target: {}, header: 'h', value: () => 1, display: () => '', width: Number.NaN }), 'rejected', ['invalid']);
     assertResult(b.add('TableView', Pod.id, { widths: { name: 'wide' } }), 'rejected', ['invalid']);
     assertResult(b.add('TableView', Deployment.id, { sort: { column: 'age', descending: 'yes' } }), 'rejected', ['invalid']);
     assertResult(b.add('Action', 'a1', { target: {}, title: 't', run: 'go' }), 'rejected', ['invalid']);
@@ -128,27 +128,32 @@ describe('fills chosen by their kinds', () => {
 
 describe('the usual definitions', () => {
   it('a column and an action, for some kinds: their functions typed by the kind', () => {
-    const node = column({ kinds: [Pod], header: 'Node', value: (pod) => pod.spec?.nodeName });
+    const node = column({ kinds: [Pod], header: 'Node', value: (pod) => pod.spec?.nodeName, display: (pod) => pod.spec?.nodeName ?? '' });
     expect(node).toMatchObject({ target: { kinds: ['v1/Pod'] }, header: 'Node' });
-    expect(node.value({ apiVersion: 'v1', kind: 'Pod', spec: { nodeName: 'n1', containers: [] } })).toBe('n1');
+    expect(node.value({ apiVersion: 'v1', kind: 'Pod', spec: { nodeName: 'n1', containers: [] } }, { now: 0, objects: [], kind: Pod })).toBe('n1');
     const restart = action({ kinds: [Deployment], title: 'Restart', dangerous: true, run: (d) => d.spec?.replicas });
     expect(restart.target).toEqual({ kinds: ['apps/v1/Deployment'] });
     // @ts-expect-error a Pod has no replicas
-    column({ kinds: [Pod], header: 'Replicas', value: (pod) => pod.spec?.replicas });
-    const any = column({ header: 'Name', value: (o) => o.metadata?.name });
+    column({ kinds: [Pod], header: 'Replicas', value: (pod) => pod.spec?.replicas, display: () => '' });
+    const any = column({ header: 'Name', value: (o) => o.metadata?.name, display: (o) => o.metadata?.name ?? '' });
     expect(any.target).toEqual({});
-    const either = column({ kinds: [Pod, Deployment], header: 'Kind', value: (o) => (o.spec && 'containers' in o.spec ? o.spec.nodeName : o.spec?.replicas) });
+    const either = column({
+      kinds: [Pod, Deployment],
+      header: 'Kind',
+      value: (o) => (o.spec && 'containers' in o.spec ? o.spec.nodeName : o.spec?.replicas),
+      display: (o) => o.kind ?? '',
+    });
     expect(either.target).toEqual({ kinds: ['v1/Pod', 'apps/v1/Deployment'] });
   });
 
   it('a function typed for some kinds is for those kinds only: said, never left out', () => {
     // @ts-expect-error typed for Pods, it says it is
-    column<readonly [typeof Pod]>({ header: 'Node', value: (pod) => pod.spec?.nodeName });
+    column<readonly [typeof Pod]>({ header: 'Node', value: (pod) => pod.spec?.nodeName, display: () => '' });
     // @ts-expect-error the same of an action
     action<readonly [typeof Pod]>({ title: 'Go', run: (pod) => pod.spec?.nodeName });
     // An empty list: for no kind (not every one).
-    const none = column({ kinds: [], header: 'None', value: () => 1 });
-    expect([takes(none.target, Pod), takes(column({ header: 'All', value: () => 1 }).target, Pod)]).toEqual([false, true]);
+    const none = column({ kinds: [], header: 'None', value: () => 1, display: () => '1' });
+    expect([takes(none.target, Pod), takes(column({ header: 'All', value: () => 1, display: () => '1' }).target, Pod)]).toEqual([false, true]);
   });
 
   it('a page and its region are slots of their own: a page named as its addon names it, a region’s name with no "." or ":"', () => {
@@ -179,7 +184,7 @@ describe('an addon', () => {
       id: 'images',
       title: 'Images',
       setup(ctx) {
-        ctx.contributor.add('Column', 'images.tag', column({ kinds: [Pod], header: 'Tag', value: () => 'latest' }));
+        ctx.contributor.add('Column', 'images.tag', column({ kinds: [Pod], header: 'Tag', value: () => 'latest', display: () => 'latest' }));
         ctx.contributor.patch('KindView', Pod.id, { icon: 'box' });
       },
     });

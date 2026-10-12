@@ -25,8 +25,8 @@ export interface TableColumn<T> {
   /** A CSS grid track: "2fr", "120px", "minmax(80px, 1fr)". */
   width?: string;
   cell: (row: T) => ComponentChildren;
-  /** What it sorts by; not sortable without. */
-  sort?: (row: T) => string | number | undefined;
+  /** What it sorts by (numbers as numbers, booleans false first, strings numeric-aware; none: last); not sortable without. */
+  sort?: (row: T) => string | number | boolean | undefined;
   /** Its cells wrap onto more lines (the row grows) instead of being cut. */
   wrap?: boolean;
 }
@@ -197,8 +197,8 @@ export function Table<T>({
     return rows
       .map((row, i) => ({ row, v: values[i] }))
       .sort((a, b) => {
-        const x = a.v;
-        const y = b.v;
+        const x = typeof a.v === 'boolean' ? Number(a.v) : a.v;
+        const y = typeof b.v === 'boolean' ? Number(b.v) : b.v;
         if (x === y) return 0;
         if (x === undefined) return 1;
         if (y === undefined) return -1;

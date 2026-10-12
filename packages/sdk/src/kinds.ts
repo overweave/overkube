@@ -121,35 +121,71 @@ export const Category = defineKind<CategorySpec>()('Category', {
  */
 export const PENDING: unique symbol = Symbol.for('overkube.pending');
 
-/** What a column's render is drawn with: the object, its kind, the column's value of it. */
+/** What a column's render — and a Wrap of its cell — is drawn with: the object, its kind, the column's value of it, its display (live: as now changes, if it reads it). */
 export interface ColumnRenderProps<O extends KubeObject = KubeObject> {
   object: O;
   kind: KindInfo;
   value: unknown;
+  display: string;
 }
 
-/** A column of kinds' tables: its value of each object (PENDING: not there yet), drawn as text unless it has a render (given ColumnRenderProps). */
+/**
+ * What a column's value and display are worked out with: when it is (what
+ * an age is counted to — a display that reads it is drawn again as it
+ * changes, only where its text does), every object of its kind listed (a
+ * default among them — not only those a filter shows), their kind.
+ */
+export interface ColumnContext<O extends KubeObject = KubeObject> {
+  readonly now: number;
+  readonly objects: readonly O[];
+  readonly kind: KindInfo;
+}
+
+/**
+ * A column of kinds' tables: its value of each object, what it is sorted
+ * by (PENDING: not there yet); its display, its cell's text — drawn as is
+ * unless it has a render (given ColumnRenderProps); of the kinds its target
+ * takes, those its when does (none: all). Hidden: shown only when asked
+ * (TableView.hidden: false) — kubectl's -o wide; for some kinds only, a
+ * function of the kind (an Event's name).
+ */
 export interface ColumnSpec {
   target: Target;
   header: Label;
-  value: (object: KubeObject) => unknown;
+  value: (object: KubeObject, context: ColumnContext) => unknown;
+  display: (object: KubeObject, context: ColumnContext) => string;
   render?: PreactComponent;
+  when?: (kind: KindInfo) => boolean;
+  hidden?: boolean | ((kind: KindInfo) => boolean);
   width?: number;
   order?: number;
 }
 
 export const Column = defineKind<ColumnSpec>()('Column', {
-  required: ['target', 'header', 'value'],
+  required: ['target', 'header', 'value', 'display'],
   createRight: behaviour,
   validate: fields({
     target: [target, 'notATarget'],
     header: [isLabel, 'notText'],
     value: [fn, 'notAFunction'],
+    display: [fn, 'notAFunction'],
     render: [fn, 'notAFunction'],
+    when: [fn, 'notAFunction'],
+    hidden: [(v) => flag(v) || fn(v), 'notAFlag'],
     width: [finite, 'notANumber'],
     order: [finite, 'notANumber'],
   }),
-  patchRights: { target: behaviour, header: configure, width: configure, order: configure, value: behaviour, render: behaviour },
+  patchRights: {
+    target: behaviour,
+    header: configure,
+    width: configure,
+    order: configure,
+    value: behaviour,
+    display: behaviour,
+    render: behaviour,
+    when: behaviour,
+    hidden: configure,
+  },
 });
 
 /** How a kind's table is set out. Named by the kind's id. */

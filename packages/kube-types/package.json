@@ -10,6 +10,106 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./admissionregistration/v1": {
+      "overkube-source": "./src/columns/admissionregistration/v1.ts",
+      "types": "./dist/columns/admissionregistration/v1.d.ts",
+      "default": "./dist/columns/admissionregistration/v1.js"
+    },
+    "./apiextensions/v1": {
+      "overkube-source": "./src/columns/apiextensions/v1.ts",
+      "types": "./dist/columns/apiextensions/v1.d.ts",
+      "default": "./dist/columns/apiextensions/v1.js"
+    },
+    "./apiregistration/v1": {
+      "overkube-source": "./src/columns/apiregistration/v1.ts",
+      "types": "./dist/columns/apiregistration/v1.d.ts",
+      "default": "./dist/columns/apiregistration/v1.js"
+    },
+    "./apps/v1": {
+      "overkube-source": "./src/columns/apps/v1.ts",
+      "types": "./dist/columns/apps/v1.d.ts",
+      "default": "./dist/columns/apps/v1.js"
+    },
+    "./autoscaling/v1": {
+      "overkube-source": "./src/columns/autoscaling/v1.ts",
+      "types": "./dist/columns/autoscaling/v1.d.ts",
+      "default": "./dist/columns/autoscaling/v1.js"
+    },
+    "./autoscaling/v2": {
+      "overkube-source": "./src/columns/autoscaling/v2.ts",
+      "types": "./dist/columns/autoscaling/v2.d.ts",
+      "default": "./dist/columns/autoscaling/v2.js"
+    },
+    "./batch/v1": {
+      "overkube-source": "./src/columns/batch/v1.ts",
+      "types": "./dist/columns/batch/v1.d.ts",
+      "default": "./dist/columns/batch/v1.js"
+    },
+    "./certificates/v1": {
+      "overkube-source": "./src/columns/certificates/v1.ts",
+      "types": "./dist/columns/certificates/v1.d.ts",
+      "default": "./dist/columns/certificates/v1.js"
+    },
+    "./coordination/v1": {
+      "overkube-source": "./src/columns/coordination/v1.ts",
+      "types": "./dist/columns/coordination/v1.d.ts",
+      "default": "./dist/columns/coordination/v1.js"
+    },
+    "./core/v1": {
+      "overkube-source": "./src/columns/core/v1.ts",
+      "types": "./dist/columns/core/v1.d.ts",
+      "default": "./dist/columns/core/v1.js"
+    },
+    "./discovery/v1": {
+      "overkube-source": "./src/columns/discovery/v1.ts",
+      "types": "./dist/columns/discovery/v1.d.ts",
+      "default": "./dist/columns/discovery/v1.js"
+    },
+    "./events/v1": {
+      "overkube-source": "./src/columns/events/v1.ts",
+      "types": "./dist/columns/events/v1.d.ts",
+      "default": "./dist/columns/events/v1.js"
+    },
+    "./flowcontrol/v1": {
+      "overkube-source": "./src/columns/flowcontrol/v1.ts",
+      "types": "./dist/columns/flowcontrol/v1.d.ts",
+      "default": "./dist/columns/flowcontrol/v1.js"
+    },
+    "./networking/v1": {
+      "overkube-source": "./src/columns/networking/v1.ts",
+      "types": "./dist/columns/networking/v1.d.ts",
+      "default": "./dist/columns/networking/v1.js"
+    },
+    "./node/v1": {
+      "overkube-source": "./src/columns/node/v1.ts",
+      "types": "./dist/columns/node/v1.d.ts",
+      "default": "./dist/columns/node/v1.js"
+    },
+    "./policy/v1": {
+      "overkube-source": "./src/columns/policy/v1.ts",
+      "types": "./dist/columns/policy/v1.d.ts",
+      "default": "./dist/columns/policy/v1.js"
+    },
+    "./rbac/v1": {
+      "overkube-source": "./src/columns/rbac/v1.ts",
+      "types": "./dist/columns/rbac/v1.d.ts",
+      "default": "./dist/columns/rbac/v1.js"
+    },
+    "./resource/v1": {
+      "overkube-source": "./src/columns/resource/v1.ts",
+      "types": "./dist/columns/resource/v1.d.ts",
+      "default": "./dist/columns/resource/v1.js"
+    },
+    "./scheduling/v1": {
+      "overkube-source": "./src/columns/scheduling/v1.ts",
+      "types": "./dist/columns/scheduling/v1.d.ts",
+      "default": "./dist/columns/scheduling/v1.js"
+    },
+    "./storage/v1": {
+      "overkube-source": "./src/columns/storage/v1.ts",
+      "types": "./dist/columns/storage/v1.d.ts",
+      "default": "./dist/columns/storage/v1.js"
+    },
     "./*": {
       "overkube-source": "./src/gen/*.ts",
       "types": "./dist/gen/*.d.ts",

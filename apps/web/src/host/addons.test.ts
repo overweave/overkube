@@ -34,7 +34,7 @@ function setup(options: { safe?: boolean; log?: (message: string) => void } = {}
 }
 
 const named = (id: string, layer: Addon['layer'], setup: Addon['setup'], more: Partial<Addon> = {}) => defineAddon({ id, title: id, layer, setup, ...more });
-const col = (header: string) => column({ header, value: () => 1 });
+const col = (header: string) => column({ header, value: () => 1, display: () => '1' });
 
 describe('the host', () => {
   it('runs each addon as a contributor at its layer; what it said goes when it stops', () => {

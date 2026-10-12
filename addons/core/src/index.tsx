@@ -1,6 +1,6 @@
-import { type KindInfo, type KubeObject, kinds } from '@overkube/kube-types';
+import { ageColumn, type KindInfo, type KubeObject, kinds, nameColumn, type PrinterColumn } from '@overkube/kube-types';
 import { column, defineAddon, KIND_PAGE, type KindViewSpec, type Label, type MenuPage, menuItem, openIn, section, slots } from '@overkube/sdk';
-import { Age, copyText, Highlight, toYaml } from '@overkube/uikit';
+import { copyText, Highlight, toYaml } from '@overkube/uikit';
 import { fill } from '@overweave/ui/preact';
 import { signal } from '@preact/signals';
 import { CoreTable, TableEmpty } from './CoreTable.tsx';
@@ -8,6 +8,7 @@ import { titleOf } from './kinds.ts';
 import { Menu } from './Menu.tsx';
 import { NavSide, NavTab, NavTabMark, NavTabs, Picker, PickerButton, PickerGroups, PickerItem, PickerSearch, type TabsKept, type TabsState } from './Nav.tsx';
 import { Home, KindMissing, NameCell, PageTable } from './pages.tsx';
+import { PRINTED } from './printed.ts';
 import { Actions, ResourceMissing, ResourceTitle, ResourceView, YamlSection } from './ResourceView.tsx';
 import { Toasts } from './Toasts.tsx';
 import { T } from './texts.ts';
@@ -77,7 +78,12 @@ function slotNames(tree: object): string[] {
   return Object.values(tree).flatMap((v) => (v && typeof v === 'object' ? [...(typeof v.name === 'string' ? [v.name] : []), ...slotNames(v)] : []));
 }
 
-const AgeCell = ({ object }: { object: KubeObject }) => <Age since={object.metadata?.creationTimestamp} />;
+/** A column's name as kubectl heads it, for a definition's name: "Port(s)" port-s, "Nominated Node" nominated-node. */
+const slug = (header: string) =>
+  header
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 
 export default defineAddon({
   id: 'core',
@@ -127,13 +133,47 @@ export default defineAddon({
     c.add('Fill', 'core.resource.view.actions', fill(slots.resource.view.footer, { render: Actions }));
     c.add('Fill', 'core.resource.view.missing', fill(slots.resource.view.missing, { order: 1000, render: ResourceMissing }));
 
-    c.add('Column', 'core.name', column({ header: T.columns.name, order: 0, value: (o) => o.metadata?.name, render: NameCell }));
-    c.add('Column', 'core.namespace', column({ header: T.columns.namespace, order: 10, value: (o) => o.metadata?.namespace }));
-    c.add('Column', 'core.age', column({ header: T.columns.age, order: 900, width: 90, value: (o) => o.metadata?.creationTimestamp, render: AgeCell }));
-    c.add('Fill', 'core.resource.view.yaml', section({ title: 'YAML', order: 1000, render: YamlSection }));
-
     // Defaults that yield: another's add of one takes its place.
     const fallback = { fallback: true };
+    // The built-in kinds' own, as kubectl has them: core.<kind>.<column> (core.v1/Pod.restarts), in its order around the core's own (those
+    // before its age, after its name and namespace; those after, after the age) — those of -o wide hidden. Their names are the core's
+    // (a kind's own Name — "(default)" after one — drawn by it); their ages too, but for those with none (a time made instead).
+    /** The kinds' own Name (kubectl's: its object's name marked so). */
+    const names = new Map<string, PrinterColumn<KubeObject>>();
+    /** The kinds whose Name kubectl shows only with -o wide (Events): hidden there. */
+    const wide = new Set<string>();
+    const printed = new Set<string>();
+    const aged = new Set<string>();
+    for (const [kind, columns] of PRINTED) {
+      printed.add(kind.id);
+      let after = 100;
+      for (const [i, p] of columns.entries()) {
+        if (p.format === 'name' && p.name === 'Name') {
+          if (p !== nameColumn) names.set(kind.id, p);
+          if (p.priority) wide.add(kind.id);
+        } else if (p === ageColumn) {
+          aged.add(kind.id);
+          after = 910;
+        } else {
+          const spec = column({ kinds: [kind], header: p.name, order: after + i * 10, hidden: !!p.priority, value: p.value, display: p.display });
+          c.add('Column', `core.${kind.id}.${slug(p.name)}`, spec, fallback);
+        }
+      }
+    }
+    // Every kind's: its objects' names (a link to each), namespaces (where it has them), ages — as kubectl prints them.
+    const name = (k: KindInfo | undefined) => names.get(k?.id ?? '') ?? nameColumn;
+    const named = { header: T.columns.name, order: 0, hidden: (k: KindInfo) => wide.has(k.id), render: NameCell };
+    c.add('Column', 'core.name', column({ ...named, value: (o, x) => name(x.kind).value(o, x), display: (o, x) => name(x.kind).display(o, x) }), fallback);
+    c.add(
+      'Column',
+      'core.namespace',
+      column({ header: T.columns.namespace, order: 10, when: (k) => k.namespaced, value: (o) => o.metadata?.namespace, display: (o) => o.metadata?.namespace ?? '' }),
+      fallback,
+    );
+    const age = { header: T.columns.age, order: 900, width: 90, when: (k: KindInfo) => aged.has(k.id) || !printed.has(k.id) };
+    c.add('Column', 'core.age', column({ ...age, value: ageColumn.value, display: ageColumn.display }), fallback);
+    c.add('Fill', 'core.resource.view.yaml', section({ title: 'YAML', order: 1000, render: YamlSection }));
+
     for (const [i, [name, title]] of CATEGORIES.entries()) c.add('Category', name, { title, order: i * 10 }, fallback);
     for (const [i, [kind, category, icon, pinned]] of USUAL.entries()) {
       const view: KindViewSpec = { title: titleOf(kind), category, icon, order: i * 10, ...(pinned ? { pinned } : {}) };
