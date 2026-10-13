@@ -42,9 +42,15 @@ function split(path: string): [string, string] {
   return at < 0 ? [path, ''] : [path.slice(0, at), path.slice(at + 1)];
 }
 
-/** A path with a resource opened over its page (another one opened there: this one instead). */
-export function openIn(path: string, kind: KindLike, object: Named): string {
-  const { name = '', namespace } = object.metadata ?? {};
+/**
+ * A path with a resource opened over its page (another one opened there:
+ * this one instead). A kind of the whole cluster (namespaced: false) is
+ * opened by its name alone, whatever namespace it is given (an owner's,
+ * named by what it owns).
+ */
+export function openIn(path: string, kind: KindLike & { namespaced?: boolean }, object: Named): string {
+  const { name = '' } = object.metadata ?? {};
+  const namespace = kind.namespaced === false ? undefined : object.metadata?.namespace;
   const open = [kindRef(kind), ...(namespace ? [namespace] : []), name].map(encodeURIComponent).join('/');
   const rest = closeIn(path);
   return `${rest}${rest.includes('?') ? '&' : '?'}open=${open}`;

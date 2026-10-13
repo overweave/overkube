@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useMemo, useRef } from 'preact/hooks';
 import { Button } from '../actions/Button';
 import { activeElement, focusable, trapTab, uid } from '../lib/focus';
 
@@ -8,8 +8,8 @@ import { activeElement, focusable, trapTab, uid } from '../lib/focus';
  * behind it inert): in the middle, high up; or a panel from the left or the
  * right edge, all its height; or a sheet from the bottom. Closed by Escape (the top one
  * only, of dialogs one over another), a click beside it (one begun beside
- * it: not a press inside let go outside), or its button; it slides or
- * fades out, then goes. Focus goes into it (its first field, else itself),
+ * it: not a press inside let go outside), or its button. It comes and
+ * goes at once (no motion). Focus goes into it (its first field, else itself),
  * stays in it (Tab goes round), and goes back where it was once it is gone.
  */
 
@@ -29,25 +29,20 @@ export interface ModalProps {
   children: ComponentChildren;
 }
 
-/** How long it takes to go (the CSS's). */
-export const MODAL_OUT_MS = 180;
+/** How long it takes to go: no time (it goes at once). */
+export const MODAL_OUT_MS = 0;
 
 export function Modal({ title, actions, footer, onClose, closeLabel = 'Close', placement = 'center', children }: ModalProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useMemo(() => uid('uk-modal-title'), []);
   const close = useRef(onClose);
   close.current = onClose;
-  const [closing, setClosing] = useState(false);
+  // Closed once (Escape and a click beside it at once: one close).
   const leaving = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
-  // Gone before it finished going (what showed it went elsewhere): its close not called after all.
-  useEffect(() => () => clearTimeout(timer.current), []);
   const leave = () => {
     if (leaving.current) return;
     leaving.current = true;
-    setClosing(true);
-    const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    timer.current = setTimeout(() => close.current(), still ? 0 : MODAL_OUT_MS);
+    close.current();
   };
   // A click beside it closes it only if it began there (a press inside let go outside is no click beside it).
   const pressedBeside = useRef(false);
@@ -71,7 +66,6 @@ export function Modal({ title, actions, footer, onClose, closeLabel = 'Close', p
       ref={dialog}
       aria-labelledby={titleId}
       data-placement={placement}
-      data-state={closing ? 'closing' : 'open'}
       tabIndex={-1}
       onCancel={(e) => {
         e.preventDefault();

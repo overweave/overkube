@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'preact/hooks';
+import { type ComponentChildren, createContext, Fragment } from 'preact';
+import { useContext, useEffect, useState } from 'preact/hooks';
 import { copyText } from '../lib/clipboard';
 
 /*
@@ -15,9 +16,11 @@ export interface ChipsLabels {
   less: string;
   /** A chip's name: what a click on it does. */
   copy: (text: string) => string;
+  /** Said over a chip a moment, once copied. */
+  copied: string;
 }
 
-const LABELS: ChipsLabels = { more: (n) => `+${n}`, less: 'Show less', copy: (t) => `Copy ${t}` };
+const LABELS: ChipsLabels = { more: (n) => `+${n}`, less: 'Show less', copy: (t) => `Copy ${t}`, copied: '✓ Copied' };
 
 /** A value longer than this may be cut short. */
 const LONG = 24;
@@ -30,52 +33,91 @@ export interface ChipsProps {
   /** Shown at first; the rest behind "+N". */
   max?: number;
   labels?: ChipsLabels;
+  /** Each item as it is drawn (none: a Chip). */
+  chip?: (key: string, value: string) => ComponentChildren;
 }
 
-export function Chips({ items, max = 8, labels = LABELS }: ChipsProps) {
+/** The one of them last copied (marked a moment) — one at a time, however each is drawn — and what is said of it (one place to say it). */
+interface Copying {
+  key: string | undefined;
+  said: string;
+  set: (key: string | undefined, said?: string) => void;
+}
+const Copied = createContext<Copying | null>(null);
+
+export function Chips({ items, max = 8, labels = LABELS, chip }: ChipsProps) {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState<string>();
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(undefined), COPIED_MS);
-    return () => clearTimeout(t);
-  }, [copied]);
+  const [copied, setCopied] = useState<{ key: string | undefined; said: string }>({ key: undefined, said: '' });
   const entries = Object.entries(items ?? {}).sort(([a], [b]) => a.localeCompare(b));
   if (!entries.length) return <span class="uk-muted">—</span>;
   const shown = open ? entries : entries.slice(0, max);
   const rest = entries.length - shown.length;
-  const copy = (key: string, text: string) => {
-    copyText(text).then((done) => done && setCopied(key));
-  };
   return (
-    <span class="uk-chips">
-      {shown.map(([k, v]) => {
-        const slash = k.lastIndexOf('/');
-        const text = `${k}=${v}`;
-        return (
-          <button type="button" class="uk-chip" key={k} title={text} aria-label={labels.copy(text)} data-copied={copied === k ? '' : undefined} onClick={() => copy(k, text)}>
-            {/* Its key: its prefix (giving way first, short of room) and its name (never cut). */}
-            {slash >= 0 && <span class="uk-chip-key uk-chip-prefix">{k.slice(0, slash + 1)}</span>}
-            <span class="uk-chip-key uk-chip-name">{k.slice(slash + 1)}</span>
-            {/* A short value is never cut (the key's prefix gives way); a long one (a JSON, a certificate) is. */}
-            {v !== '' && (
-              <span class="uk-chip-value" data-long={v.length > LONG ? '' : undefined}>
-                {v}
-              </span>
-            )}
+    <Copied.Provider value={{ ...copied, set: (key, said = '') => setCopied({ key, said: key ? said : '' }) }}>
+      <span class="uk-chips">
+        {shown.map(([k, v]) => (
+          <Fragment key={k}>{chip ? chip(k, v) : <Chip name={k} value={v} labels={labels} />}</Fragment>
+        ))}
+        {rest > 0 && (
+          <button type="button" class="uk-chip uk-chip-more" onClick={() => setOpen(true)}>
+            {labels.more(rest)}
           </button>
-        );
-      })}
-      {rest > 0 && (
-        <button type="button" class="uk-chip uk-chip-more" onClick={() => setOpen(true)}>
-          {labels.more(rest)}
-        </button>
+        )}
+        {open && entries.length > max && (
+          <button type="button" class="uk-chip uk-chip-more" onClick={() => setOpen(false)}>
+            {labels.less}
+          </button>
+        )}
+      </span>
+      {/* Said to those who cannot see it (the mark over a chip is only seen): one place for all of them. */}
+      <span class="uk-sr-only" role="status">
+        {copied.said}
+      </span>
+    </Copied.Provider>
+  );
+}
+
+/** One of them: its key (its prefix quieter), its value (cut short when long); a click copies "key=value". */
+export function Chip({ name, value, labels = LABELS }: { name: string; value: string; labels?: Pick<ChipsLabels, 'copy' | 'copied'> }) {
+  // Among others (Chips): one marked at a time, said once for all of them; alone, its own (and said by itself).
+  const shared = useContext(Copied);
+  const [own, setOwn] = useState<string>();
+  const copied = (shared ? shared.key : own) === name;
+  const mark = (key: string | undefined) => (shared ? shared.set(key, labels.copied) : setOwn(key));
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => mark(undefined), COPIED_MS);
+    return () => clearTimeout(t);
+  }, [copied]);
+  const slash = name.lastIndexOf('/');
+  const text = `${name}=${value}`;
+  return (
+    <>
+      <button
+        type="button"
+        class="uk-chip"
+        title={text}
+        aria-label={labels.copy(text)}
+        data-copied={copied ? '' : undefined}
+        data-copied-label={labels.copied}
+        onClick={() => copyText(text).then((done) => done && mark(name))}
+      >
+        {/* Its key: its prefix (giving way first, short of room) and its name (never cut). */}
+        {slash >= 0 && <span class="uk-chip-key uk-chip-prefix">{name.slice(0, slash + 1)}</span>}
+        <span class="uk-chip-key uk-chip-name">{name.slice(slash + 1)}</span>
+        {/* A short value is never cut (the key's prefix gives way); a long one (a JSON, a certificate) is. */}
+        {value !== '' && (
+          <span class="uk-chip-value" data-long={value.length > LONG ? '' : undefined}>
+            {value}
+          </span>
+        )}
+      </button>
+      {/* Alone: said to those who cannot see it by itself (among others, Chips says it). */}
+      {!shared && (
+        <span class="uk-sr-only" role="status">
+          {copied ? labels.copied : ''}
+        </span>
       )}
-      {open && entries.length > max && (
-        <button type="button" class="uk-chip uk-chip-more" onClick={() => setOpen(false)}>
-          {labels.less}
-        </button>
-      )}
-    </span>
+    </>
   );
 }

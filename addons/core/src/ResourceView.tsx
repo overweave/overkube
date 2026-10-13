@@ -1,7 +1,7 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { Action, type ActionSpec, type MissingState, type ResourceProps, type ResourceRef, slots, takes } from '@overkube/sdk';
 import { useCollection, useMenu, useNotify, useOpened, usePage, useSay } from '@overkube/sdk/preact';
-import { Button, Code, Modal, Notice, toYaml } from '@overkube/uikit';
+import { Button, Code, Modal, Notice, Section, toYaml } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { slotElement, useDefinitions } from '@overweave/ui/preact';
@@ -48,7 +48,7 @@ export function ResourceView({ kind, namespace, name }: ResourceRef) {
       onClose={close}
       footer={slotElement(slots.resource.view.footer, props)}
     >
-      <div class="uk-region">
+      <div class="uk-region uk-details">
         {slotElement(slots.resource.view.summary, props)}
         {slotElement(slots.resource.view.sections, props)}
       </div>
@@ -86,7 +86,12 @@ export function ResourceMissing({ kind, name, state, error, retry }: ResourceRef
 
 /** The object as YAML: the core's section, last. */
 export function YamlSection({ object }: { object: KubeObject }) {
-  return <Code>{toYaml(object)}</Code>;
+  const say = useSay();
+  return (
+    <Section title={say(T.resource.view.yaml.title)}>
+      <Code>{toYaml(object)}</Code>
+    </Section>
+  );
 }
 
 /** An action asked about: which, for which object (its uid), the object as it was asked about. */

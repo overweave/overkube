@@ -1,12 +1,13 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { Column, type ColumnContext, type ColumnSpec, type KindTableProps, type ListState, PENDING, slots, TableView, takes } from '@overkube/sdk';
-import { useCollection, useMenu, usePage, useSay } from '@overkube/sdk/preact';
+import { useCollection, useMenu, useSay } from '@overkube/sdk/preact';
 import { Button, Notice, Skeleton, Table, type TableColumn } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { Guarded, slotElement, useDefinition, useDefinitions, Wrapped } from '@overweave/ui/preact';
-import { computed, signal } from '@preact/signals';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useFailures } from './failures.ts';
+import { clock, useLive } from './live.ts';
 import { T } from './texts.ts';
 import { useWaited } from './waited.ts';
 
@@ -16,7 +17,8 @@ import { useWaited } from './waited.ts';
  * the definitions: the Columns whose target (and when) takes the kind, set
  * out as its TableView says (order, hidden — none said: as the column is —, widths, sort, which objects —
  * and of those, the ones the table's own filter takes). Sorted by a
- * column's value; a cell its display (one that reads now: drawn again as
+ * column's value (the TableView's sort; none: by name, Name shown so),
+ * those of the same value by their place (namespace/name); a cell its display (one that reads now: drawn again as
  * it changes, where its text does), or its render. Over it, its title (if
  * given) and its toolbar (kind.table.toolbar, given the list); in a
  * column's header, kind.table.column.content; a cell in the Wraps of its
@@ -33,7 +35,6 @@ import { useWaited } from './waited.ts';
  */
 export function CoreTable(table: KindTableProps) {
   const { kind, title } = table;
-  const page = usePage();
   // The page waited for this kind already (the last one shown meanwhile): its placeholders at once.
   const waited = useWaited();
   const collection = useCollection(kind);
@@ -47,30 +48,8 @@ export function CoreTable(table: KindTableProps) {
     () => setSaid(loadingNow ? say(T.kind.table.loading, { kind: kind.plural }) : say(T.kind.table.count, { count, kind: kind.plural })),
     [loadingNow, count, kind.plural, say],
   );
-  // What failed while drawn (a cell, a sort, the filter), by whose definition: told once the drawing is
-  // done (not while drawing: a status written then would draw again), each once while that definition is as
-  // it is (what failed: a definition, a filter — new when it changes; not told again as a live cell's text is
-  // worked out each second; told again once another, or a patch, is in its place and fails).
-  const failures = useRef<Map<string, { kind: string; name: string; field: string; error: unknown }> | null>(null);
-  const told = useRef(new WeakMap<object, Set<string>>());
-  const failed = useMemo(
-    () => (what: object, definitionKind: string, name: string, field: string, error: unknown) => {
-      const fields = told.current.get(what) ?? new Set<string>();
-      if (fields.has(field)) return;
-      told.current.set(what, fields.add(field));
-      const key = `${definitionKind}/${name}/${field}`;
-      if (!failures.current) {
-        failures.current = new Map();
-        queueMicrotask(() => {
-          const told = failures.current;
-          failures.current = null;
-          for (const f of told?.values() ?? []) page.report({ kind: f.kind, name: f.name }, f.field, f.error);
-        });
-      }
-      if (!failures.current.has(key)) failures.current.set(key, { kind: definitionKind, name, field, error });
-    },
-    [page],
-  );
+  // What failed while drawn, told once as its owner's (useFailures).
+  const failed = useFailures();
 
   const view = useDefinition(TableView, kind.id)?.spec ?? {};
   // Of those its target takes, those its when does (one that throws: not drawn, its failure told).
@@ -84,7 +63,6 @@ export function CoreTable(table: KindTableProps) {
     }
   });
   const placed = useMemo(() => {
-    const order = [...new Set(view.columns ?? [])];
     // Hidden as the view says, else as the column is (for this kind, if it says so by kind: one that throws, shown — its failure told).
     const hidden = (c: (typeof all)[number]) => {
       const h = view.hidden?.[c.name] ?? c.spec.hidden;
@@ -96,9 +74,7 @@ export function CoreTable(table: KindTableProps) {
         return false;
       }
     };
-    return [...order.map((name) => all.find((c) => c.name === name)).filter((c): c is (typeof all)[number] => !!c), ...inOrder(all.filter((c) => !order.includes(c.name)))].filter(
-      (c) => !hidden(c),
-    );
+    return arranged(all, view).filter((c) => !hidden(c));
     // Definitions are new objects only when they change: the same ones, the same columns.
   }, [view.columns, view.hidden, kind, failed, ...all]);
 
@@ -172,7 +148,8 @@ export function CoreTable(table: KindTableProps) {
 
   const state = collection.state.value;
   const error = collection.error.value;
-  const initialSort = view.sort ? { id: view.sort.column, desc: view.sort.descending } : undefined;
+  // Sorted as its TableView says; told nothing, by name (the column shown so: sorted by it, its arrow up) — where there is one.
+  const initialSort = view.sort ? { id: view.sort.column, desc: view.sort.descending } : placed.some((c) => c.name === 'core.name') ? { id: 'core.name' } : undefined;
   if (state === 'absent') return <Notice icon="puzzle">{say(T.kind.notServed, { kind: kind.id })}</Notice>;
   if (state === 'error')
     return (
@@ -243,8 +220,8 @@ export function CoreTable(table: KindTableProps) {
 }
 
 /**
- * A cell: its column's display of its object (nothing — empty, none —:
- * "—"; a 0 is a 0) — live: worked out again as now changes, if it reads
+ * A cell: its column's display of its object (nothing — empty, none,
+ * kubectl's <none> —: "—"; a 0 is a 0) — live: worked out again as now changes, if it reads
  * it, drawn again only where its text does —, or its render (given it,
  * drawn apart: Guarded, tried again when its object changes), or waiting
  * (its value not there yet: PENDING); in the Wraps of its column's name
@@ -270,11 +247,10 @@ function Cell({
 }) {
   const say = useSay();
   // Worked out again as its object, the objects listed with it, or now (if it reads it) change.
-  const text = useMemo(() => computed(() => display(object)), [display, object, objects]);
   const waiting = value === PENDING;
-  const shown = waiting ? '' : text.value;
-  // A display that broke its word (JavaScript's: none, a number) as text all the same.
-  const drawn = shown === undefined || shown === null || shown === '' ? EMPTY : String(shown);
+  const text = useLive(() => (waiting ? '' : display(object)), [display, object, objects, waiting]);
+  const shown = text;
+  const drawn = shownAs(shown);
   const props = useMemo(() => ({ kind, object, value, display: shown }), [kind, object, value, shown]);
   const Render = column.spec.render;
   return (
@@ -296,28 +272,25 @@ function Cell({
   );
 }
 
+/** A kind's columns as its TableView sets them out: those it names first, in its order; the others after, in theirs. */
+export function arranged<C extends { name: string; spec: { order?: number } }>(all: readonly C[], view: { readonly columns?: readonly string[] }): C[] {
+  const order = [...new Set(view.columns ?? [])];
+  return [...order.map((name) => all.find((c) => c.name === name)).filter((c): c is C => !!c), ...inOrder(all.filter((c) => !order.includes(c.name)))];
+}
+
 /** What an empty cell shows. */
-const EMPTY = '—';
+export const EMPTY = '—';
+
+/** kubectl's words for nothing there: drawn as nothing ("—"); its others (<pending>, <unknown>) say a state, and stay. */
+const NOTHING = new Set(['', '<none>', '<unset>']);
+
+/** A display as drawn: nothing (empty, none, kubectl's <none>) "—"; a 0 a 0 — one that broke its word (JavaScript's: none, a number) as text all the same. */
+export function shownAs(display: unknown): string {
+  return display === undefined || display === null || NOTHING.has(display as string) ? EMPTY : String(display);
+}
 
 /** A row's key: where the object is. */
 const rowKey = (o: KubeObject) => `${o.metadata?.namespace ?? ''}/${o.metadata?.name}`;
-
-/**
- * The time cells' texts are worked out to: ticking each second while a
- * cell's text reads it (none: still).
- */
-let ticking: ReturnType<typeof setInterval> | undefined;
-const clock = signal(Date.now(), {
-  watched() {
-    this.value = Date.now();
-    ticking = setInterval(() => {
-      this.value = Date.now();
-    }, 1000);
-  },
-  unwatched() {
-    clearInterval(ticking);
-  },
-});
 
 /** No rows (the core's, kind.table.empty's last): none at all, or none shown of those there are. */
 export function TableEmpty({ kind, list }: { kind: KindInfo; list: ListState }) {

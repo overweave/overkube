@@ -165,7 +165,8 @@ describe('Table: drawing', () => {
 describe('Table: sorting', () => {
   it('sorts by a header clicked, then the other way, numbers as numbers', async () => {
     const { user, firsts, button, header } = mount();
-    expect(firsts()).toEqual(['b', 'a', 'c']);
+    // Sorted by nothing: by their keys (they came b, a, c).
+    expect(firsts()).toEqual(['a', 'b', 'c']);
     expect(header('N').getAttribute('aria-sort')).toBe('none');
     await user.click(button('N'));
     expect(firsts()).toEqual(['a', 'b', 'c']);
@@ -184,8 +185,22 @@ describe('Table: sorting', () => {
   it('does not sort by a column with nothing to sort by', async () => {
     const { user, firsts, button, header } = mount();
     await user.click(button('Note'));
-    expect(firsts()).toEqual(['b', 'a', 'c']);
+    expect(firsts()).toEqual(['a', 'b', 'c']);
     expect(header('Note').hasAttribute('aria-sort')).toBe(false);
+  });
+
+  it('sorts those of the same value by their keys — one order, the same either way, however the rows came', () => {
+    const same: Row[] = [
+      { name: 'c', n: 1, note: '' },
+      { name: 'a', n: 1, note: '' },
+      { name: 'd', n: 2, note: '' },
+      { name: 'b', n: 1, note: '' },
+      { name: 'e', note: '' },
+    ];
+    const t = mount({ rows: same, initialSort: { id: 'n' } });
+    expect(t.firsts()).toEqual(['a', 'b', 'c', 'd', 'e']);
+    t.rerender(<Table rows={[...same].reverse()} columns={COLUMNS} rowKey={(r) => r.name} initialSort={{ id: 'n', desc: true }} />);
+    expect(t.firsts()).toEqual(['d', 'a', 'b', 'c', 'e']);
   });
 
   it('sorts as it is told at first, and again when told otherwise', () => {
@@ -208,13 +223,13 @@ describe('Table: rows', () => {
     const columns: TableColumn<Row>[] = [...COLUMNS, { id: 'go', header: 'Go', cell: (r) => <button type="button">{`open ${r.name}`}</button> }];
     const { user, getByText, rows, button } = mount({ columns, onRowClick: (r) => clicked.push(r.name) });
     await user.click(getByText('a'));
-    rows()[0].focus();
+    rows()[1].focus();
     await user.keyboard('{Enter}');
     expect(clicked).toEqual(['a', 'b']);
     // Enter on a button in it is the button's.
     fireEvent.keyDown(button('open a'), { key: 'Enter' });
     expect(clicked).toEqual(['a', 'b']);
-    expect(rows()[0].getAttribute('tabindex')).toBe('0');
+    expect(rows()[1].getAttribute('tabindex')).toBe('0');
   });
 
   it('makes rows no stop when they do nothing', () => {
@@ -250,7 +265,7 @@ describe('Table: column widths', () => {
     expect(resized).toEqual([['name', '180px']]);
     expect(edge.getAttribute('aria-valuenow')).toBe('180');
     expect(getByRole('table').hasAttribute('data-resizing')).toBe(false);
-    expect(firsts()).toEqual(['b', 'a', 'c']);
+    expect(firsts()).toEqual(['a', 'b', 'c']);
   });
 
   it('keeps a column 48px wide at least', async () => {
@@ -302,8 +317,8 @@ describe('Table: column order', () => {
     await drag(t, 'Name', 150);
     await waitFor(() => expect(orders).toEqual([['n', 'name', 'note']]));
     expect(t.headers()).toEqual(['N', 'Name', 'Note']);
-    expect([...t.rows()[0].querySelectorAll('[role=cell]')].map((c) => c.textContent)).toEqual(['10', 'b', 'x']);
-    expect(t.firsts()).toEqual(['10', '9', '—']);
+    expect([...t.rows()[0].querySelectorAll('[role=cell]')].map((c) => c.textContent)).toEqual(['9', 'a', 'y']);
+    expect(t.firsts()).toEqual(['9', '10', '—']);
     expect(t.header('Name').hasAttribute('aria-sort')).toBe(true);
     expect(t.header('Name').getAttribute('aria-sort')).toBe('none');
   });
@@ -397,7 +412,8 @@ describe('Table: picking rows', () => {
     await user.keyboard('{Shift>}');
     await user.click(box('c'));
     await user.keyboard('{/Shift}');
-    expect(changes.at(-1)).toEqual(['a', 'b', 'c']);
+    // As they are shown (by their keys: a, b, c): from b to c.
+    expect(changes.at(-1)).toEqual(['b', 'c']);
   });
 
   it('picks all of them by the head’s check, and none again; says when some are', async () => {
@@ -480,19 +496,19 @@ describe('Table: what the data changes', () => {
   });
 
   it('slides the rows a few changes moved, not those that stayed', () => {
-    const t = live(['a', 'b', 'c', 'd']);
-    // d goes first: a, b and c step down.
-    t.set(['d', 'a', 'b', 'c']);
-    expect(slid.sort()).toEqual(['a', 'b', 'c', 'd']);
+    const t = live(['b', 'c', 'd', 'e']);
+    // a comes first (by its key): b, c, d and e step down.
+    t.set(['b', 'c', 'd', 'e', 'a']);
+    expect(slid.sort()).toEqual(['b', 'c', 'd', 'e']);
     slid = [];
-    t.set(['d', 'a', 'b', 'c']);
+    t.set(['b', 'c', 'd', 'e', 'a']);
     expect(slid).toEqual([]);
   });
 
   it('draws many changes at once (a filter, another namespace): nothing kept, nothing comes in', () => {
     const t = live(['a', 'b', 'c', 'd', 'e']);
     t.set(['v', 'w', 'x', 'y', 'z', 'a']);
-    expect(t.drawn()).toEqual(['v', 'w', 'x', 'y', 'z', 'a']);
+    expect(t.drawn()).toEqual(['a', 'v', 'w', 'x', 'y', 'z']);
     expect(t.entering()).toEqual([]);
   });
 

@@ -8,7 +8,9 @@ import { useSortable } from '../lib/sortable';
 /*
  * A table that draws only the rows in view (and a few around): thousands of
  * rows cost what thirty do. Its head stays on top and scrolls sideways with
- * the rows. A click on a header sorts by it (again: the other way); a
+ * the rows. A click on a header sorts by it (again: the other way; those
+ * of the same value by their keys, one order however they came) — sorted
+ * by nothing, by their keys; a
  * header's right edge drags its column wider or narrower (arrows too, a
  * double click gives it back); a header dragged moves its column elsewhere
  * (Alt and the arrows too): lifted on a card, leaning as it moves, the
@@ -16,6 +18,9 @@ import { useSortable } from '../lib/sortable';
  * or more in a column that wraps; each is measured as it is drawn. Rows
  * may be picked (a check each, one for all of them, Shift for a run).
  */
+
+/** Text compared as people read it: numbers in it as numbers (pod-9 before pod-10) — one collator for every comparison. */
+const collate = new Intl.Collator(undefined, { numeric: true }).compare;
 
 export interface TableColumn<T> {
   id: string;
@@ -192,20 +197,28 @@ export function Table<T>({
   else if (!by || !byRef.current) byRef.current = by;
   const sorted = useMemo(() => {
     const values = byRef.current;
-    if (!values) return rows;
+    // Sorted by nothing: by their keys (one order, however they came — a kind's objects: namespace, then name, as kubectl lists them).
+    if (!values)
+      return rows
+        .map((row) => ({ row, key: rowKey(row) }))
+        .sort((a, b) => collate(a.key, b.key))
+        .map((e) => e.row);
     const dir = sort?.desc ? -1 : 1;
+    // By its value (none last, either way), then — those of the same value — by the row's key, always the same way: one order, whatever
+    // order the rows came in (ORDER BY value, key).
+    const byValue = (a: unknown, b: unknown) => {
+      const x = typeof a === 'boolean' ? Number(a) : a;
+      const y = typeof b === 'boolean' ? Number(b) : b;
+      if (x === y) return 0;
+      if (x === undefined) return 1;
+      if (y === undefined) return -1;
+      return (typeof x === 'number' && typeof y === 'number' ? x - y : collate(String(x), String(y))) * dir;
+    };
     return rows
-      .map((row, i) => ({ row, v: values[i] }))
-      .sort((a, b) => {
-        const x = typeof a.v === 'boolean' ? Number(a.v) : a.v;
-        const y = typeof b.v === 'boolean' ? Number(b.v) : b.v;
-        if (x === y) return 0;
-        if (x === undefined) return 1;
-        if (y === undefined) return -1;
-        return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })) * dir;
-      })
+      .map((row, i) => ({ row, v: values[i], key: rowKey(row) }))
+      .sort((a, b) => byValue(a.v, b.v) || collate(a.key, b.key))
       .map((e) => e.row);
-  }, [rows, sort, byRef.current]);
+  }, [rows, sort, rowKey, byRef.current]);
 
   // Rows' heights as measured (by key), else rowHeight; where each row starts.
   const heights = useRef(new Map<string, number>());

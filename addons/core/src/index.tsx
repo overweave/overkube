@@ -4,6 +4,27 @@ import { copyText, Highlight, toYaml } from '@overkube/uikit';
 import { fill } from '@overweave/ui/preact';
 import { signal } from '@preact/signals';
 import { CoreTable, TableEmpty } from './CoreTable.tsx';
+import {
+  ConditionChanged,
+  ConditionMessage,
+  ConditionReason,
+  ConditionRow,
+  ConditionStatus,
+  Conditions,
+  ConditionType,
+  conditionsOf,
+  Deleting,
+  FieldLabel,
+  Finalizer,
+  field,
+  LabelChip,
+  METADATA,
+  Metadata,
+  MetadataValue,
+  Owner,
+  SummaryFields,
+  SummaryValue,
+} from './details.tsx';
 import { titleOf } from './kinds.ts';
 import { Menu } from './Menu.tsx';
 import { NavSide, NavTab, NavTabMark, NavTabs, Picker, PickerButton, PickerGroups, PickerItem, PickerSearch, type TabsKept, type TabsState } from './Nav.tsx';
@@ -37,7 +58,11 @@ import { T } from './texts.ts';
  * core.notifications), core.<slot>.<what> when it is a part — the slot named
  * without the frame part it is in (.content, .header, .footer, .actions,
  * .sections): core.nav.tabs.tab.title is in nav.tabs.tab.content,
- * core.resource.view.yaml in resource.view.sections; a menu's item
+ * core.resource.view.yaml in resource.view.sections — a section named for
+ * what it draws (core.resource.view.metadata: the metadata section, in
+ * resource.view.sections; its fields, core.resource.view.metadata.<field>,
+ * fills of the slot resource.view.metadata; a label of them,
+ * core.resource.view.metadata.label, the slot of that name's); a menu's item
  * core.<menu>.<what> (core.resource.context.open). Text keys as what says them.
  */
 
@@ -132,6 +157,33 @@ export default defineAddon({
     c.add('Fill', 'core.resource.view.title', fill(slots.resource.view.title, { render: ResourceTitle }));
     c.add('Fill', 'core.resource.view.actions', fill(slots.resource.view.footer, { render: Actions }));
     c.add('Fill', 'core.resource.view.missing', fill(slots.resource.view.missing, { order: 1000, render: ResourceMissing }));
+    // Its summary: being deleted, said first; its kind's columns as fields — a field, its label, its value each a slot (the core's the last).
+    const summary = slots.resource.view.summary;
+    c.add('Fill', 'core.resource.view.summary.deleting', fill(summary, { order: 0, render: Deleting }));
+    c.add('Fill', 'core.resource.view.summary.fields', fill(summary, { render: SummaryFields }));
+    c.add('Fill', 'core.resource.view.summary.field', fill(summary.field, { order: 1000, render: field(summary.field.label, summary.field.value, true) }));
+    c.add('Fill', 'core.resource.view.summary.field.label', fill(summary.field.label, { render: FieldLabel }));
+    c.add('Fill', 'core.resource.view.summary.field.value', fill(summary.field.value, { render: SummaryValue }));
+    // Its sections: its conditions (where it has them), its metadata, its YAML (last) — their parts each a slot.
+    c.add('Fill', 'core.resource.view.conditions', section({ order: 100, when: ({ object }) => conditionsOf(object).length > 0, render: Conditions }));
+    const condition = slots.resource.view.conditions.condition;
+    c.add('Fill', 'core.resource.view.conditions.condition', fill(condition, { order: 1000, render: ConditionRow }));
+    c.add('Fill', 'core.resource.view.conditions.condition.type', fill(condition.type, { render: ConditionType }));
+    c.add('Fill', 'core.resource.view.conditions.condition.status', fill(condition.status, { render: ConditionStatus }));
+    c.add('Fill', 'core.resource.view.conditions.condition.reason', fill(condition.reason, { render: ConditionReason }));
+    c.add('Fill', 'core.resource.view.conditions.condition.message', fill(condition.message, { render: ConditionMessage }));
+    c.add('Fill', 'core.resource.view.conditions.condition.changed', fill(condition.changed, { render: ConditionChanged }));
+    c.add('Fill', 'core.resource.view.metadata', section({ order: 900, render: Metadata }));
+    const metadata = slots.resource.view.metadata;
+    // Its fields, each a fill (100 to 700): another's field among them, by order or by before/after one of these.
+    for (const [i, [name, render]] of METADATA.entries()) c.add('Fill', `core.resource.view.metadata.${name}`, fill(metadata, { order: (i + 1) * 100, render }));
+    c.add('Fill', 'core.resource.view.metadata.field', fill(metadata.field, { order: 1000, render: field(metadata.field.label, metadata.field.value) }));
+    c.add('Fill', 'core.resource.view.metadata.field.label', fill(metadata.field.label, { render: FieldLabel }));
+    c.add('Fill', 'core.resource.view.metadata.field.value', fill(metadata.field.value, { render: MetadataValue }));
+    c.add('Fill', 'core.resource.view.metadata.label', fill(metadata.label, { order: 1000, render: LabelChip }));
+    c.add('Fill', 'core.resource.view.metadata.annotation', fill(metadata.annotation, { order: 1000, render: LabelChip }));
+    c.add('Fill', 'core.resource.view.metadata.owner', fill(metadata.owner, { order: 1000, render: Owner }));
+    c.add('Fill', 'core.resource.view.metadata.finalizer', fill(metadata.finalizer, { order: 1000, render: Finalizer }));
 
     // Defaults that yield: another's add of one takes its place.
     const fallback = { fallback: true };

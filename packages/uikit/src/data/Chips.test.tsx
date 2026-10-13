@@ -1,7 +1,7 @@
 import { cleanup, render, waitFor } from '@testing-library/preact';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Chips } from './Chips';
+import { Chip, Chips } from './Chips';
 
 /*
  * Chips as a user has them (user-event): what each says, how many at
@@ -61,7 +61,9 @@ describe('Chips: what they say', () => {
     const chip = mount({ items: LABELS }).getByRole('button', { name: 'Copy tier=frontend' });
     expect(chip.getAttribute('title')).toBe('tier=frontend');
     cleanup();
-    expect(mount({ items: { a: 'b' }, labels: { more: (n) => `${n} more`, less: 'fewer', copy: (t) => `copy ${t}` } }).getByRole('button', { name: 'copy a=b' })).toBeTruthy();
+    expect(
+      mount({ items: { a: 'b' }, labels: { more: (n) => `${n} more`, less: 'fewer', copy: (t) => `copy ${t}`, copied: 'ok' } }).getByRole('button', { name: 'copy a=b' }),
+    ).toBeTruthy();
   });
 });
 
@@ -87,7 +89,7 @@ describe('Chips: so many at first', () => {
   });
 
   it('name their buttons as they are given', async () => {
-    const { user, getByRole } = mount({ items: many(4), max: 2, labels: { more: (n) => `${n} more`, less: 'fewer', copy: (t) => t } });
+    const { user, getByRole } = mount({ items: many(4), max: 2, labels: { more: (n) => `${n} more`, less: 'fewer', copy: (t) => t, copied: 'ok' } });
     await user.click(getByRole('button', { name: '2 more' }));
     expect(getByRole('button', { name: 'fewer' })).toBeTruthy();
   });
@@ -100,6 +102,16 @@ describe('Chips: copying', () => {
     expect(copied.texts).toEqual(['tier=frontend']);
     await waitFor(() => expect(chips()[2].hasAttribute('data-copied')).toBe(true));
     await waitFor(() => expect(chips()[2].hasAttribute('data-copied')).toBe(false), { timeout: 2000 });
+  });
+
+  it('says it once copied, in one place for all of them (alone, a chip says it itself)', async () => {
+    const { chips, user, container } = mount({ items: LABELS });
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
+    await user.click(chips()[2]);
+    await waitFor(() => expect(container.querySelector('[role="status"]')?.textContent).toBe('✓ Copied'));
+    cleanup();
+    const alone = render(<Chip name="a" value="b" />);
+    expect(alone.container.querySelectorAll('[role="status"]')).toHaveLength(1);
   });
 
   it('copies a key with no value as key=', async () => {

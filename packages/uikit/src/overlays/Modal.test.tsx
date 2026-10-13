@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Modal } from './Modal';
 
-/* A dialog over the page: focus in it and back; Escape and a click beside it close it (fading first). */
+/* A dialog over the page: focus in it and back; Escape and a click beside it close it (at once). */
 
 afterEach(cleanup);
 

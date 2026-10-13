@@ -80,16 +80,16 @@ export const css = `
 .uk-chip-name:first-child { padding-left: 7px; }
 .uk-chip-value { flex: none; padding: 0 7px; border-left: 1px solid var(--uk-border); background: var(--uk-panel); color: var(--uk-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Copied: it glows green a moment, then fades back. */
-.uk-chip, .uk-chip-key, .uk-chip-value { transition: border-color .4s, background .4s, color .4s; }
-.uk-chip[data-copied], .uk-chip[data-copied] .uk-chip-value { border-color: color-mix(in srgb, var(--uk-ok) 70%, transparent); background: color-mix(in srgb, var(--uk-ok) 14%, var(--uk-panel)); transition-duration: .08s; }
-.uk-chip[data-copied] .uk-chip-value { color: var(--uk-ok); }
+/* Copied: said over it a moment ("✓ Copied"), as wide as it is — fading in and out, nothing else of it changing. */
+.uk-chip:not(.uk-chip-more)::after { content: attr(data-copied-label); position: absolute; inset: 0; display: grid; place-items: center; background: var(--uk-panel-2); color: var(--uk-ok); font-family: var(--uk-font); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity .25s; }
+.uk-chip[data-copied]::after { opacity: 1; transition-duration: .1s; }
 .uk-chip-more { padding: 0 8px; color: var(--uk-muted); font-family: inherit; }
 .uk-chip-more:hover { color: var(--uk-text); }
 
 .uk-panel { background: var(--uk-panel); border: 1px solid var(--uk-border); border-radius: var(--uk-radius); }
-/* Names and values: two columns, the names' at most a third or so (a long name wraps); narrow (its own width, not the
-   page's: a side panel too), each name over its value. */
-.uk-kv { container: uk-kv / inline-size; display: grid; grid-template-columns: fit-content(35%) minmax(0, 1fr); gap: 12px 24px; align-items: baseline; margin: 0; }
+/* Names and values: two columns, the names' at most a third or so (a long name wraps; --uk-kv-names: as wide as told, so
+   that lists one under another line up); narrow (its own width, not the page's: a side panel too), each name over its value. */
+.uk-kv { container: uk-kv / inline-size; display: grid; grid-template-columns: var(--uk-kv-names, fit-content(35%)) minmax(0, 1fr); gap: 12px 24px; align-items: baseline; margin: 0; }
 .uk-kv > dt { color: var(--uk-muted); overflow-wrap: break-word; }
 .uk-kv > dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 @container uk-kv (max-width: 380px) {
@@ -98,6 +98,17 @@ export const css = `
   .uk-kv > dt:first-child { margin-top: 0; }
   .uk-kv > dd { margin-top: -6px; }
 }
+/* A plain list: one under another, no marks. */
+.uk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+/* Conditions, one under another, ruled between: its status, its type, when it changed (on the right); why under its type, quieter. */
+.uk-conditions { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; margin: 0; padding: 0; list-style: none; }
+.uk-condition { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 10px; row-gap: 3px; align-items: baseline; padding: 10px 0; border-top: 1px solid color-mix(in srgb, var(--uk-border) 70%, transparent); }
+.uk-condition:first-child { padding-top: 0; border-top: 0; }
+.uk-condition:last-child { padding-bottom: 0; }
+.uk-condition-type { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.uk-condition-changed { color: var(--uk-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.uk-condition-why { grid-column: 2 / -1; color: var(--uk-muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.uk-condition-reason { color: var(--uk-text); font-weight: 500; opacity: .75; }
 .uk-code { margin: 0; padding: 10px 12px; background: var(--uk-bg); border: 1px solid var(--uk-border); border-radius: var(--uk-radius); font-family: var(--uk-mono); font-size: 12px; white-space: pre; overflow: auto; max-height: 60vh; }
 /* A notice: a soft tint of its level's colour (none: grey), its icon and title in that colour, its words plain. */
 .uk-notice { --uk-notice-c: var(--uk-muted); display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); background: var(--uk-panel); color: var(--uk-text); line-height: 1.45; }
@@ -117,10 +128,8 @@ export const css = `
 .uk-modal { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 6vh 16px; border: 0; background: transparent; color: var(--uk-text); box-sizing: border-box; overflow: hidden; }
 .uk-modal[open] { display: flex; align-items: flex-start; justify-content: center; }
 .uk-modal:focus { outline: none; }
-.uk-modal::backdrop { background: var(--uk-overlay); animation: uk-fade-in .2s ease-out; }
-.uk-modal[data-state='closing']::backdrop { animation: uk-spot-fade-out .18s ease-in forwards; }
-.uk-modal-panel { position: relative; display: flex; flex-direction: column; width: min(960px, 100%); max-height: 88vh; background: var(--uk-panel); border: 1px solid var(--uk-border); border-radius: var(--uk-radius-lg); box-shadow: 0 24px 60px color-mix(in srgb, var(--uk-shadow) 45%, transparent), 0 2px 8px color-mix(in srgb, var(--uk-shadow) 20%, transparent); overflow: hidden; animation: uk-modal-in .22s cubic-bezier(.2, .8, .2, 1); }
-.uk-modal[data-state='closing'] .uk-modal-panel { animation: uk-modal-out .18s ease-in forwards; }
+.uk-modal::backdrop { background: var(--uk-overlay); }
+.uk-modal-panel { position: relative; display: flex; flex-direction: column; width: min(960px, 100%); max-height: 88vh; background: var(--uk-panel); border: 1px solid var(--uk-border); border-radius: var(--uk-radius-lg); box-shadow: 0 24px 60px color-mix(in srgb, var(--uk-shadow) 45%, transparent), 0 2px 8px color-mix(in srgb, var(--uk-shadow) 20%, transparent); overflow: hidden; }
 .uk-modal-panel > header { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 18px; border-bottom: 1px solid var(--uk-border); }
 .uk-modal-panel > header h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uk-modal-body { padding: 16px 18px; overflow: auto; display: flex; flex-direction: column; gap: 18px; }
@@ -129,28 +138,38 @@ export const css = `
 /* From the left edge: all its height, its right corners rounded. */
 .uk-modal[data-placement='left'] { padding: 0; }
 .uk-modal[data-placement='left'][open] { align-items: stretch; justify-content: flex-start; }
-.uk-modal[data-placement='left'] .uk-modal-panel { width: min(560px, 92vw); max-height: none; border-width: 0 1px 0 0; border-radius: 0 var(--uk-radius-lg) var(--uk-radius-lg) 0; animation: uk-modal-from-left .28s cubic-bezier(.2, .8, .2, 1); }
-.uk-modal[data-placement='left'][data-state='closing'] .uk-modal-panel { animation: uk-modal-to-left .2s ease-in forwards; }
+.uk-modal[data-placement='left'] .uk-modal-panel { width: min(560px, 92vw); max-height: none; border-width: 0 1px 0 0; border-radius: 0 var(--uk-radius-lg) var(--uk-radius-lg) 0; }
 /* From the right edge: the same, mirrored. */
 .uk-modal[data-placement='right'] { padding: 0; }
 .uk-modal[data-placement='right'][open] { align-items: stretch; justify-content: flex-end; }
-.uk-modal[data-placement='right'] .uk-modal-panel { width: min(560px, 92vw); max-height: none; border-width: 0 0 0 1px; border-radius: var(--uk-radius-lg) 0 0 var(--uk-radius-lg); animation: uk-modal-from-right .28s cubic-bezier(.2, .8, .2, 1); }
-.uk-modal[data-placement='right'][data-state='closing'] .uk-modal-panel { animation: uk-modal-to-right .2s ease-in forwards; }
+.uk-modal[data-placement='right'] .uk-modal-panel { width: min(560px, 92vw); max-height: none; border-width: 0 0 0 1px; border-radius: var(--uk-radius-lg) 0 0 var(--uk-radius-lg); }
 /* From the bottom: a sheet, its top corners rounded, a grip over its header. */
 .uk-modal[data-placement='bottom'] { padding: 0; }
 .uk-modal[data-placement='bottom'][open] { align-items: flex-end; justify-content: center; }
-.uk-modal[data-placement='bottom'] .uk-modal-panel { width: min(1100px, 100%); max-height: 85vh; border-width: 1px 1px 0; border-radius: var(--uk-radius-lg) var(--uk-radius-lg) 0 0; animation: uk-modal-from-bottom .3s cubic-bezier(.2, .8, .2, 1); }
-.uk-modal[data-placement='bottom'][data-state='closing'] .uk-modal-panel { animation: uk-modal-to-bottom .2s ease-in forwards; }
+.uk-modal[data-placement='bottom'] .uk-modal-panel { width: min(1100px, 100%); max-height: 85vh; border-width: 1px 1px 0; border-radius: var(--uk-radius-lg) var(--uk-radius-lg) 0 0; }
 .uk-modal-grip { align-self: center; width: 36px; height: 4px; margin-top: 8px; border-radius: 2px; background: var(--uk-border); }
 .uk-modal[data-placement='bottom'] .uk-modal-panel > header { padding-top: 6px; }
-@keyframes uk-modal-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }
-@keyframes uk-modal-from-left { from { transform: translateX(-100%); } }
-@keyframes uk-modal-to-left { to { transform: translateX(-100%); } }
-@keyframes uk-modal-from-right { from { transform: translateX(100%); } }
-@keyframes uk-modal-to-right { to { transform: translateX(100%); } }
-@keyframes uk-modal-from-bottom { from { transform: translateY(100%); } }
-@keyframes uk-modal-to-bottom { to { transform: translateY(100%); } }
-.uk-section > h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--uk-muted); font-weight: 600; }
+/* A part of a view: a card of its own, its heading over it. */
+.uk-section { padding: 14px 16px 16px; border: 1px solid var(--uk-border); border-radius: var(--uk-radius-lg); background: var(--uk-bg); }
+.uk-section > h3 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--uk-text); }
+/* In a section, a list of names and values ruled between its rows. */
+.uk-section .uk-kv { gap: 0; }
+.uk-section .uk-kv > :is(dt, dd) { padding: 9px 0; border-top: 1px solid color-mix(in srgb, var(--uk-border) 70%, transparent); }
+.uk-section .uk-kv > dt { padding-right: 24px; }
+.uk-section .uk-kv > :is(dt, dd):nth-child(-n + 2) { padding-top: 0; border-top: 0; }
+/* Narrow (each name over its value): a rule between rows only, not between a name and its value. */
+@container uk-kv (max-width: 380px) {
+  .uk-section .uk-kv > dt { padding-right: 0; }
+  .uk-section .uk-kv > dd { padding-top: 0; border-top: 0; margin-top: 0; }
+  .uk-section .uk-kv > dt:first-child { padding-top: 0; }
+}
+/* A resource's view: its parts apart, its lists of names and values one under another lined up (a section of another's too). */
+.uk-details { gap: 16px; --uk-kv-names: 30%; }
+/* Fields at a glance: a grid of them, each its name (small, quiet) over its value. */
+.uk-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px 20px; margin: 0; }
+.uk-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.uk-field > dt { color: var(--uk-muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.uk-field > dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
 
 /* Things dragged into another order (useSortable): the one held lifted (a little larger, leaning as it moves, following the pointer a moment behind), the others moving aside on springs; dropped, it settles where it lands. */
 [data-sorting] { user-select: none; cursor: grabbing; --uk-sort-ease: linear(0, 0.104, 0.314, 0.533, 0.715, 0.847, 0.934, 0.984, 1.009, 1.019, 1.02, 1.016, 1.012, 1.008, 1.004, 1.002, 1.001, 1); --uk-sort-follow: 70ms; --uk-lift: 1.03; }
@@ -398,7 +417,6 @@ export const css = `
 @keyframes uk-pop-in { from { opacity: 0; transform: translateY(-4px) scale(.985); } }
 @keyframes uk-pop-out { to { opacity: 0; transform: translateY(-4px) scale(.985); } }
 @keyframes uk-fade-in { from { opacity: 0; } }
-@keyframes uk-modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 .uk-region { display: flex; flex-direction: column; gap: 12px; }
 .uk-region-title { margin: 0; font-size: 15px; font-weight: 600; }
 .uk-region[data-layout="row"] { flex-direction: row; flex-wrap: wrap; }
@@ -450,7 +468,7 @@ button.uk-stat:hover .uk-stat-go, button.uk-stat:focus-visible .uk-stat-go { opa
 .uk-input, .uk-table-row, .uk-ms-option, .uk-chip { transition: background .12s, border-color .12s, color .12s, box-shadow .12s; }
 .uk-dot { transition: background .3s; }
 @media (prefers-reduced-motion: reduce) {
-  .uk-popover, .uk-popover[data-state='closing'], .uk-modal::backdrop, .uk-modal .uk-modal-panel, .uk-modal[data-state] .uk-modal-panel { animation: none !important; }
+  .uk-popover, .uk-popover[data-state='closing'] { animation: none !important; }
   .uk-switch-thumb, .uk-switch-track, .uk-tab-bar { transition: none; }
 }
 /* A context menu: a pane of glass over everything, growing from where it was asked for; its items as a system's. */

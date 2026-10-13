@@ -1,10 +1,25 @@
 import { kinds } from '@overkube/kube-types';
-import { action, type ColumnRenderProps, column, defineAddon, forKinds, menuItem, type NavTabProps, type PageProps, PENDING, section, slots, t, wrap } from '@overkube/sdk';
+import {
+  action,
+  type ColumnRenderProps,
+  column,
+  defineAddon,
+  forKinds,
+  menuItem,
+  type NavTabProps,
+  type PageProps,
+  PENDING,
+  type ResourceProps,
+  section,
+  slots,
+  t,
+  wrap,
+} from '@overkube/sdk';
 import { KindTable, usePageProps } from '@overkube/sdk/preact';
 import { cleanup, kubeWorld, make } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { LEAVE_MS, PEEK_MS, TabButton } from '@overkube/uikit';
-import { fill } from '@overweave/ui/preact';
+import { fill, slotElement } from '@overweave/ui/preact';
 import { signal } from '@preact/signals';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import core from './index.tsx';
@@ -96,6 +111,15 @@ describe('a kind’s table', () => {
     expect(page.headers()).toEqual(['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Age']);
     expect(page.column('Name').sort()).toEqual(['db', 'web']);
     expect(page.container.querySelector('a[href="#/k/pods.v1?open=pods.v1/shop/web"]')?.textContent).toBe('web');
+  });
+
+  it('sorts by name when its TableView says nothing (Name shown sorted, ascending) — not as they came', () => {
+    const w = world('web', 'api');
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'db', namespace: 'base' } }));
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'cache', namespace: 'shop' } }));
+    const page = renderPage(w, '/k/pods.v1');
+    expect(page.column('Name')).toEqual(['api', 'cache', 'db', 'web']);
+    expect(page.container.querySelector('[role="columnheader"][aria-sort="ascending"]')?.textContent).toContain('Name');
   });
 
   it('draws an age as the time since — again as the clock goes, only where its text changes; a text that reads no time, once', () => {
@@ -231,7 +255,7 @@ describe('a kind’s table', () => {
     expect(page.headers()[0]).toBe('Name');
   });
 
-  it('shows an empty cell as "—", a 0 as a 0', () => {
+  it('shows an empty cell as "—", kubectl’s <none> too — its states (<pending>) as they are; a 0 as a 0', () => {
     const w = world('web');
     const counted = (n: number | undefined) => column({ kinds: [Pod], header: `N${n}`, value: () => n, display: () => (n === undefined ? '' : String(n)) });
     w.addon(
@@ -242,6 +266,10 @@ describe('a kind’s table', () => {
     );
     const page = renderPage(w, '/k/pods.v1');
     expect([page.column('N0'), page.column('Nundefined')]).toEqual([['0'], ['—']]);
+    const services = world();
+    services.cluster.add(kinds.core.v1.Service, make(kinds.core.v1.Service, { metadata: { name: 'lb', namespace: 'shop' }, spec: { type: 'LoadBalancer' } }));
+    const table = renderPage(services, '/k/services.v1');
+    expect([table.column('External-IP'), table.column('Port(s)')]).toEqual([['<pending>'], ['—']]);
   });
 
   it('gives the core’s columns as defaults: another’s of the same name takes its place, and gives it back as it goes', () => {
@@ -626,6 +654,113 @@ describe('an object', () => {
     expect(items()).toEqual(['Copy name', 'Copy YAML']);
     page.navigate('/k/pods.v1?open=pods.v1/shop/gone');
     expect(document.querySelector('.gone')?.textContent).toBe('gone went away');
+  });
+
+  it('sums it up as its kind’s columns (the wide ones too), each value in its column’s Wraps as its cell is; being deleted, said first', () => {
+    const w = world();
+    const since = new Date(Date.now() - 5 * 60_000).toISOString();
+    const pod = { name: 'web', namespace: 'shop', deletionTimestamp: since, finalizers: ['example.com/hold'] };
+    w.cluster.add(Pod, make(Pod, { metadata: pod, spec: { nodeName: 'n1', containers: [{ name: 'a', image: 'nginx' }] }, status: { phase: 'Running' } }));
+    w.addon(
+      addon(
+        'looks',
+        ({ contributor }) => void contributor.add('Wrap', 'looks.node', wrap<ColumnRenderProps>('core.v1/Pod.node', { order: 0, render: ({ display }) => <i>{display}!</i> })),
+      ),
+    );
+    renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    const summary = document.querySelector('.uk-modal .uk-fields') as HTMLElement;
+    const pairs = [...summary.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    expect(pairs.map(([k]) => k)).toEqual(['Namespace', 'Ready', 'Status', 'Restarts', 'Age', 'IP', 'Node', 'Nominated Node', 'Readiness Gates']);
+    // kubectl's <none> as nothing ("—").
+    expect(Object.fromEntries(pairs)).toMatchObject({ Namespace: 'shop', Status: 'Terminating', Node: 'n1!', IP: '—' });
+    expect(document.querySelector('.uk-modal .uk-notice')?.textContent).toBe('Being deleted since 5m ago — waiting for example.com/hold');
+  });
+
+  it('shows its conditions and its metadata, each part a slot: labels and annotations as chips (kubectl’s copy of it left out), owners as links', () => {
+    const w = world();
+    const changed = new Date(Date.now() - 3 * 3_600_000).toISOString();
+    w.cluster.add(
+      Pod,
+      make(Pod, {
+        metadata: {
+          name: 'web',
+          namespace: 'shop',
+          labels: { app: 'web' },
+          annotations: { 'kubectl.kubernetes.io/last-applied-configuration': '{}', note: 'hi' },
+          ownerReferences: [{ apiVersion: 'apps/v1', kind: 'ReplicaSet', name: 'web-1', uid: 'u1', controller: true }],
+        },
+        status: { conditions: [{ type: 'Ready', status: 'False', reason: 'ContainersNotReady', message: 'not yet', lastTransitionTime: changed }] },
+      }),
+    );
+    w.addon(
+      addon('more', ({ contributor }) => {
+        const before = { before: 'core.resource.view.metadata.field.label', when: ({ field }: { field: { name: string } }) => field.name === 'labels', render: () => <b>#</b> };
+        contributor.add('Fill', 'more.labels', fill(slots.resource.view.metadata.field.label, before));
+        contributor.add(
+          'Fill',
+          'more.ready',
+          fill(slots.resource.view.conditions.condition.type, { after: 'core.resource.view.conditions.condition.type', render: () => <i>?</i> }),
+        );
+      }),
+    );
+    renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    const rows = [...document.querySelectorAll('.uk-modal .uk-condition')].map((r) => [...r.children].map((c) => c.textContent));
+    // Its status, type, when it changed; why under it, where it says.
+    expect(rows).toEqual([['False', 'Ready?', '3h', 'ContainersNotReady · not yet']]);
+    const metadata = [...document.querySelectorAll('.uk-modal .uk-section')].find((x) => x.querySelector('h3')?.textContent === 'Metadata') as HTMLElement;
+    const pairs = [...metadata.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling as HTMLElement]);
+    expect(pairs.map(([k]) => k)).toEqual(['Created', 'UID', '#Labels', 'Annotations', 'Owners']);
+    const value = (k: string) => pairs.find(([x]) => x === k)?.[1] as HTMLElement;
+    expect([...value('#Labels').querySelectorAll('.uk-chip')].map((c) => c.textContent)).toEqual(['appweb']);
+    expect([...value('Annotations').querySelectorAll('.uk-chip')].map((c) => c.textContent)).toEqual(['notehi']);
+    expect(value('Owners').querySelector('a')?.getAttribute('href')).toContain('open=replicasets.v1.apps/shop/web-1');
+  });
+
+  it('takes another’s metadata field among the core’s, a condition twice as twice, a TableView’s order and hiding in its summary', () => {
+    const w = world();
+    w.cluster.add(
+      Pod,
+      make(Pod, {
+        metadata: { name: 'web', namespace: 'shop' },
+        status: {
+          phase: 'Running',
+          conditions: [
+            { type: 'Ready', status: 'True' },
+            { type: 'Ready', status: 'False', reason: 'Again' },
+            { type: 'DisruptionTarget', status: 'True' },
+          ],
+        },
+      }),
+    );
+    w.addon(
+      addon('more', ({ contributor }) => {
+        const team = (props: ResourceProps) =>
+          slotElement(slots.resource.view.metadata.field, { ...props, field: { name: 'team', label: 'Team' }, value: 'shop', display: 'shop' }, { limit: 1 });
+        contributor.add('Fill', 'more.team', fill(slots.resource.view.metadata, { after: 'core.resource.view.metadata.labels', render: team }));
+        contributor.patch('TableView', Pod.id, { columns: ['core.v1/Pod.status'], hidden: { 'core.v1/Pod.ip': true } });
+      }),
+    );
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    const metadata = () => [...document.querySelectorAll('.uk-modal .uk-section')].find((x) => x.querySelector('h3')?.textContent === 'Metadata') as HTMLElement;
+    const fields = () => [...metadata().querySelectorAll('dt')].map((dt) => dt.textContent);
+    expect(fields()).toEqual(['Created', 'UID', 'Labels', 'Team', 'Annotations']);
+    const conditions = [...document.querySelectorAll('.uk-modal .uk-condition')].map((r) => [
+      r.querySelector('.uk-condition-type')?.textContent,
+      r.querySelector('.uk-badge')?.getAttribute('data-level'),
+    ]);
+    // A type twice: two rows; one bad when it holds (DisruptionTarget): True a warning.
+    expect(conditions).toEqual([
+      ['Ready', 'ok'],
+      ['Ready', 'warn'],
+      ['DisruptionTarget', 'warn'],
+    ]);
+    const summary = [...(document.querySelector('.uk-modal .uk-fields') as HTMLElement).querySelectorAll('dt')].map((dt) => dt.textContent);
+    expect([summary[0], summary.includes('IP')]).toEqual(['Status', false]);
+    // One of the core's fields hidden as any slot's fill is: the user's patch of the Slot, by its name.
+    page.act(
+      () => void w.as('user', { priority: 1000, rights: ['configure'] }).patch('Slot', slots.resource.view.metadata.name, { hidden: { 'core.resource.view.metadata.uid': true } }),
+    );
+    expect(fields()).toEqual(['Created', 'Labels', 'Team', 'Annotations']);
   });
 
   it('opens over its kind’s table: its sections (the YAML last), its actions; a dangerous one asks first', async () => {

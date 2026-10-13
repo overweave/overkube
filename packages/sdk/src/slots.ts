@@ -56,6 +56,38 @@ export interface ResourceProps {
 }
 
 /**
+ * A field of a resource's view (its summary's: one of its kind's columns,
+ * by the column's name; its metadata's: created, uid, labels, …): its name,
+ * what it is called, its value, and its value as text (a list's: none).
+ */
+export interface ResourceFieldProps extends ResourceProps {
+  field: { name: string; label: string };
+  value: unknown;
+  display: string;
+}
+
+/** One of a resource's conditions (status.conditions), as the API gives it. */
+export interface ResourceConditionProps extends ResourceProps {
+  condition: { type: string; status: string; reason?: string; message?: string; lastTransitionTime?: string };
+}
+
+/** One of a resource's labels or annotations: its key (name: key is the page's own word), its value. */
+export interface ResourceLabelProps extends ResourceProps {
+  name: string;
+  value: string;
+}
+
+/** One of a resource's owners (metadata.ownerReferences), as the API gives it. */
+export interface ResourceOwnerProps extends ResourceProps {
+  owner: { apiVersion: string; kind: string; name: string; uid: string; controller?: boolean };
+}
+
+/** One of a resource's finalizers. */
+export interface ResourceFinalizerProps extends ResourceProps {
+  finalizer: string;
+}
+
+/**
  * A tab of the navigation: where it leads, whether it is pinned, whether the
  * page is there; its kind (none: an addon's page); where it is drawn —
  * across the top, or down the side (collapsed there: its mark only seen).
@@ -166,15 +198,68 @@ export const slots = {
      * A resource of the cluster opened (by its place): whole, one fill drawn
      * (the first that takes its kind — the core's the last). Its parts, each
      * in order: its title (the core's: its kind and name), a summary over its
-     * sections, its sections (the core's YAML), its footer (the core's: the
-     * Actions); not there (on its way, gone, refused), one fill drawn in its
-     * place (the core's the last).
+     * sections, its sections (the core's: conditions, metadata, YAML), its
+     * footer (the core's: the Actions); not there (on its way, gone,
+     * refused), one fill drawn in its place (the core's the last).
      */
     view: {
       ...slot<ResourceRef>('resource.view'),
       title: slot<ResourceProps>('resource.view.title'),
-      summary: slot<ResourceProps>('resource.view.summary'),
+      /**
+       * Over its sections, in order (the core's: its kind's columns as
+       * fields; being deleted, said first). A field whole: one fill drawn
+       * (the core's the last: its label and value); in its label, in its
+       * value, each in order (the core's: the column's header; its display,
+       * live, in the Wraps of the column's name — as a table's cell).
+       */
+      summary: {
+        ...slot<ResourceProps>('resource.view.summary'),
+        field: {
+          ...slot<ResourceFieldProps>('resource.view.summary.field'),
+          label: slot<ResourceFieldProps>('resource.view.summary.field.label'),
+          value: slot<ResourceFieldProps>('resource.view.summary.field.value'),
+        },
+      },
       sections: slot<ResourceProps>('resource.view.sections'),
+      /**
+       * The core's conditions section's (status.conditions): a condition
+       * whole, one fill drawn (the core's the last: a row of its parts); its
+       * parts, each in order (the core's: its type, status, reason, message,
+       * when it changed — live).
+       */
+      conditions: {
+        condition: {
+          ...slot<ResourceConditionProps>('resource.view.conditions.condition'),
+          type: slot<ResourceConditionProps>('resource.view.conditions.condition.type'),
+          status: slot<ResourceConditionProps>('resource.view.conditions.condition.status'),
+          reason: slot<ResourceConditionProps>('resource.view.conditions.condition.reason'),
+          message: slot<ResourceConditionProps>('resource.view.conditions.condition.message'),
+          changed: slot<ResourceConditionProps>('resource.view.conditions.condition.changed'),
+        },
+      },
+      /**
+       * The core's metadata section's: its fields, in order (the core's,
+       * each a fill — created, uid, generation, labels, annotations, owners,
+       * finalizers: core.resource.view.metadata.<name>, 100 to 700 — another's
+       * among them, drawing a field; one of the core's hidden, or all set out
+       * otherwise, as any slot's: a patch of its Slot, hidden or
+       * arrangement, by the fills' names — the user's too). A field whole, one fill drawn (the
+       * core's the last); its label, its value, each in order (the core's:
+       * its name; its value — a list's, each of its items, one fill drawn
+       * each: a label, an annotation, an owner, a finalizer).
+       */
+      metadata: {
+        ...slot<ResourceProps>('resource.view.metadata'),
+        field: {
+          ...slot<ResourceFieldProps>('resource.view.metadata.field'),
+          label: slot<ResourceFieldProps>('resource.view.metadata.field.label'),
+          value: slot<ResourceFieldProps>('resource.view.metadata.field.value'),
+        },
+        label: slot<ResourceLabelProps>('resource.view.metadata.label'),
+        annotation: slot<ResourceLabelProps>('resource.view.metadata.annotation'),
+        owner: slot<ResourceOwnerProps>('resource.view.metadata.owner'),
+        finalizer: slot<ResourceFinalizerProps>('resource.view.metadata.finalizer'),
+      },
       footer: slot<ResourceProps>('resource.view.footer'),
       missing: slot<ResourceRef & MissingState>('resource.view.missing'),
     },

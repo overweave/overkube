@@ -45,6 +45,7 @@ export function column(spec: { kinds?: readonly KindInfo[] } & ColumnOf<KubeObje
 }
 
 interface SectionOf<O extends KubeObject> extends Placement {
+  /** What it is, to the user (a list of what fills a slot, the slot overlay) — not drawn: a section draws its own heading (uikit's Section). */
   title?: string;
   when?: (props: { kind: KindInfo; object: O }) => boolean;
   render: ComponentType<{ kind: KindInfo; object: O }>;

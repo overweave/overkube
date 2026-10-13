@@ -16,13 +16,55 @@ const { Deployment } = kinds.apps.v1;
 
 const shop = (c: Parameters<NonNullable<Parameters<typeof KubeStory>[0]['cluster']>>[0]) => {
   c.add(Namespace, make(Namespace, { metadata: { name: 'shop' } }));
-  for (const name of ['web-1', 'web-2', 'db-0']) c.add(Pod, make(Pod, { metadata: { name, namespace: 'shop' }, spec: { containers: [{ name: 'a', image: 'nginx:1.27' }] } }));
-  c.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'shop' }, spec: { replicas: 2, selector: {}, template: {} } }));
+  for (const name of ['web-2', 'db-0']) c.add(Pod, make(Pod, { metadata: { name, namespace: 'shop' }, spec: { containers: [{ name: 'a', image: 'nginx:1.27' }] } }));
+  // One as a cluster has it: its labels, its owner, its status and conditions.
+  const started = new Date(Date.now() - 50 * 60_000).toISOString();
+  c.add(
+    Pod,
+    make(Pod, {
+      metadata: {
+        name: 'web-1',
+        namespace: 'shop',
+        labels: { app: 'web', 'pod-template-hash': '7d4b9' },
+        annotations: { 'kubectl.kubernetes.io/restartedAt': started },
+        ownerReferences: [{ apiVersion: 'apps/v1', kind: 'ReplicaSet', name: 'web-7d4b9', uid: 'rs-1', controller: true }],
+      },
+      spec: { nodeName: 'node-1', containers: [{ name: 'a', image: 'nginx:1.27' }] },
+      status: {
+        phase: 'Running',
+        podIPs: [{ ip: '10.42.0.12' }],
+        containerStatuses: [{ name: 'a', image: 'nginx:1.27', imageID: '', ready: true, restartCount: 0, started: true, state: { running: { startedAt: started } } }],
+        conditions: [
+          { type: 'PodScheduled', status: 'True', lastTransitionTime: started },
+          { type: 'Initialized', status: 'True', lastTransitionTime: started },
+          { type: 'ContainersReady', status: 'True', lastTransitionTime: started },
+          { type: 'Ready', status: 'True', lastTransitionTime: started },
+        ],
+      },
+    }),
+  );
+  c.add(
+    Deployment,
+    make(Deployment, {
+      metadata: { name: 'web', namespace: 'shop' },
+      spec: { replicas: 2, selector: {}, template: {} },
+      status: {
+        readyReplicas: 1,
+        updatedReplicas: 2,
+        availableReplicas: 1,
+        conditions: [
+          { type: 'Available', status: 'True', reason: 'MinimumReplicasAvailable', message: 'Deployment has minimum availability.', lastTransitionTime: started },
+          { type: 'Progressing', status: 'False', reason: 'ProgressDeadlineExceeded', message: 'ReplicaSet "web-7d4b9" has timed out progressing.', lastTransitionTime: started },
+        ],
+      },
+    }),
+  );
 };
 
 export const Table = () => <KubeStory addons={[core]} path="/k/pods.v1" cluster={shop} />;
 
 export const AnObject = () => <KubeStory addons={[core]} path="/k/pods.v1?open=pods.v1/shop/web-1" cluster={shop} />;
+export const ADeployment = () => <KubeStory addons={[core]} path="/k/deployments.v1.apps?open=deployments.v1.apps/shop/web" cluster={shop} />;
 
 export const SideMenu = () => <KubeStory addons={[core]} path="/k/deployments.v1.apps" cluster={shop} user={(u) => u.patch('NavView', 'default', { mode: 'side' })} />;
 

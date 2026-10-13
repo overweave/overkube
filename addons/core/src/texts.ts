@@ -85,6 +85,28 @@ export const T = {
         goneStale: t('core.resource.view.missing.gone-stale', 'There is no {kind} {name} (as last seen: the page is reconnecting).'),
       },
       actions: { sure: t('core.resource.view.actions.sure', '{action}: sure?') },
+      summary: {
+        deleting: t('core.resource.view.summary.deleting', 'Being deleted since {since} ago'),
+        deletingNow: t('core.resource.view.summary.deleting-now', 'Being deleted'),
+        waiting: t('core.resource.view.summary.waiting', 'waiting for {finalizers}'),
+      },
+      conditions: {
+        title: t('core.resource.view.conditions.title', 'Conditions'),
+      },
+      yaml: { title: t('core.resource.view.yaml.title', 'YAML') },
+      metadata: {
+        title: t('core.resource.view.metadata.title', 'Metadata'),
+        created: t('core.resource.view.metadata.created', 'Created'),
+        uid: t('core.resource.view.metadata.uid', 'UID'),
+        generation: t('core.resource.view.metadata.generation', 'Generation'),
+        labels: t('core.resource.view.metadata.labels', 'Labels'),
+        annotations: t('core.resource.view.metadata.annotations', 'Annotations'),
+        owners: t('core.resource.view.metadata.owners', 'Owners'),
+        finalizers: t('core.resource.view.metadata.finalizers', 'Finalizers'),
+        /** A label's, an annotation's chip: what a click on it does, and what it says once done. */
+        copy: t('core.resource.view.metadata.copy', 'Copy {text}'),
+        copied: t('core.resource.view.metadata.copied', '✓ Copied'),
+      },
     },
   },
 };

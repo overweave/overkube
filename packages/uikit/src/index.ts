@@ -6,7 +6,7 @@
  */
 export { Button } from './actions/Button';
 export { Age, age } from './data/Age';
-export { Chips, type ChipsLabels, type ChipsProps } from './data/Chips';
+export { Chip, Chips, type ChipsLabels, type ChipsProps } from './data/Chips';
 export { Code } from './data/Code';
 export { KeyValue } from './data/KeyValue';
 export { Table, type TableColumn, type TableProps, type TableSelection } from './data/Table';

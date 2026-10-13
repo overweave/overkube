@@ -11,6 +11,8 @@ describe('links', () => {
   it('opens a resource over a page, its name encoded, the page’s own parameters kept — another opened there in its place', () => {
     expect(openIn('/certs', Pod, pod)).toBe('/certs?open=pods.v1/shop/my%20pod');
     expect(openIn('/certs?tab=2', Node, { metadata: { name: 'n1' } })).toBe('/certs?tab=2&open=nodes.v1/n1');
+    // A kind of the whole cluster by its name alone, a namespace given or not (an owner named by what it owns).
+    expect(openIn('/certs', Node, { metadata: { name: 'n1', namespace: 'kube-system' } })).toBe('/certs?open=nodes.v1/n1');
     expect(openIn('/certs?open=nodes.v1/n1&tab=2', Pod, pod)).toBe('/certs?tab=2&open=pods.v1/shop/my%20pod');
   });
 
