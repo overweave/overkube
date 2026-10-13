@@ -28,7 +28,7 @@ import {
 import { titleOf } from './kinds.ts';
 import { Menu } from './Menu.tsx';
 import { NavSide, NavTab, NavTabMark, NavTabs, Picker, PickerButton, PickerGroups, PickerItem, PickerSearch, type TabsKept, type TabsState } from './Nav.tsx';
-import { Home, KindMissing, NameCell, PageTable } from './pages.tsx';
+import { KindMissing, NameCell, Overview, PageTable, Welcome } from './pages.tsx';
 import { PRINTED } from './printed.ts';
 import { Actions, ResourceMissing, ResourceTitle, ResourceView, YamlSection } from './ResourceView.tsx';
 import { Toasts } from './Toasts.tsx';
@@ -38,7 +38,7 @@ import { T } from './texts.ts';
  * The core: everything the page shows that is not another addon's, each a
  * definition another may patch, hide or put its own in place of —
  *
- *   pages      the start (/: page.home — to the first pinned kind, till another puts something there),
+ *   pages      the start (/: page.overview — a word of welcome; that hidden and nothing else there, to the first pinned kind),
  *              a kind's page (/k/<kind>: page.kind) — its table among what is on it; a resource opened over any page (resource.view, the last in its slot: another's for a kind
  *              takes its place)
  *   tables     a kind's table, wherever drawn (kind.table: the last in its slot)
@@ -54,7 +54,7 @@ import { T } from './texts.ts';
  *              key (texts.ts), in English until a language pack says them otherwise
  *   overlay    what the user is told
  *
- * Its names: a fill core.<slot> when it is all of its slot's (core.page.home,
+ * Its names: a fill core.<slot> when it is all of its slot's (core.page.overview,
  * core.notifications), core.<slot>.<what> when it is a part — the slot named
  * without the frame part it is in (.content, .header, .footer, .actions,
  * .sections): core.nav.tabs.tab.title is in nav.tabs.tab.content,
@@ -116,8 +116,10 @@ export default defineAddon({
   layer: 'core',
   setup({ contributor: c, cluster, effect }) {
     // Its pages: the start, a kind's — each empty but for what fills it: the core's, others' before or after it (a Wrap of it in its place).
-    c.add('Page', 'home', { path: '/' });
-    c.add('Fill', 'core.page.home', fill(slots.page('home'), { render: Home }));
+    c.add('Page', 'overview', { path: '/', title: T.page.overview.title, icon: 'home', pinned: true, order: 0 });
+    c.add('Fill', 'core.page.overview', fill(slots.page('overview'), { render: Overview }));
+    // What is on it for now: a word of welcome (hidden by the user: to the first pinned kind, as before).
+    c.add('Fill', 'core.page.overview.welcome', fill(slots.page('overview'), { render: Welcome }));
     c.add('Page', 'kind', { path: KIND_PAGE });
     c.add('Fill', 'core.page.kind.table', fill(slots.page('kind'), { render: PageTable }));
     // Its kind not found (not served, not known yet): why, in the table's place.
@@ -233,7 +235,7 @@ export default defineAddon({
     }
 
     // The slots declared — what the user arranges in them (order, hidden) waits for that: every one the SDK names, and the core's pages'.
-    for (const name of [...slotNames(slots), slots.page('home').name, slots.page('kind').name]) c.add('Slot', name, {}, fallback);
+    for (const name of [...slotNames(slots), slots.page('overview').name, slots.page('kind').name]) c.add('Slot', name, {}, fallback);
 
     // How it looks: the kit's own theme (no tokens of its own: the kit's defaults), as the system is (dark or light).
     c.add('Theme', 'default', { title: 'overkube' }, fallback);

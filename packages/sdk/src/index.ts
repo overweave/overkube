@@ -10,7 +10,7 @@
  * (its slot, page.<name>, empty but for what fills it; its regions; the
  * kind its :kind names; a resource opened over it, ?open=); the core addon
  * the rest, each a default another's takes the place of — the start
- * (page.home), a kind's page (page.kind: its table among what is on it), a
+ * (page.overview), a kind's page (page.kind: its table among what is on it), a
  * kind's table wherever drawn (kind.table, <KindTable>: Column, TableView,
  * kind.table.*), a resource opened (resource.view and its parts, Action),
  * the navigation (KindView, Category, NavView; a Page with a title),

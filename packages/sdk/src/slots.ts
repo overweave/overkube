@@ -270,7 +270,7 @@ export const slots = {
 /**
  * A Page's slot (its definition's name): page.<name> — empty but for what
  * fills it, in order (the core's page.kind: its table, core.page.kind.table;
- * page.home: the start); a region of it, page.<name>.<region> (a region's
+ * page.overview: the start); a region of it, page.<name>.<region> (a region's
  * name: not empty, no "." or ":"). Each given the page's props.
  */
 function page(page: string, region?: string): SlotRef<PageProps> {

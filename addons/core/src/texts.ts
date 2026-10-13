@@ -46,7 +46,11 @@ export const T = {
     },
   },
   page: {
-    home: { asking: t('core.page.home.asking', 'Asking the cluster what it serves…') },
+    overview: {
+      title: t('core.page.overview.title', 'Overview'),
+      welcome: t('core.page.overview.welcome', 'Welcome to overkube.'),
+      asking: t('core.page.overview.asking', 'Asking the cluster what it serves…'),
+    },
     kind: {
       missing: {
         asking: t('core.page.kind.missing.asking', 'Asking the cluster what it serves…'),

@@ -52,10 +52,11 @@ describe('mount', () => {
     await expect.poll(() => client.store.kinds.includes(Pod.id)).toBe(false);
   });
 
-  it('starts at the first pinned kind', async () => {
+  it('starts at the start: its page, staying there', async () => {
     window.location.hash = '';
-    page();
-    await expect.poll(() => window.location.hash).toBe('#/k/pods.v1');
+    const { element } = page();
+    await expect.poll(() => element.querySelector('main')?.textContent).toBe('Welcome to overkube.');
+    expect(window.location.hash).toBe('');
   });
 
   it('says so when the core is not running: all the page shows is its', async () => {

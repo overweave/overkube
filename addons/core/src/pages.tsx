@@ -5,14 +5,14 @@ import { Button, Notice } from '@overkube/uikit';
 import { useSlotView } from '@overweave/ui/preact';
 import { useComputed } from '@preact/signals';
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { useNav } from './nav.ts';
+import { type NavEntry, useNav } from './nav.ts';
 import { T } from './texts.ts';
 import { Waiting } from './Waiting.tsx';
 import { Waited } from './waited.ts';
 
 /*
  * The core's on its pages: a kind's (page.kind) — its table, among what
- * others put there; the kind not found, why — and the start's (page.home).
+ * others put there; the kind not found, why — and the start's (page.overview).
  */
 
 /** The core's on a kind's page (core.page.kind.table): its table. */
@@ -89,20 +89,26 @@ export function NameCell({ object, kind, display }: { object: KubeObject; kind: 
   return <a href={page.href(openIn(here, kind, object))}>{display}</a>;
 }
 
-/** The start (core.page.home): the first pinned kind's page — unless another's is on it too: then it is a page of its own, and this nothing. */
-export function Home(props: PageProps) {
-  const alone = useSlotView(slots.page('home'), props).selected.every((f) => f.name === 'core.page.home');
+/** The start (core.page.overview): the first pinned kind's page — unless another's is on it too (the core's welcome among them): then it is a page of its own, and this nothing. */
+export function Overview(props: PageProps) {
+  const alone = useSlotView(slots.page('overview'), props).selected.every((f) => f.name === 'core.page.overview');
   return alone ? <ToFirst /> : null;
 }
 
-/** To the first pinned kind's page (none yet: on its way). */
+/** A word of welcome on the start (core.page.overview.welcome). */
+export function Welcome() {
+  return <p>{useSay()(T.page.overview.welcome)}</p>;
+}
+
+/** To the first pinned kind's page, the start aside (none yet: on its way). */
 function ToFirst() {
   const nav = useNav();
   const page = usePage();
   const say = useSay();
-  const first = nav.pinned[0] ?? nav.groups[0]?.entries[0];
+  const away = (e: NavEntry) => e.path !== '/';
+  const first = nav.pinned.find(away) ?? nav.groups.flatMap((g) => g.entries).find(away);
   useEffect(() => {
     if (first) page.navigate(first.path, { replace: true });
   }, [first?.path]);
-  return first ? null : <Waiting label={say(T.page.home.asking)} />;
+  return first ? null : <Waiting label={say(T.page.overview.asking)} />;
 }

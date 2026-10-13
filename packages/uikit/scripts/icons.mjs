@@ -21,6 +21,7 @@ export const ICONS = {
   clock: 'clock',
   copy: 'copy',
   grid: 'layout-grid',
+  home: 'home',
   puzzle: 'puzzle',
   daemon: 'hierarchy-2',
   run: 'player-play',

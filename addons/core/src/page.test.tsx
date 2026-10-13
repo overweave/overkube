@@ -544,7 +544,7 @@ describe('putting one’s own in the core’s place', () => {
     const w = world();
     const named = (tree: object): string[] =>
       Object.values(tree).flatMap((v) => (v && typeof v === 'object' ? [...(typeof v.name === 'string' ? [v.name] : []), ...named(v)] : []));
-    const all = [...named(slots), slots.page('home').name, slots.page('kind').name];
+    const all = [...named(slots), slots.page('overview').name, slots.page('kind').name];
     expect(all.filter((name) => !w.get('Slot', name))).toEqual([]);
     expect(all.length).toBeGreaterThan(20);
   });
@@ -834,25 +834,36 @@ describe('an object', () => {
 });
 
 describe('the navigation', () => {
-  it('starts at the first pinned kind; shows the pinned as tabs, the one the page is at beside them', () => {
+  it('starts at the start, a tab of its own; shows the pinned as tabs, the one the page is at beside them', () => {
     const page = renderPage(world(), '/');
-    expect(page.path).toBe('/k/pods.v1');
-    expect(page.links('Kinds')).toEqual(['Pods', 'Deployments', 'Services', 'ConfigMaps', 'Nodes', 'Namespaces']);
+    expect([page.path, page.container.querySelector('main')?.textContent]).toEqual(['/', 'Welcome to overkube.']);
+    expect(page.links('Kinds')).toEqual(['Overview', 'Pods', 'Deployments', 'Services', 'ConfigMaps', 'Nodes', 'Namespaces']);
     page.navigate('/k/events.v1');
     expect(page.links('Kinds').at(-1)).toBe('Events');
     expect(page.container.querySelector('.uk-rail')).toBeNull();
   });
 
+  /** The start's welcome hidden by the user (what else is on it, as it was). */
+  const unwelcome = (w: ReturnType<typeof world>, hidden: Record<string, boolean> = {}) =>
+    w.as('user', { priority: 1000, rights: ['configure'] }).patch('Slot', slots.page('overview').name, { hidden: { 'core.page.overview.welcome': true, ...hidden } });
+
+  it('goes from the start to the first pinned kind once nothing else is on it', () => {
+    const w = world();
+    unwelcome(w);
+    expect(renderPage(w, '/').path).toBe('/k/pods.v1');
+  });
+
   it('stays at the start once another puts something on it: a page of its own', () => {
     const w = world();
-    w.addon(addon('home', ({ contributor }) => void contributor.add('Fill', 'home.welcome', { slot: slots.page('home').name, render: () => <p>welcome</p> })));
+    unwelcome(w);
+    w.addon(addon('overview', ({ contributor }) => void contributor.add('Fill', 'overview.welcome', { slot: slots.page('overview').name, render: () => <p>welcome</p> })));
     const page = renderPage(w, '/');
     expect([page.path, page.container.querySelector('main')?.textContent]).toEqual(['/', 'welcome']);
   });
 
   it('says a page nothing is on is empty: the start, its redirect hidden by the user', () => {
     const w = world();
-    w.as('user', { priority: 1000, rights: ['configure'] }).patch('Slot', slots.page('home').name, { hidden: { 'core.page.home': true } });
+    unwelcome(w, { 'core.page.overview': true });
     const page = renderPage(w, '/');
     expect([page.path, page.container.querySelector('main')?.textContent]).toEqual(['/', 'Nothing is on this page.']);
   });

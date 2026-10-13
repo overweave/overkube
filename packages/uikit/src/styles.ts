@@ -98,6 +98,11 @@ export const css = `
   .uk-kv > dt:first-child { margin-top: 0; }
   .uk-kv > dd { margin-top: -6px; }
 }
+/* Relations: one table, a group a run of rows; a row's state its dot then its words (its header past the dot's room, lined up). */
+.uk-relations-state { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--uk-muted); }
+.uk-relations-state-head { padding-left: 13px; }
+.uk-relations-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uk-relations-none { color: var(--uk-warn); }
 /* A plain list: one under another, no marks. */
 .uk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 /* Conditions, one under another, ruled between: its status, its type, when it changed (on the right); why under its type, quieter. */
