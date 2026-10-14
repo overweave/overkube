@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { patch } from './patch.ts';
 import { proxy } from './proxy.ts';
 import { status } from './status.ts';
+import { change, type Streams, stream } from './stream.ts';
 import { fail, type UpstreamSource } from './upstream.ts';
 import { type WatchOptions, watch } from './watch.ts';
 
@@ -12,6 +13,7 @@ import { type WatchOptions, watch } from './watch.ts';
  * Express's req and res), a platform's plugin. Under its prefix:
  *
  *   GET  /watch    several watches over one stream (watch.ts)
+ *   GET  /stream   the same, changed while it is open; POST /stream/<name> changes it (stream.ts)
  *   GET  /status   its version and whether the cluster answers (status.ts)
  *   POST /patch    changes, as JSON (patch.ts)
  *   /**            the API server's /api, /apis, /version, /openapi/v3, passed on (proxy.ts) — never a watch (/watch is)
@@ -31,7 +33,7 @@ export interface GatewayOptions {
   upstream: UpstreamSource;
   /** The path it is served under: '' (the root), '/kube', a platform's own. */
   prefix?: string;
-  /** Nothing that changes the cluster: only GET and HEAD, no /patch (403 read_only). */
+  /** Nothing that changes the cluster: only GET and HEAD (and asking what one may do: self subject reviews), no /patch (403 read_only). */
   readOnly?: boolean;
   /** Its version, as /status tells it. */
   version?: string;
@@ -69,6 +71,10 @@ export interface Gateway {
 
 const READING = new Set(['GET', 'HEAD']);
 
+/** What a user may do, asked (a POST that changes nothing): read only or not. */
+const REVIEWS = /^\/apis\/authorization\.k8s\.io\/v1\/selfsubject(access|rules)reviews$/;
+const STREAM_CHANGE = /^\/stream\/([^/]+)$/;
+
 /** A body's size in bytes, as it would be passed on. */
 function sizeOf(body: unknown): number {
   if (body === undefined || body === null) return 0;
@@ -83,6 +89,7 @@ export function createGateway(options: GatewayOptions): Gateway {
   const header = options.header === undefined ? 'x-overkube' : options.header;
   const { upstream } = options;
   const streams = new Set<{ shutdown(): void }>();
+  const changing: Streams = new Map();
 
   /** Whether another site's page sent it, through its visitor's browser. */
   const crossSite = (req: IncomingMessage) => {
@@ -125,6 +132,25 @@ export function createGateway(options: GatewayOptions): Gateway {
     });
   };
 
+  /** The body as JSON: application/json (or parsed by the host), else refused. */
+  const jsonOf = (req: IncomingMessage, res: ServerResponse, given: Given | undefined, route: string, then: (body: unknown) => void) => {
+    if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '') && !(given && 'body' in given && typeof given.body === 'object' && !Buffer.isBuffer(given.body))) {
+      fail(res, 415, 'bad_body', `a ${route} is sent as application/json`);
+      return;
+    }
+    bodyOf(req, res, given, (body) => {
+      if (typeof body !== 'string' && !Buffer.isBuffer(body)) return then(body);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body.toString());
+      } catch {
+        fail(res, 400, 'bad_body', 'the body is not JSON');
+        return;
+      }
+      then(parsed);
+    });
+  };
+
   return {
     handle(req, res, given) {
       const url = req.url ?? '/';
@@ -144,16 +170,26 @@ export function createGateway(options: GatewayOptions): Gateway {
         fail(res, 403, 'cross_site', `a request that is not a read carries the ${header} header`);
         return true;
       }
-      if (route === '/watch' || route === '/status') {
+      if (route === '/watch' || route === '/status' || route === '/stream') {
         if (method !== 'GET') {
           fail(res, 405, 'bad_method', `${route} is asked with GET`);
           return true;
         }
         if (route === '/watch') watch({ url: rest }, res, { ...options.watch, upstream, streams });
+        else if (route === '/stream') stream(res, { ...options.watch, upstream, streams }, changing);
         else void status(res, { upstream, version: options.version });
         return true;
       }
-      if (options.readOnly && !reading) {
+      const changed = STREAM_CHANGE.exec(route);
+      if (changed) {
+        if (method !== 'POST') {
+          fail(res, 405, 'bad_method', '/stream/<name> is asked with POST');
+          return true;
+        }
+        jsonOf(req, res, given, '/stream change', (body) => change(changed[1], body, res, changing));
+        return true;
+      }
+      if (options.readOnly && !reading && !(method === 'POST' && REVIEWS.test(route))) {
         fail(res, 403, 'read_only', 'the gateway is read only: nothing that changes the cluster');
         return true;
       }
@@ -162,22 +198,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           fail(res, 405, 'bad_method', '/patch is asked with POST');
           return true;
         }
-        if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '') && !(given && 'body' in given && typeof given.body === 'object' && !Buffer.isBuffer(given.body))) {
-          fail(res, 415, 'bad_body', 'a /patch is sent as application/json');
-          return true;
-        }
-        bodyOf(req, res, given, (body) => {
-          let parsed = body;
-          if (typeof body === 'string' || Buffer.isBuffer(body)) {
-            try {
-              parsed = JSON.parse(body.toString());
-            } catch {
-              fail(res, 400, 'bad_body', 'the body is not JSON');
-              return;
-            }
-          }
-          patch({ body: parsed }, res, { upstream, fieldManager: options.fieldManager });
-        });
+        jsonOf(req, res, given, '/patch', (body) => patch({ body }, res, { upstream, fieldManager: options.fieldManager }));
         return true;
       }
       const pass = (body?: unknown) => proxy({ method, url: rest, headers: req.headers, body }, res, { upstream, maxChannels: options.watch?.maxChannels });

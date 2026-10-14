@@ -120,7 +120,7 @@ export function isDown(err: NodeJS.ErrnoException): boolean {
 }
 
 /** The gateway's own error answer: { error: { code, message } }. */
-export function fail(res: ServerResponse, status: number, code: ErrorCode, message: string, more: { w?: string } = {}): void {
+export function fail(res: ServerResponse, status: number, code: ErrorCode, message: string, more: { w?: string; f?: string } = {}): void {
   res.writeHead(status, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ error: { code, message, ...more } }));
 }

@@ -1,0 +1,21 @@
+{
+  "name": "@overkube/fake-kube",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A fake Kubernetes API server for overkube's own tests: discovery, paged lists of one snapshot, watches from a resourceVersion (410 when compacted), selectors, metadata only, 403s — never published",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@overkube/kube-types": "0.1.0",
+    "@types/node": "24.10.1"
+  }
+}

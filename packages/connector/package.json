@@ -1,0 +1,33 @@
+{
+  "name": "@overkube/connector",
+  "version": "0.1.0",
+  "description": "overkube's way to the cluster's data: the gateway's HTTP and its one changing stream, what the cluster serves, and feeds — a collection listed and watched, shared, let go of when no one uses it",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json"
+  },
+  "dependencies": {
+    "@overkube/gateway": "0.1.0",
+    "@overkube/kube-types": "0.1.0"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.2"
+  },
+  "devDependencies": {
+    "@overkube/fake-kube": "0.1.0",
+    "@preact/signals": "2.11.2",
+    "@types/node": "24.10.1"
+  }
+}

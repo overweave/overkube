@@ -76,15 +76,20 @@ const DEFAULTS = {
   maxChannels: 500,
   maxStreams: 100,
 };
-type Settings = typeof DEFAULTS & Pick<WatchOptions, 'upstream' | 'log' | 'streams'>;
+export type Settings = typeof DEFAULTS & Pick<WatchOptions, 'upstream' | 'log' | 'streams'>;
 
-interface Spec {
+/** The options given, over the defaults. */
+export const settingsOf = (options: WatchOptions): Settings => ({ ...DEFAULTS, ...options });
+
+export interface Spec {
   id: string;
   /** The collection's path, without a query. */
   path: string;
   /** Its labelSelector and fieldSelector. */
   selectors: URLSearchParams;
   resourceVersion: string;
+  /** What it is asked as (default application/json). */
+  accept?: string;
 }
 
 /** At most this many watches in one stream; each as the protocol says (its resourceVersion opaque). */
@@ -185,7 +190,7 @@ function serverWait(seconds: unknown): number | undefined {
 
 /** Serve one multiplexed stream until the client leaves. */
 export function watch(req: { url: string }, res: ServerResponse, options: WatchOptions): void {
-  const settings: Settings = { ...DEFAULTS, ...options };
+  const settings = settingsOf(options);
   // An answer already gone (its client left while its host was deciding): nothing is opened for it.
   if (res.destroyed || res.writableEnded) return;
   const specs = parseWatches(req.url);
@@ -193,40 +198,57 @@ export function watch(req: { url: string }, res: ServerResponse, options: WatchO
     failRequest(res, 400, 'bad_watch', specs, culprit(req.url));
     return;
   }
-  if (totals.streams >= settings.maxStreams) {
-    failRequest(res, 503, 'too_many_watches', `${totals.streams} streams are open; at most ${settings.maxStreams}`);
+  const full = tooManyStreams(settings) ?? overBudget(settings, specs.length);
+  if (full) {
+    failRequest(res, 503, 'too_many_watches', full);
     return;
   }
-  if (totals.channels + specs.length > settings.maxChannels) {
-    failRequest(res, 503, 'too_many_watches', `${totals.channels} watches are open; at most ${settings.maxChannels}`);
-    return;
-  }
-  new Stream(specs, res, settings);
+  const stream = new Stream(res, settings);
+  stream.begin(specs.map((spec) => new Channel(spec, { w: spec.id }, stream, settings)));
+}
+
+/** Whether the stream has the budget for this many more watches: if not, why. */
+export function overBudget(settings: Settings, more: number): string | undefined {
+  if (totals.channels + more > settings.maxChannels) return `${totals.channels} watches are open; at most ${settings.maxChannels}`;
+  return undefined;
+}
+
+/** Whether another stream may open: if not, why. */
+export function tooManyStreams(settings: Settings): string | undefined {
+  return totals.streams >= settings.maxStreams ? `${totals.streams} streams are open; at most ${settings.maxStreams}` : undefined;
 }
 
 /** The client's side: writes lines, holds the watches back while it does not read, lets a slow one go. */
-class Stream {
-  private open = true;
+export class Stream {
+  protected open = true;
   private paused = false;
   private slowSince = 0;
-  private readonly channels: Channel[];
+  protected readonly channels = new Set<Channel>();
   private readonly ping: ReturnType<typeof setInterval>;
   private readonly res: ServerResponse;
-  private readonly settings: Settings;
+  protected readonly settings: Settings;
 
-  constructor(specs: Spec[], res: ServerResponse, settings: Settings) {
+  constructor(res: ServerResponse, settings: Settings) {
     this.res = res;
     this.settings = settings;
     // x-accel-buffering: an nginx in front passes each line on at once.
     res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
     totals.streams++;
     summarise(settings.log ?? ((m) => console.log(`[overkube] ${m}`)));
-    this.channels = specs.map((spec) => new Channel(spec, this, settings));
     this.ping = setInterval(() => this.tick(), settings.pingMs);
     res.on('drain', () => this.drained());
     res.on('close', () => this.close());
     settings.streams?.add(this);
-    for (const c of this.channels) c.start();
+  }
+
+  /** Its watches, started (each counted in the budget as it is made). */
+  begin(channels: Channel[]): void {
+    // Closed already: they give their places in the budget back at once.
+    if (!this.open) for (const c of channels) c.stop();
+    else {
+      for (const c of channels) this.channels.add(c);
+      for (const c of channels) c.start();
+    }
   }
 
   /** Whether the client is behind: a watch that opens now waits too. */
@@ -277,7 +299,7 @@ class Stream {
 
   /** One of its watches is over for good: with none left, the stream ends (a client asking only for kinds it may not see keeps nothing open). */
   ended(): void {
-    if (!this.open || !this.channels.every((c) => c.stopped)) return;
+    if (!this.open || ![...this.channels].every((c) => c.stopped)) return;
     this.res.end();
     this.close();
   }
@@ -289,7 +311,7 @@ class Stream {
     this.close();
   }
 
-  private close(): void {
+  protected close(): void {
     if (!this.open) return;
     this.open = false;
     clearInterval(this.ping);
@@ -321,7 +343,7 @@ interface Event {
  * finish (ERROR, stopped); each request is a generation, and one given up on
  * can no longer move the channel.
  */
-class Channel {
+export class Channel {
   private state: 'idle' | 'opening' | 'open' | 'backoff' | 'stopped' = 'idle';
   private resourceVersion: string;
   private attempt = 0;
@@ -332,11 +354,14 @@ class Channel {
   /** Whether it is counted in the budget of watches (until it stops). */
   private counted = true;
   private readonly spec: Spec;
+  /** What each of its lines is told by: { w } in a /watch, { f, ns } in a /stream. */
+  private readonly tag: object;
   private readonly stream: Stream;
   private readonly settings: Settings;
 
-  constructor(spec: Spec, stream: Stream, settings: Settings) {
+  constructor(spec: Spec, tag: object, stream: Stream, settings: Settings) {
     this.spec = spec;
+    this.tag = tag;
     this.stream = stream;
     this.settings = settings;
     this.resourceVersion = spec.resourceVersion;
@@ -363,7 +388,7 @@ class Channel {
     if (this.resourceVersion) query.set('resourceVersion', this.resourceVersion);
     try {
       this.request = openUpstream(
-        { method: 'GET', path: `${this.spec.path}?${query}`, headers: { accept: 'application/json' }, connectTimeoutMs: this.settings.connectTimeoutMs },
+        { method: 'GET', path: `${this.spec.path}?${query}`, headers: { accept: this.spec.accept ?? 'application/json' }, connectTimeoutMs: this.settings.connectTimeoutMs },
         upstream,
         (answer) => {
           if (current()) this.answered(answer, current, { server, withBookmarks });
@@ -377,6 +402,11 @@ class Channel {
     this.request.on('error', (err: NodeJS.ErrnoException) => {
       if (current()) this.fail(isDown(err) ? 'kube_down' : 'kube_error', err.message);
     });
+  }
+
+  /** The client's name for it. */
+  get id(): string {
+    return this.spec.id;
   }
 
   get stopped(): boolean {
@@ -424,7 +454,7 @@ class Channel {
     this.drop();
     this.state = 'backoff';
     totals.retries++;
-    this.stream.send({ w: this.spec.id, type: 'RETRY', error: { code, message } });
+    this.stream.send({ ...this.tag, type: 'RETRY', error: { code, message } });
     const { retryMs, maxRetryMs, jitter } = this.settings;
     const own = Math.min(retryMs * 2 ** this.attempt, maxRetryMs);
     const wait = serverWaitMs ? Math.max(serverWaitMs, own) * (1 + Math.random() * jitter) : Math.min(Math.max(0, own * (1 + (Math.random() * 2 - 1) * jitter)), maxRetryMs);
@@ -436,7 +466,7 @@ class Channel {
   private finish(status: object): void {
     if (this.state === 'stopped') return;
     totals.errors++;
-    this.stream.send({ w: this.spec.id, type: 'ERROR', object: status });
+    this.stream.send({ ...this.tag, type: 'ERROR', object: status });
     this.stop();
     this.stream.ended();
   }
@@ -451,7 +481,7 @@ class Channel {
     if (this.stream.holding) answer.pause();
     const opened = Date.now();
     let rest = '';
-    this.stream.send({ w: this.spec.id, type: 'OPEN' });
+    this.stream.send({ ...this.tag, type: 'OPEN' });
     answer.setEncoding('utf8');
     answer.on('data', (chunk: string) => {
       if (!current()) return;
@@ -516,7 +546,8 @@ class Channel {
     const metadata = event.object.metadata;
     if (metadata?.resourceVersion) this.resourceVersion = metadata.resourceVersion;
     if (metadata) delete metadata.managedFields;
-    this.stream.send({ w: this.spec.id, ...event });
+    // Its type and object only: nothing the API server sends stands for the gateway's tag.
+    this.stream.send({ ...this.tag, type: event.type, object: event.object });
     return true;
   }
 
