@@ -110,17 +110,15 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
         kinds={kubeOwnKinds}
         matcher={kindMatcher}
         addons={addons.map(run)}
-        given={
-          user || theme || locale
-            ? (w) => {
-                if (user) user(w.as('user', standingOf('user')) as unknown as KubeContributor);
-                // Its look and language, as the story says: over the user's (a contributor of its own: not one patch replacing another).
-                const story = theme || locale ? w.as('story', { priority: PRIORITY.user + 1, rights: ['configure'] }) : undefined;
-                if (theme) story?.patch('Appearance', 'default', { mode: theme });
-                if (locale) story?.patch('Language', 'default', { locale });
-              }
-            : undefined
-        }
+        given={(w) => {
+          // The fields its addons define, asked by as the page asks by them.
+          env.cluster.follow(w.registry as never);
+          if (user) user(w.as('user', standingOf('user')) as unknown as KubeContributor);
+          // Its look and language, as the story says: over the user's (a contributor of its own: not one patch replacing another).
+          const story = theme || locale ? w.as('story', { priority: PRIORITY.user + 1, rights: ['configure'] }) : undefined;
+          if (theme) story?.patch('Appearance', 'default', { mode: theme });
+          if (locale) story?.patch('Language', 'default', { locale });
+        }}
       >
         <KubeProvider cluster={env.cluster}>
           <ShellProvider router={router} notifications={env.notifications} onFailure={onFailure}>

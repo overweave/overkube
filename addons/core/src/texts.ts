@@ -71,7 +71,7 @@ export const T = {
       noColumns: t('core.kind.table.no-columns', 'No columns for {kind}: no addon defines any.'),
       waiting: t('core.kind.table.waiting', 'Waiting: {reason}'),
       stale: t('core.kind.table.stale', "Not current: the page has lost the cluster's changes and is reconnecting. What is shown is as it was."),
-      cellLoading: t('core.kind.table.cell-loading', 'Loading'),
+      partial: t('core.kind.table.partial', 'Not all of it: the cluster refuses {namespaces}.'),
     },
   },
   /** A resource: its menu's, and opened. */

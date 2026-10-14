@@ -19,12 +19,7 @@ const { Pod } = kinds.core.v1;
 const images = defineAddon({
   id: 'images',
   title: 'Images',
-  setup: ({ contributor }) =>
-    void contributor.add(
-      'Column',
-      'images.image',
-      column({ kinds: [Pod], header: 'Image', value: (p) => p.spec?.containers?.[0]?.image, display: (p) => p.spec?.containers?.[0]?.image ?? '' }),
-    ),
+  setup: ({ contributor }) => void contributor.add('Column', 'images.image', column({ kinds: [Pod], header: 'Image', sort: '.spec.containers[0].image' })),
 });
 
 const pods = (c: Parameters<NonNullable<Parameters<typeof KubeStory>[0]['cluster']>>[0]) => {
@@ -95,10 +90,10 @@ describe('KubeStory, started anew', () => {
     const broken = defineAddon({
       id: 'broken',
       title: 'Broken',
-      setup: ({ contributor }) => void contributor.add('Column', 'broken.c', column({ header: 'B', value: () => ({ n: 1n }), display: () => JSON.stringify({ n: 1n }) })),
+      setup: ({ contributor }) => void contributor.add('Column', 'broken.c', column({ header: 'B', sort: 'core.name', format: () => JSON.stringify({ n: 1n }) })),
     });
     const view = render(<KubeStory addons={[core, broken]} path="/k/pods.v1" cluster={pods} />);
-    await waitFor(() => expect(view.container.querySelector('[data-overkube-failures]')?.textContent).toContain('Column/broken.c (display)'));
+    await waitFor(() => expect(view.container.querySelector('[data-overkube-failures]')?.textContent).toContain('Column/broken.c (format)'));
   });
 });
 

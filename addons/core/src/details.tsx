@@ -1,12 +1,12 @@
-import { humanDuration, type KindInfo, type KubeObject } from '@overkube/kube-types';
+import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import type { FieldCatalog } from '@overkube/query';
 import {
-  Column,
-  type ColumnContext,
+  type CellValue,
   type ColumnSpec,
   closeIn,
+  kindRef,
   type Label,
   openIn,
-  PENDING,
   type ResourceConditionProps,
   type ResourceFieldProps,
   type ResourceFinalizerProps,
@@ -15,24 +15,25 @@ import {
   type ResourceProps,
   slots,
   TableView,
-  takes,
 } from '@overkube/sdk';
-import { useCollection, usePage, useSay, useServedKinds } from '@overkube/sdk/preact';
-import { Badge, Chip, Chips, Notice, Section, Skeleton } from '@overkube/uikit';
+import { useList, usePage, useSay, useServedKinds } from '@overkube/sdk/preact';
+import { Badge, Chip, Chips, Notice, Section } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import type { SlotRef } from '@overweave/ui';
-import { Guarded, slotElement, useDefinition, useDefinitions, Wrapped } from '@overweave/ui/preact';
+import { slotElement, useDefinition } from '@overweave/ui/preact';
 import { Fragment } from 'preact';
 import { useMemo } from 'preact/hooks';
-import { arranged, EMPTY, shownAs } from './CoreTable.tsx';
+import { Cell, contextOf, drawn, textOf } from './cell.tsx';
+import { useColumns } from './columns.tsx';
 import { type Failed, useFailures } from './failures.ts';
+import { EMPTY, humanDuration, shownAs } from './format.ts';
 import { clock, useLive } from './live.ts';
 import { T } from './texts.ts';
 
 /*
- * What the core shows of any resource opened, from the object alone: its
- * summary (its kind's columns as fields — as its table has them, the wide
- * ones too; being deleted, said first), its conditions (status.conditions,
+ * What the core shows of any resource opened: its summary (its kind's
+ * columns as fields — their values asked as its table's are, the wide ones
+ * too; being deleted, said first), and from the object itself its conditions (status.conditions,
  * where it has them), its metadata (when it was made, its uid, labels,
  * annotations, owners, finalizers). Each part a slot: a field, its label,
  * its value; a condition, each of its parts; a label, an annotation, an
@@ -84,118 +85,90 @@ export function FieldLabel({ field }: ResourceFieldProps) {
 /**
  * The summary's fields (the core's, in resource.view.summary): the columns
  * its kind's tables have — but its name, the title's — each a field, set
- * out as its TableView sets them (those it hides by name hidden here too;
- * the wide ones, hidden only by being wide, shown).
+ * out as its TableView sets them (the wide ones shown too): its values
+ * asked of the cluster as its table's are, its cell drawn as its table's.
  */
 export function SummaryFields({ kind, object }: ResourceProps) {
   const failed = useFailures();
-  const items = useCollection(kind).items.value;
-  // Every object of its kind listed (a default among them), as its table has them.
-  const objects = useMemo(() => [...items.values()], [items]);
   const view = useDefinition(TableView, kind.id)?.spec ?? {};
-  const all = useDefinitions(Column).filter((c) => {
-    if (c.name === 'core.name' || !takes(c.spec.target, kind) || view.hidden?.[c.name] === true) return false;
-    try {
-      return c.spec.when?.(kind) ?? true;
-    } catch (error) {
-      failed(c, 'Column', c.name, 'when', error);
-      return false;
-    }
+  const { placed, catalog } = useColumns(kind, view, failed, true);
+  const columns = placed.filter((c) => c.definition.name !== 'core.name');
+  const namespace = object.metadata?.namespace;
+  const select = useMemo(() => [...new Set(columns.flatMap((c) => c.fields))], [columns]);
+  const answer = useList({
+    kind: kindRef(kind),
+    ...(namespace ? { scope: { namespaces: [namespace] } } : {}),
+    where: { field: 'core.name', op: 'eq', value: object.metadata?.name ?? '' },
+    page: { limit: 1 },
+    select,
   });
-  const columns = arranged(all, view);
+  const values = answer.items[0]?.values;
+  const say = useSay();
   if (!columns.length) return null;
   return (
     <section class="uk-section">
+      {(answer.state === 'error' || answer.state === 'denied') && (
+        <Notice level="warn" icon="warning">
+          <span title={answer.error?.message}>{say(T.kind.refused, { kind: kind.plural, code: answer.error?.code ?? '' })}</span>
+        </Notice>
+      )}
       <dl class="uk-fields">
-        {columns.map((c) => (
-          <SummaryField key={c.name} column={c} kind={kind} object={object} objects={objects} failed={failed} />
+        {columns.map(({ definition, fields }) => (
+          <SummaryField
+            key={definition.name}
+            column={definition}
+            fields={fields}
+            values={fields.map((f) => (values?.[f] ?? null) as CellValue)}
+            kind={kind}
+            object={object}
+            catalog={catalog}
+            failed={failed}
+          />
         ))}
       </dl>
     </section>
   );
 }
 
-/** One of its kind's columns as a field: its value (now as it is), its display (live) — either that throws, its column's failure (useFailures). */
+/** One of its kind's columns as a field: its values, its cell (as its table's: Cell). */
 function SummaryField({
   column,
+  fields,
+  values,
   kind,
   object,
-  objects,
+  catalog,
   failed,
 }: {
   column: Definition<ColumnSpec>;
+  fields: readonly string[];
+  values: readonly CellValue[];
   kind: KindInfo;
   object: KubeObject;
-  objects: readonly KubeObject[];
+  catalog: FieldCatalog | undefined;
   failed: Failed;
 }) {
   const say = useSay();
-  const context = useMemo(
-    () => ({
-      still: {
-        get now() {
-          return Date.now();
-        },
-        objects,
-        kind,
-      } satisfies ColumnContext,
-      live: {
-        get now() {
-          return clock.value;
-        },
-        objects,
-        kind,
-      } satisfies ColumnContext,
-    }),
-    [objects, kind],
-  );
-  let value: unknown;
-  try {
-    value = column.spec.value(object, context.still);
-  } catch (error) {
-    failed(column, 'Column', column.name, 'value', error);
-  }
-  const waiting = value === PENDING;
-  const display = useLive(() => {
-    if (waiting) return '';
-    try {
-      return column.spec.display(object, context.live);
-    } catch (error) {
-      failed(column, 'Column', column.name, 'display', error);
-      return '';
-    }
-  }, [column, object, context, waiting]);
   const label = say(column.spec.header);
-  const props = useMemo<ResourceFieldProps>(() => ({ kind, object, field: { name: column.name, label }, value, display }), [kind, object, column.name, label, value, display]);
+  // Its text, as its cell draws it (none: it draws more than text).
+  const display = useLive(() => textOf(drawn(column, fields, values, contextOf(kind, say), catalog, failed)) ?? '', [column, fields, values, kind, catalog, say, failed]);
+  const props = useMemo<ResourceFieldProps>(
+    () => ({
+      kind,
+      object,
+      field: { name: column.name, label },
+      value: values,
+      display,
+      drawn: <Cell column={column} fields={fields} values={values} kind={kind} catalog={catalog} failed={failed} />,
+    }),
+    [kind, object, column, label, fields, values, display, catalog, failed],
+  );
   return slotElement(slots.resource.view.summary.field, props, { limit: 1 });
 }
 
-/**
- * A summary field's value (the core's): its column's render, or its
- * display ("—": none; waiting: its value not there yet) — in the Wraps of
- * the column's name, as its table's cell is.
- */
-export function SummaryValue({ kind, object, field, value, display }: ResourceFieldProps) {
-  const say = useSay();
-  const column = useDefinition(Column, field.name);
-  const cell = useMemo(() => ({ kind, object, value, display }), [kind, object, value, display]);
-  const Render = column?.spec.render;
-  return (
-    <Wrapped name={field.name} props={cell}>
-      {value === PENDING ? (
-        <>
-          <Skeleton width="40%" />
-          <span class="uk-sr-only">{say(T.kind.table.cellLoading)}</span>
-        </>
-      ) : Render && column ? (
-        <Guarded key={`${object.metadata?.uid}:${object.metadata?.resourceVersion}`} definition={column}>
-          <Render {...cell} />
-        </Guarded>
-      ) : (
-        shownAs(display)
-      )}
-    </Wrapped>
-  );
+/** A summary field's value (the core's): what its column draws. */
+export function SummaryValue({ drawn }: ResourceFieldProps) {
+  return <>{drawn}</>;
 }
 
 type Condition = ResourceConditionProps['condition'];

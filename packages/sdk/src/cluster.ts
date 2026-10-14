@@ -1,14 +1,16 @@
-import type { ApiError, CollectionView, ObjectOfKind } from '@overkube/client';
 import type { StatusAnswer } from '@overkube/gateway/protocol';
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import type { QueryError, Source } from '@overkube/query';
 import type { ReadonlySignal } from '@preact/signals';
 
 /*
- * The cluster, as an addon works with it — a contract, not the client: the
- * page makes it of @overkube/client, a test or a story of a fake. What an
- * addon holds through it is let go of when the addon stops; what it writes
- * is in its own name (its field manager: overkube-<its id>) and, once it
- * has stopped, not at all. A kind comes first, always: patch(kind, object, …).
+ * The cluster, as an addon works with it — a contract: the page makes it
+ * of its connector and source, a test or a story of objects in memory.
+ * What is read of it is asked as queries (source: get, list, count, a
+ * kind's fields — @overkube/query), answered live while read; what an
+ * addon writes is in its own name (its field manager: overkube-<its id>)
+ * and, once it has stopped, not at all. A kind comes first, always:
+ * patch(kind, object, …).
  */
 
 /** A change to an object, as the gateway takes it (merge, JSON patch, strategic, apply). */
@@ -28,18 +30,16 @@ export interface Discovery {
   /** Its kinds by id; null until known. */
   readonly kinds: ReadonlySignal<ReadonlyMap<string, KindInfo> | null>;
   readonly state: ReadonlySignal<'loading' | 'ready' | 'error'>;
-  readonly error: ReadonlySignal<Pick<ApiError, 'status' | 'code' | 'message'> | null>;
+  readonly error: ReadonlySignal<QueryError | null>;
   /** Ask again (after an error). */
   retry(): void;
 }
 
-/** The cluster as components have it (useCluster): a kind's objects held only while drawn (useCollection, hold), never for good. */
-export interface ComponentCluster {
+/** The cluster as components and addons have it (useCluster, ctx.cluster). */
+export interface Cluster {
   readonly discovery: Discovery;
-  /** A kind's objects without holding them: what is there now. */
-  peek<K extends KindInfo>(kind: K): CollectionView<ObjectOfKind<K>>;
-  /** Hold a kind's objects until the returned function is called (a component while it is drawn). */
-  hold(kind: KindInfo): () => void;
+  /** What is read of it: queries, answered live while read (useList, useCount, useGet, useFields). */
+  readonly source: Source;
   /** Whether a group ('traefik.io', '' for the core) or a kind ('v1/Pod') is served; undefined until known. */
   served(groupOrKind: string): boolean | undefined;
   status(signal?: AbortSignal): Promise<StatusAnswer>;
@@ -50,10 +50,4 @@ export interface ComponentCluster {
    * nothing sent.
    */
   remove(kind: KindInfo, object: KubeObject): Promise<void>;
-}
-
-/** The cluster as an addon has it (ctx.cluster). */
-export interface Cluster extends ComponentCluster {
-  /** A kind's objects, held until the addon stops — a kind not served yet is a collection all the same: loading, then absent or its objects. */
-  collection<K extends KindInfo>(kind: K): CollectionView<ObjectOfKind<K>>;
 }

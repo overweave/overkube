@@ -1,9 +1,9 @@
 import { prepareCatalog } from '@overkube/cel';
-import { podSummary } from '@overkube/kube-types/core/v1';
 import { fieldsOf, scan, valuesOf } from '@overkube/query';
 import { describe, expect, it } from 'vitest';
 import { BUILT_IN, baseFields, COMMON, crdFields, KUBE_CEL } from './index.ts';
 import { samples } from './pods.fixture.ts';
+import { podSummary } from './pods.reference.test-helper.ts';
 
 const made = fieldsOf({ ...COMMON, ...BUILT_IN }, KUBE_CEL.compile);
 const value = (object: unknown, name: string) => valuesOf(object, name, made.fields);
@@ -69,7 +69,7 @@ describe('the fields of CEL', () => {
     expect(summary(pod)).toEqual(reference(pod));
   });
 
-  it("a pod's as kubectl prints it, of 2000 pods of any make (kube-types' podSummary, printers.go's port, the reference)", () => {
+  it("a pod's as kubectl prints it, of 2000 pods of any make (printers.go's port, the reference)", () => {
     const rnd = random(7);
     const differ = Array.from({ length: 2000 }, (_, i) => anyPod(rnd, i)).filter((p) => JSON.stringify(summary(p)) !== JSON.stringify(reference(p)));
     expect(differ.map((p) => ({ pod: p, got: summary(p), want: reference(p) })).slice(0, 2)).toEqual([]);

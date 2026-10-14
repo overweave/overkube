@@ -64,9 +64,9 @@ export function proxy(req: ProxyRequest, res: ServerResponse, options: ProxyOpti
     if (typeof v === 'string') headers[name] = v;
   }
   const params = new URLSearchParams(query);
-  // A watch goes through /watch (its limits, its slow-client rules), never as it is.
+  // A watch goes through /stream (its limits, its slow-client rules), never as it is.
   if (truthy(params.get('watch'))) {
-    fail(res, 400, 'bad_watch', 'a watch goes through /watch');
+    fail(res, 400, 'bad_stream', 'a watch goes through /stream');
     return;
   }
   // A followed log streams for as long as it is read: one place in the budget of watches while it does.

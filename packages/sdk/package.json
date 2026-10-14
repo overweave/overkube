@@ -1,7 +1,7 @@
 {
   "name": "@overkube/sdk",
   "version": "0.1.0",
-  "description": "What overkube's addons are written with: the dashboard's kinds over overweave (KindView, Category, Column, TableView, Page, Action), its slots, defineAddon and what an addon is given \u2014 its contributor and the cluster; hooks for its components",
+  "description": "What overkube's addons are written with: the dashboard's kinds over overweave (KindView, Category, Column, Field, TableView, Page, Action), its slots, defineAddon and what an addon is given — its contributor and the cluster (queries, live); hooks for its components",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -24,9 +24,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overkube/client": "0.1.0",
     "@overkube/gateway": "0.1.0",
     "@overkube/kube-types": "0.1.0",
+    "@overkube/query": "0.1.0",
     "@overkube/uikit": "0.1.0",
     "@overweave/core": "0.4.0",
     "@overweave/ui": "0.4.0"
@@ -36,6 +36,7 @@
     "preact": "^10.29.8"
   },
   "devDependencies": {
+    "@overkube/source": "0.1.0",
     "@overweave/testkit": "0.4.0",
     "@preact/signals": "2.11.2",
     "@testing-library/preact": "3.2.4",

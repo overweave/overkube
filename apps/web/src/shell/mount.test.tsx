@@ -1,32 +1,58 @@
 import core from '@overkube/addon-core';
-import { createClient } from '@overkube/client';
-import { FakeGateway } from '@overkube/client/testing';
-import { kinds } from '@overkube/kube-types';
+import { Discovery, Http } from '@overkube/connector';
+import type { KubeObject } from '@overkube/kube-types';
 import { defineAddon, kubeKinds } from '@overkube/sdk';
+import { memorySource } from '@overkube/source';
 import { createRegistry } from '@overweave/core';
+import { signal } from '@preact/signals';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AddonHost } from '../host/addons.ts';
 import { clusterAccess } from '../host/cluster.ts';
 import { mount } from './mount.tsx';
 
 /*
- * The page as it is mounted, over a client and a fake gateway, the core
- * addon run in it: the kind at the hash held while shown and let go of when
- * another is; addons' notifications shown; the core, not running, said so.
+ * The page as it is mounted, over discovery (a gateway's answers) and a
+ * source of objects in memory, the core addon run in it: the kind at the
+ * hash drawn, another when the hash changes; the core, not running, said so.
  */
 
-const { Pod, Namespace } = kinds.core.v1;
 const closing: (() => void)[] = [];
 afterEach(() => {
   for (const close of closing.splice(0)) close();
   window.location.hash = '';
 });
 
+/** The aggregated discovery of the core group's pods and namespaces. */
+const DISCOVERY = {
+  kind: 'APIGroupDiscoveryList',
+  items: [
+    {
+      metadata: {},
+      versions: [
+        {
+          version: 'v1',
+          resources: [
+            { resource: 'pods', responseKind: { kind: 'Pod' }, scope: 'Namespaced', verbs: ['list', 'watch'] },
+            { resource: 'namespaces', responseKind: { kind: 'Namespace' }, scope: 'Cluster', verbs: ['list', 'watch'] },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 function page(addons = [core]) {
-  const fake = new FakeGateway([Pod, Namespace]);
-  const client = createClient({ api: { fetch: fake.fetch }, stream: { debounceMs: 5 }, store: { lingerMs: 0 } });
+  const fetch = (async (url: string) =>
+    Response.json(new URL(url, 'http://page').pathname.endsWith('/api') ? DISCOVERY : { kind: 'APIGroupDiscoveryList', items: [] })) as typeof globalThis.fetch;
+  const http = new Http({ fetch });
+  const discovery = new Discovery(http);
+  void discovery.load();
+  const objects = signal<Record<string, KubeObject[]>>({
+    'pods.v1': [{ metadata: { name: 'web', namespace: 'shop', uid: 'p1' } }],
+    'namespaces.v1': [{ metadata: { name: 'shop', uid: 'n1' } }],
+  });
   const registry = createRegistry({ kinds: kubeKinds });
-  const cluster = clusterAccess(client);
+  const cluster = clusterAccess({ http, discovery }, memorySource(objects));
   const host = new AddonHost({ registry, cluster, log: () => {}, maxCrashes: 1 });
   for (const a of addons) host.register(a);
   const element = document.createElement('div');
@@ -35,21 +61,20 @@ function page(addons = [core]) {
   closing.push(() => {
     unmount();
     host.close();
-    client.close();
+    discovery.close();
     element.remove();
   });
-  return { fake, client, element, host };
+  return { element, host };
 }
 
 describe('mount', () => {
-  it('holds the kind shown, and lets it go when another is shown', async () => {
+  it('draws the kind at the hash, and another when it changes', async () => {
     window.location.hash = '#/k/pods.v1';
-    const { client } = page();
-    await expect.poll(() => client.store.kinds).toContain(Pod.id);
+    const { element } = page();
+    await expect.poll(() => element.querySelector('[role="table"] a')?.textContent).toBe('web');
     window.location.hash = '#/k/namespaces.v1';
     window.dispatchEvent(new HashChangeEvent('hashchange'));
-    await expect.poll(() => client.store.kinds).toContain(Namespace.id);
-    await expect.poll(() => client.store.kinds.includes(Pod.id)).toBe(false);
+    await expect.poll(() => element.querySelector('[role="table"] a')?.getAttribute('href')).toContain('open=namespaces.v1/shop');
   });
 
   it('starts at the start: its page, staying there', async () => {

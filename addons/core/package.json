@@ -2,7 +2,7 @@
   "name": "@overkube/addon-core",
   "version": "0.1.0",
   "private": true,
-  "description": "overkube's core addon: everything the page shows that is not another addon's \u2014 a kind's table, an object over it, the navigation (tabs or a side menu), what the user is told",
+  "description": "overkube's core addon: everything the page shows that is not another addon's — a kind's table, an object over it, the navigation (tabs or a side menu), what the user is told",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -21,7 +21,6 @@
     "@overweave/ui": "0.4.0"
   },
   "devDependencies": {
-    "@overkube/shell": "0.1.0",
     "@overkube/storybook": "0.1.0",
     "@overkube/testkit": "0.1.0",
     "@testing-library/preact": "3.2.4",

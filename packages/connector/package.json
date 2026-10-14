@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@overkube/gateway": "0.1.0",
-    "@overkube/kube-types": "0.1.0"
+    "@overkube/kube-types": "0.1.0",
+    "@overkube/query": "0.1.0"
   },
   "peerDependencies": {
     "@preact/signals": "^2.11.2"

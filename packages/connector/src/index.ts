@@ -9,7 +9,7 @@
 
 export { type Connector, type ConnectorOptions, createConnector } from './connector.ts';
 export { Discovery, type DiscoveryState } from './discovery.ts';
-export { Feed, type FeedOptions, type FeedSpec, type FeedState, feedKey, objectKey } from './feed.ts';
+export { Feed, type FeedOptions, type FeedSpec, type FeedState, feedKey } from './feed.ts';
 export { type FeedHold, Feeds, type FeedsOptions } from './feeds.ts';
 export { ApiError, BASE, collectionPath, Http, type HttpOptions, objectPath, type Query, type Session, type Status } from './http.ts';
 export { type StreamOptions, type Subscriber, type WatchEvent, WatchStream } from './stream.ts';

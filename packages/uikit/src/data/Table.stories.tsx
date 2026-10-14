@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/preact-vite';
 import { useState } from 'preact/hooks';
 import { Button } from '../actions/Button';
-import { Table, type TableColumn } from './Table';
+import { Table, type TableColumn, type TableProps, type TableSort } from './Table';
 
 interface Row {
   name: string;
@@ -14,17 +14,32 @@ const NAMESPACES = ['apps', 'media', 'kube-system', 'monitoring'];
 const MESSAGES = ['', 'Back-off restarting failed container web in pod web-7d9c', 'Readiness probe failed: HTTP probe failed with statuscode: 503', ''];
 
 const columns: TableColumn<Row>[] = [
-  { id: 'name', header: 'Name', width: '2fr', cell: (r) => r.name, sort: (r) => r.name },
-  { id: 'namespace', header: 'Namespace', cell: (r) => r.namespace, sort: (r) => r.namespace },
-  { id: 'restarts', header: 'Restarts', width: '100px', cell: (r) => String(r.restarts), sort: (r) => r.restarts },
+  { id: 'name', header: 'Name', width: '2fr', cell: (r) => r.name, sortable: true },
+  { id: 'namespace', header: 'Namespace', cell: (r) => r.namespace, sortable: true },
+  { id: 'restarts', header: 'Restarts', width: '100px', cell: (r) => String(r.restarts), sortable: true },
   { id: 'message', header: 'Message', width: '2fr', cell: (r) => r.message },
 ];
-const make = (n: number): Row[] => Array.from({ length: n }, (_, i) => ({ name: `web-${i}`, namespace: NAMESPACES[i % 4], restarts: (i * 7) % 13, message: MESSAGES[i % 4] }));
+const row = (i: number): Row => ({ name: `web-${i}`, namespace: NAMESPACES[i % 4], restarts: (i * 7) % 13, message: MESSAGES[i % 4] });
+const make = (n: number): Row[] => Array.from({ length: n }, (_, i) => row(i));
+
+/** The rows as whoever gives them sorts them (the table sorts nothing): by the sort it asks for. */
+function sorted(rows: readonly Row[], sort: TableSort | undefined): readonly Row[] {
+  if (!sort) return rows;
+  const by = sort.id as keyof Row;
+  return [...rows].sort((a, b) => (a[by] < b[by] ? -1 : a[by] > b[by] ? 1 : 0) * (sort.desc ? -1 : 1));
+}
+
+/** A table and its rows' owner: the sort it asks for, given back with the rows sorted so. */
+function Sorting(props: TableProps<Row>) {
+  const [sort, setSort] = useState<TableSort | undefined>(props.sort);
+  return <Table {...props} rows={sorted(props.rows, sort)} sort={sort} onSort={setSort} />;
+}
 
 const meta = {
   title: 'Data/Table',
   component: Table<Row>,
-  args: { rows: make(6), columns, rowKey: (r: Row) => r.name, initialSort: { id: 'name' } },
+  args: { rows: make(6), columns, rowKey: (r: Row) => r.name, sort: { id: 'name' } },
+  render: (args) => <Sorting {...args} />,
 } satisfies Meta<typeof Table<Row>>;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -34,6 +49,16 @@ export const Rows: Story = {};
 /** Five thousand rows, only those in view drawn. */
 export const Many: Story = { args: { rows: make(5000), height: '420px' } };
 
+/** A hundred thousand rows, none held but those in view: a window of them given as the table says which are in view (the rest placeholders till then). */
+export const Window: Story = {
+  args: { height: '420px' },
+  render: (args) => {
+    const [range, setRange] = useState<[number, number]>([0, 0]);
+    const rows = Array.from({ length: range[1] - range[0] }, (_, i) => row(range[0] + i));
+    return <Table {...args} rows={rows} offset={range[0]} total={100_000} onRange={(first, last) => setRange([first, last])} />;
+  },
+};
+
 /** The message column wraps: rows grow to fit it. */
 export const Wrapping: Story = { args: { columns: columns.map((c) => (c.id === 'message' ? { ...c, wrap: true } : c)) } };
 
@@ -42,16 +67,9 @@ export const Narrow: Story = {
   args: { columns: columns.map((c) => ({ ...c, width: c.id === 'restarts' ? '100px' : '220px' })) },
   render: (args) => (
     <div style={{ width: '420px' }}>
-      <Table {...args} />
+      <Sorting {...args} />
     </div>
   ),
-};
-
-export const Picking: Story = {
-  render: (args) => {
-    const [selected, setSelected] = useState<Set<string>>(new Set(['web-1']));
-    return <Table {...args} selection={{ selected, onChange: setSelected, label: 'All pods' }} />;
-  },
 };
 
 export const Fixed: Story = { args: { resizable: false } };
@@ -81,7 +99,7 @@ export const Live: Story = {
             Restart the eighth (sorted by restarts: it moves)
           </Button>
         </div>
-        <Table {...args} rows={list} initialSort={{ id: 'restarts', desc: true }} />
+        <Sorting {...args} rows={list} sort={{ id: 'restarts', desc: true }} />
       </div>
     );
   },

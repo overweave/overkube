@@ -8,7 +8,8 @@ import type { WatchStream } from './stream.ts';
  * anyone does and for a while after (going from tab to tab does not list
  * again), then let go — at once when the stream needs the room (a feed
  * wants on it, or waits). What there is and who holds it is read as a
- * signal (find, holders): a query reads a feed others hold (one of the
+ * signal (find, holders — a signal a feed there is, and one for whether
+ * one comes: none kept for keys only asked of): a query reads a feed others hold (one of the
  * whole cluster, for some namespaces of it) while they do.
  */
 
@@ -39,6 +40,8 @@ export class Feeds {
   private readonly entries = new Map<string, Entry>();
   /** By key: moves whenever its feed comes or goes, or is held by someone or by no one any more (a planner reads the keys it asks of only). */
   private readonly changes = new Map<string, Signal<number>>();
+  /** Moves whenever a feed comes: those that asked of one not there read it (no signal kept for every key ever asked of). */
+  private readonly added = signal(0);
   private closed = false;
 
   constructor(http: Http, stream: WatchStream, options: FeedsOptions = {}) {
@@ -65,6 +68,7 @@ export class Feeds {
       entry = { feed: new Feed(spec, this.http, this.stream, this.options), refs: 0, weak: 0 };
       this.entries.set(key, entry);
       entry.feed.start();
+      this.added.value++;
     } else if (entry.refs + entry.weak === 0) entry.feed.retry();
     const held = entry;
     clearTimeout(held.linger);
@@ -88,16 +92,20 @@ export class Feeds {
 
   /** The feed of this spec, if there is one (held or lingering): not held by asking. */
   find(spec: FeedSpec): Feed | undefined {
-    const key = feedKey(spec);
-    this.change(key).value;
-    return this.entries.get(key)?.feed;
+    return this.read(feedKey(spec))?.feed;
   }
 
   /** How many hold the feed of this spec (none, or no such feed: 0). */
   holders(spec: FeedSpec): number {
-    const key = feedKey(spec);
-    this.change(key).value;
-    return this.entries.get(key)?.refs ?? 0;
+    return this.read(feedKey(spec))?.refs ?? 0;
+  }
+
+  /** A feed's entry, read as a signal: its own while there is one, else whether one comes. */
+  private read(key: string): Entry | undefined {
+    const entry = this.entries.get(key);
+    if (entry) this.change(key).value;
+    else this.added.value;
+    return entry;
   }
 
   /** The feeds held or lingering, by key. */
@@ -129,7 +137,8 @@ export class Feeds {
   }
 
   private changed(key: string): void {
-    this.change(key).value++;
+    const s = this.changes.get(key);
+    if (s) s.value++;
   }
 
   private drop(entry: Entry): void {
@@ -138,6 +147,8 @@ export class Feeds {
     if (this.entries.get(entry.feed.key) !== entry || (!this.closed && entry.refs + entry.weak > 0)) return;
     this.entries.delete(entry.feed.key);
     entry.feed.forget();
+    // Told it is gone, then its signal let go (those that read it read whether another comes from now on).
     this.changed(entry.feed.key);
+    this.changes.delete(entry.feed.key);
   }
 }

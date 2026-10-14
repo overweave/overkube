@@ -48,7 +48,7 @@ async function setup(
 ) {
   const kube = new FakeKube([Pod, Node, Status, CRD, APIService]);
   for (const p of pods) kube.put(Pod, p);
-  const gateway = createGateway({ upstream: fromKubeconfig(await kube.listen()), watch: { retryMs: 20, minLifetimeMs: 0, ...watch } });
+  const gateway = createGateway({ upstream: fromKubeconfig(await kube.listen()), stream: { retryMs: 20, minLifetimeMs: 0, ...watch } });
   const server = createServer((req, res) => {
     if (!gateway.handle(req, res)) res.writeHead(404).end();
   });
@@ -71,7 +71,7 @@ async function setup(
 const lists = (kube: FakeKube, path: string) => kube.requests.filter((r) => r.startsWith(`GET ${path}?`) && !r.includes('watch=1'));
 
 describe('a feed', () => {
-  it('is listed in pages — the first list there as each page comes — then watched: its events in, managedFields out', async () => {
+  it('is listed in pages — told as they come, once a frame, not a page at a time — then watched: its events in, managedFields out', async () => {
     const { kube, feeds } = await setup(
       Array.from({ length: 12 }, (_, i) => pod(`p${i}`)),
       { feeds: { pageSize: 5 } },
@@ -80,7 +80,8 @@ describe('a feed', () => {
     const sizes: number[] = [];
     feed.revision.subscribe(() => sizes.push(feed.objects.size));
     await until(() => feed.state.value === 'live' && kube.watching === 3);
-    expect(sizes).toEqual([0, 5, 10, 12]);
+    // Told once a frame, the pages after the first not each: never an answer per page.
+    expect([sizes[0], sizes.at(-1), sizes.length <= 3]).toEqual([0, 12, true]);
     expect(lists(kube, '/api/v1/pods')).toHaveLength(3);
     expect(feed.objects.get('a/p1')?.metadata?.managedFields).toBeUndefined();
     kube.put(Pod, pod('new', 'b'));

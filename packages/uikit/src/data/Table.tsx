@@ -7,20 +7,21 @@ import { useSortable } from '../lib/sortable';
 
 /*
  * A table that draws only the rows in view (and a few around): thousands of
- * rows cost what thirty do. Its head stays on top and scrolls sideways with
- * the rows. A click on a header sorts by it (again: the other way; those
- * of the same value by their keys, one order however they came) — sorted
- * by nothing, by their keys; a
+ * rows cost what thirty do — and holds none of them but those it is given:
+ * a window of the rows (offset: where it starts; total: how many there are
+ * in all), the rest of them placeholders until they come; which rows are in
+ * view it says (onRange), for whoever has them to give that window. It
+ * sorts nothing: a click on a sortable header asks for it (onSort: by it,
+ * again the other way), the sort said back (sort). Its head stays on top
+ * and scrolls sideways with the rows. A
  * header's right edge drags its column wider or narrower (arrows too, a
  * double click gives it back); a header dragged moves its column elsewhere
  * (Alt and the arrows too): lifted on a card, leaning as it moves, the
  * others moving aside as its edge comes into them, a slot where it lands. Rows are as high as their cells: one line,
- * or more in a column that wraps; each is measured as it is drawn. Rows
- * may be picked (a check each, one for all of them, Shift for a run).
+ * or more in a column that wraps; each is measured as it is drawn — but
+ * of a window (total given): as high as rowHeight, each where its place
+ * says (rows it does not hold are never measured).
  */
-
-/** Text compared as people read it: numbers in it as numbers (pod-9 before pod-10) — one collator for every comparison. */
-const collate = new Intl.Collator(undefined, { numeric: true }).compare;
 
 export interface TableColumn<T> {
   id: string;
@@ -30,22 +31,30 @@ export interface TableColumn<T> {
   /** A CSS grid track: "2fr", "120px", "minmax(80px, 1fr)". */
   width?: string;
   cell: (row: T) => ComponentChildren;
-  /** What it sorts by (numbers as numbers, booleans false first, strings numeric-aware; none: last); not sortable without. */
-  sort?: (row: T) => string | number | boolean | undefined;
+  /** A click on its header asks to sort by it (onSort). */
+  sortable?: boolean;
   /** Its cells wrap onto more lines (the row grows) instead of being cut. */
   wrap?: boolean;
 }
 
-export interface TableSelection {
-  /** The keys of the rows picked. */
-  selected: ReadonlySet<string>;
-  onChange: (selected: Set<string>) => void;
-  /** The name of the check picking all of them: "All pods". */
-  label: string;
+/** How rows are sorted: by a column, either way. */
+export interface TableSort {
+  id: string;
+  desc?: boolean;
 }
 
 export interface TableProps<T> {
+  /** The rows given: a window of them, from offset (none: all of them, from 0). */
   rows: readonly T[];
+  offset?: number;
+  /** How many rows there are in all (none: offset and those given). */
+  total?: number;
+  /** Which rows are in view (and drawn around them): from first, up to (not with) last — the window to give. */
+  onRange?: (first: number, last: number) => void;
+  /** How they are sorted, as said back (its header shows it). */
+  sort?: TableSort;
+  /** A sortable header clicked: by it, or by it the other way. */
+  onSort?: (sort: TableSort) => void;
   columns: TableColumn<T>[];
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
@@ -61,8 +70,6 @@ export interface TableProps<T> {
   loading?: boolean;
   /** How long it waits before showing its placeholders (rows that come sooner, come at once; default 200 ms; 0: at once). */
   placeholdersAfter?: number;
-  /** How it is sorted at first, and again whenever this changes. */
-  initialSort?: { id: string; desc?: boolean };
   /** Columns may be dragged wider or narrower (default: yes). */
   resizable?: boolean;
   /** A column given a width by the user ("180px"), or given back its own (undefined). */
@@ -71,8 +78,6 @@ export interface TableProps<T> {
   reorderable?: boolean;
   /** The columns' order the user made. */
   onReorder?: (ids: string[]) => void;
-  /** Rows may be picked. */
-  selection?: TableSelection;
   /** A row's context menu asked for (a right click on it; the menu key, Shift+F10 in it): the page's to open, or not (the browser's then). */
   onRowMenu?: (row: T, event: MouseEvent | KeyboardEvent) => void;
 }
@@ -85,10 +90,9 @@ const HEAD_HEIGHT = 32;
 const MIN_WIDTH = 48;
 /** A column with no width in pixels, as the table's own width counts it (narrower, and the table scrolls sideways). */
 const FLEX_WIDTH = 96;
-/** The CSS's: the gap between columns, the padding of a row, the checks' column. */
+/** The CSS's: the gap between columns, the padding of a row. */
 const GAP = 24;
 const PAD = 16;
-const CHECK = 20;
 /** How many rows a change may add, remove or move and still be drawn moving (more: at once). */
 const CALM = 8;
 /** How long a row gone takes to fold (the CSS's). */
@@ -117,6 +121,11 @@ const STEP = 16;
 
 export function Table<T>({
   rows,
+  offset = 0,
+  total,
+  onRange,
+  sort,
+  onSort,
   rowKey,
   onRowClick,
   height = '70vh',
@@ -125,23 +134,19 @@ export function Table<T>({
   empty,
   loading = false,
   placeholdersAfter = PLACEHOLDERS_AFTER_MS,
-  initialSort,
   resizable = true,
   onResize,
   reorderable = true,
   onReorder,
-  selection,
   onRowMenu,
   columns: given,
 }: TableProps<T>) {
   const ids = useMemo(() => ({ header: uid('uk-table-h') }), []);
   const [scroll, setScroll] = useState(0);
   const [view, setView] = useState(FALLBACK_HEIGHT);
-  const [sort, setSort] = useState(initialSort);
   const [sized, setSized] = useState<Record<string, number>>({});
   const [resizing, setResizing] = useState<string>();
   const head = useRef<HTMLDivElement>(null);
-  const anchor = useRef<string>();
 
   // Columns in the order the user dragged them to (until they are given in it), those new to it after.
   const [order, setOrder] = useState<string[]>();
@@ -170,10 +175,6 @@ export function Table<T>({
     },
   });
 
-  // Sorted as it is told again (another kind's table, the user's sort).
-  const sortKey = initialSort && `${initialSort.id}:${initialSort.desc ?? false}`;
-  useEffect(() => setSort(initialSort), [sortKey]);
-
   // The scroller measured whenever it is there and whenever it changes size (a callback: it may come after the first draw).
   const sizeObserver = useRef<ResizeObserver>();
   const attach = (el: HTMLDivElement | null) => {
@@ -188,37 +189,6 @@ export function Table<T>({
     sizeObserver.current.observe(el);
   };
   useEffect(() => () => sizeObserver.current?.disconnect(), []);
-
-  // What each row sorts by, read at each drawing: a value that changed on its own (one that came later) sorts it again.
-  const sortBy = sort && columns.find((c) => c.id === sort.id)?.sort;
-  const by = sortBy ? rows.map(sortBy) : undefined;
-  const byRef = useRef(by);
-  if (by && byRef.current && (by.length !== byRef.current.length || by.some((v, i) => v !== byRef.current?.[i]))) byRef.current = by;
-  else if (!by || !byRef.current) byRef.current = by;
-  const sorted = useMemo(() => {
-    const values = byRef.current;
-    // Sorted by nothing: by their keys (one order, however they came — a kind's objects: namespace, then name, as kubectl lists them).
-    if (!values)
-      return rows
-        .map((row) => ({ row, key: rowKey(row) }))
-        .sort((a, b) => collate(a.key, b.key))
-        .map((e) => e.row);
-    const dir = sort?.desc ? -1 : 1;
-    // By its value (none last, either way), then — those of the same value — by the row's key, always the same way: one order, whatever
-    // order the rows came in (ORDER BY value, key).
-    const byValue = (a: unknown, b: unknown) => {
-      const x = typeof a === 'boolean' ? Number(a) : a;
-      const y = typeof b === 'boolean' ? Number(b) : b;
-      if (x === y) return 0;
-      if (x === undefined) return 1;
-      if (y === undefined) return -1;
-      return (typeof x === 'number' && typeof y === 'number' ? x - y : collate(String(x), String(y))) * dir;
-    };
-    return rows
-      .map((row, i) => ({ row, v: values[i], key: rowKey(row) }))
-      .sort((a, b) => byValue(a.v, b.v) || collate(a.key, b.key))
-      .map((e) => e.row);
-  }, [rows, sort, rowKey, byRef.current]);
 
   // Rows' heights as measured (by key), else rowHeight; where each row starts.
   const heights = useRef(new Map<string, number>());
@@ -253,27 +223,39 @@ export function Table<T>({
       rowObserver?.observe(el);
     } else rowEls.current.delete(key);
   };
-  const keys = useMemo(() => sorted.map(rowKey), [sorted, rowKey]);
-  const starts = useMemo(() => {
-    const at = new Array<number>(keys.length + 1);
+  // The rows given (their keys), where they are among all of them.
+  const keys = useMemo(() => rows.map(rowKey), [rows, rowKey]);
+  const count = total ?? offset + rows.length;
+  // A window of them: each as high as rowHeight, where its place says (no list of them all: 100k rows, nothing held).
+  const windowed = total !== undefined;
+  const measuredStarts = useMemo(() => {
+    if (windowed) return [];
+    const at = new Array<number>(count + 1);
     at[0] = 0;
-    for (let i = 0; i < keys.length; i++) at[i + 1] = at[i] + Math.max(rowHeight, heights.current.get(keys[i]) ?? rowHeight);
+    for (let i = 0; i < count; i++) at[i + 1] = at[i] + Math.max(rowHeight, heights.current.get(keys[i]) ?? rowHeight);
     return at;
-  }, [keys, rowHeight, measured]);
+  }, [windowed, keys, count, rowHeight, measured]);
+  /** Where a row starts (count: where the last one ends). */
+  const startOf = (i: number) => (windowed ? i * rowHeight : measuredStarts[i]);
   /** The row at a height of the body: the last starting at or above it. */
   const rowAt = (y: number) => {
+    if (windowed) return Math.max(0, Math.min(count, Math.floor(y / rowHeight)));
     let lo = 0;
-    let hi = keys.length;
+    let hi = count;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
-      if (starts[mid] <= y) lo = mid;
+      if (measuredStarts[mid] <= y) lo = mid;
       else hi = mid - 1;
     }
     return lo;
   };
   const top = Math.max(0, scroll - (head.current?.offsetHeight || HEAD_HEIGHT));
   const first = Math.max(0, rowAt(top) - overscan);
-  const last = Math.min(keys.length, rowAt(top + view) + 1 + overscan);
+  const last = Math.min(count, rowAt(top + view) + 1 + overscan);
+  // The rows in view, said: whoever has them gives that window (none in view yet — no rows at all: nothing said).
+  useEffect(() => {
+    if (last > first) onRange?.(first, last);
+  }, [first, last]);
 
   // What the data changed, drawn as it moves: a row gone from those drawn fades and folds (the rows under it rise); a
   // row new to the list fades in; a few rows moved slide to where they are (FLIP). Not a new sort, a scroll, a change of
@@ -320,10 +302,9 @@ export function Table<T>({
 
   // Columns as wide as the user dragged them, else as they are given.
   const track = (c: TableColumn<T>) => (sized[c.id] !== undefined ? `${sized[c.id]}px` : (c.width ?? 'minmax(0, 1fr)'));
-  const template = [...(selection ? [`${CHECK}px`] : []), ...columns.map(track)].join(' ');
+  const template = columns.map(track).join(' ');
   const pixels = (c: TableColumn<T>) => sized[c.id] ?? (/^\d+(\.\d+)?px$/.test(c.width ?? '') ? Number.parseFloat(c.width as string) : FLEX_WIDTH);
-  const tracks = columns.length + (selection ? 1 : 0);
-  const minWidth = columns.reduce((sum, c) => sum + pixels(c), 0) + (selection ? CHECK : 0) + GAP * (tracks - 1) + PAD * 2;
+  const minWidth = columns.reduce((sum, c) => sum + pixels(c), 0) + GAP * (columns.length - 1) + PAD * 2;
 
   const setWidth = (id: string, px: number | undefined, done: boolean) => {
     const width = px === undefined ? undefined : Math.max(MIN_WIDTH, Math.round(px));
@@ -360,34 +341,6 @@ export function Table<T>({
     if (!by) return;
     e.preventDefault();
     setWidth(id, (sized[id] ?? widthOf(e.currentTarget as HTMLElement)) + by, true);
-  };
-
-  // Picking: one, a run from the last one picked (Shift), all of them.
-  const picked = selection?.selected;
-  const allPicked = keys.length > 0 && keys.every((k) => picked?.has(k));
-  const somePicked = !allPicked && keys.some((k) => picked?.has(k));
-  const pick = (key: string, run: boolean) => {
-    if (!selection) return;
-    const next = new Set(selection.selected);
-    const on = !next.has(key);
-    const from = run && anchor.current !== undefined ? keys.indexOf(anchor.current) : -1;
-    const to = keys.indexOf(key);
-    const span = from >= 0 ? keys.slice(Math.min(from, to), Math.max(from, to) + 1) : [key];
-    for (const k of span) {
-      if (on) next.add(k);
-      else next.delete(k);
-    }
-    anchor.current = key;
-    selection.onChange(next);
-  };
-  const pickAll = () => {
-    if (!selection) return;
-    const next = new Set(selection.selected);
-    for (const k of keys) {
-      if (allPicked) next.delete(k);
-      else next.add(k);
-    }
-    selection.onChange(next);
   };
 
   // Placeholders, only if the rows are slow: none for the first moments (rows that come by then come at once, with no
@@ -436,7 +389,6 @@ export function Table<T>({
       aria-hidden="true"
       style={{ gridTemplateColumns: template, minHeight: `${rowHeight}px`, ...(leaving ? { '--uk-row-h': `${rowHeight}px` } : {}) }}
     >
-      {selection && <div class="uk-table-pick" />}
       {columns.map((c) => (
         <div key={c.id} {...sortable.item(c.id)}>
           <Skeleton width={`${55 + ((i * 37 + c.id.length * 13) % 40)}%`} />
@@ -446,14 +398,18 @@ export function Table<T>({
   );
   const leavingPlaceholders = fold ? Array.from({ length: PLACEHOLDERS - fold.from }, (_, i) => placeholder(fold.from + i, true)) : [];
 
-  // The rows drawn: those in view, and those leaving among them (before the row that followed them).
-  type Drawn = { row: T; key: string; index: number; gone?: Leaving<T> };
-  const drawnRows: Drawn[] = sorted.slice(first, last).map((row, n) => ({ row, key: keys[first + n], index: first + n }));
+  // The rows drawn: those in view (a placeholder where one is not given yet), and those leaving among them (before the row that followed them).
+  type Drawn = { row?: T; key: string; index: number; gone?: Leaving<T> };
+  const drawnRows: Drawn[] = [];
+  for (let i = first; i < last; i++) {
+    const at = i - offset;
+    drawnRows.push(at >= 0 && at < rows.length ? { row: rows[at], key: keys[at], index: i } : { key: `\0gap-${i}`, index: i });
+  }
   for (const l of leaving) {
     const at = l.before === undefined ? -1 : drawnRows.findIndex((d) => d.key === l.before);
     // Its follower out of view (or it was the last, and the last is drawn): where it would be; else not drawn.
     if (at >= 0) drawnRows.splice(at, 0, { row: l.row, key: l.key, index: -1, gone: l });
-    else if (l.before === undefined && last === keys.length) drawnRows.push({ row: l.row, key: l.key, index: -1, gone: l });
+    else if (l.before === undefined && last === count) drawnRows.push({ row: l.row, key: l.key, index: -1, gone: l });
   }
 
   // After each draw: the rows a calm change moved slide from where they were (FLIP); where each is, kept for the next.
@@ -474,7 +430,9 @@ export function Table<T>({
       sort,
       scroll,
       waiting,
-      drawn: new Map(drawnRows.filter((d) => !d.gone).map((d) => [d.key, { row: d.row, height: rowEls.current.get(d.key)?.offsetHeight || rowHeight }])),
+      drawn: new Map(
+        drawnRows.filter((d) => !d.gone && d.row !== undefined).map((d) => [d.key, { row: d.row as T, height: rowEls.current.get(d.key)?.offsetHeight || rowHeight }]),
+      ),
     };
   });
 
@@ -508,7 +466,7 @@ export function Table<T>({
       class="uk-table"
       ref={sortable.root as Ref<HTMLDivElement>}
       role="table"
-      aria-rowcount={waiting ? -1 : sorted.length + 1}
+      aria-rowcount={waiting ? -1 : count + 1}
       aria-busy={waiting ? true : undefined}
       data-resizing={resizing !== undefined ? '' : undefined}
     >
@@ -516,20 +474,6 @@ export function Table<T>({
         <div class="uk-table-inner" style={{ minWidth: `${minWidth}px` }}>
           {/* biome-ignore lint/a11y/useFocusableInteractive: the header row is not a stop; its buttons are. */}
           <div class="uk-table-head" role="row" aria-rowindex={1} ref={head} style={{ gridTemplateColumns: template }}>
-            {selection && (
-              // biome-ignore lint/a11y/useFocusableInteractive: a header cell is not a stop; its button and its edge are.
-              <div class="uk-table-th uk-table-pick" role="columnheader">
-                <input
-                  type="checkbox"
-                  aria-label={selection.label}
-                  checked={allPicked}
-                  ref={(el) => {
-                    if (el) el.indeterminate = somePicked;
-                  }}
-                  onChange={pickAll}
-                />
-              </div>
-            )}
             {columns.map((c, i) => {
               const on = sort?.id === c.id;
               return (
@@ -540,7 +484,7 @@ export function Table<T>({
                   class="uk-table-th"
                   role="columnheader"
                   aria-label={c.label}
-                  aria-sort={on ? (sort?.desc ? 'descending' : 'ascending') : c.sort ? 'none' : undefined}
+                  aria-sort={on ? (sort?.desc ? 'descending' : 'ascending') : c.sortable ? 'none' : undefined}
                   data-resizing={resizing === c.id ? '' : undefined}
                 >
                   <button
@@ -548,9 +492,9 @@ export function Table<T>({
                     id={`${ids.header}-${c.id}`}
                     aria-label={c.label}
                     data-sorted={on ? (sort?.desc ? 'desc' : 'asc') : undefined}
-                    disabled={!c.sort && !reorderable}
+                    disabled={!c.sortable && !reorderable}
                     {...(reorderable ? sortable.handle(c.id) : {})}
-                    onClick={() => c.sort && setSort(on ? { id: c.id, desc: !sort?.desc } : { id: c.id })}
+                    onClick={() => c.sortable && onSort?.(on ? { id: c.id, desc: !sort?.desc } : { id: c.id })}
                   >
                     <span class="uk-table-title">{c.header}</span>
                     {on && (
@@ -588,15 +532,16 @@ export function Table<T>({
           )}
           {waiting ? (
             <div role="rowgroup">{Array.from({ length: shown ? PLACEHOLDERS : 0 }, (_, i) => placeholder(i))}</div>
-          ) : sorted.length === 0 ? (
+          ) : count === 0 ? (
             <>
               {leavingPlaceholders.length > 0 && <div role="rowgroup">{leavingPlaceholders}</div>}
               <div class="uk-table-empty">{empty}</div>
             </>
           ) : (
-            <div role="rowgroup" style={{ paddingTop: `${starts[first]}px`, paddingBottom: `${starts[keys.length] - starts[last]}px` }}>
+            <div role="rowgroup" style={{ paddingTop: `${startOf(first)}px`, paddingBottom: `${startOf(count) - startOf(last)}px` }}>
               {drawnRows.map(({ row, key, index, gone }) => {
-                const on = picked?.has(key) ?? false;
+                // Not given yet (out of the window given): a placeholder in its place.
+                if (row === undefined) return placeholder(index);
                 if (gone) {
                   return (
                     <div
@@ -606,7 +551,6 @@ export function Table<T>({
                       aria-hidden="true"
                       style={{ gridTemplateColumns: template, minHeight: `${rowHeight}px`, '--uk-row-h': `${gone.height}px` }}
                     >
-                      {selection && <div class="uk-table-pick" />}
                       {columns.map((c) => (
                         <div key={c.id} {...sortable.item(c.id)} data-wrap={c.wrap ? '' : undefined}>
                           {c.cell(row)}
@@ -624,7 +568,6 @@ export function Table<T>({
                     class="uk-table-row"
                     role="row"
                     aria-rowindex={index + 2}
-                    aria-selected={selection ? on : undefined}
                     data-clickable={onRowClick ? '' : undefined}
                     style={{ gridTemplateColumns: template, minHeight: `${rowHeight}px` }}
                     tabIndex={onRowClick ? 0 : undefined}
@@ -635,12 +578,6 @@ export function Table<T>({
                       if (onRowClick && e.target === e.currentTarget && e.key === 'Enter') onRowClick(row);
                     }}
                   >
-                    {selection && (
-                      // biome-ignore lint/a11y/useKeyWithClickEvents: it only keeps a click on the check from being the row's.
-                      <div role="cell" class="uk-table-pick" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" aria-label={key} checked={on} onClick={(e) => pick(key, e.shiftKey)} />
-                      </div>
-                    )}
                     {columns.map((c) => (
                       <div key={c.id} {...sortable.item(c.id)} role="cell" data-wrap={c.wrap ? '' : undefined}>
                         {c.cell(row)}

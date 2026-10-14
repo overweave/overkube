@@ -6,9 +6,9 @@ import { fail } from './upstream.ts';
 import { Channel, overBudget, type Settings, type Spec, Stream, settingsOf, tooManyStreams, type WatchOptions } from './watch.ts';
 
 /*
- * The changing stream: one response for the page's watches, as /watch's,
- * but changed while it is open rather than opened again — so a kind wanted
- * or let go does not tear down the others' watches.
+ * The changing stream: one response for the page's watches, changed while
+ * it is open rather than opened again — so a kind wanted or let go does not
+ * tear down the others' watches.
  *
  *   GET  /stream               {"type":"HELLO","stream":"<name>"}, then StreamLine per line
  *   POST /stream/<name>        { add: [Subscription], remove: [id] } → 204
@@ -80,9 +80,6 @@ class Changing extends Stream {
     streams.set(this.name, this);
     this.send({ type: 'HELLO', stream: this.name });
   }
-
-  /** Its watches ending (a 410 each) is not its end: the client subscribes anew. */
-  override ended(): void {}
 
   protected override close(): void {
     super.close();

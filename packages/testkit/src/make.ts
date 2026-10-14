@@ -1,5 +1,5 @@
-import type { ObjectOfKind } from '@overkube/client';
 import { apiVersion, type KindInfo } from '@overkube/kube-types';
+import type { ObjectOfKind } from '@overkube/sdk';
 
 /*
  * Objects of a kind, as a test or a story wants them: only what matters to
@@ -33,10 +33,4 @@ export function make<K extends KindInfo>(kind: K, partial: DeepPartial<ObjectOfK
       ...given.metadata,
     },
   } as ObjectOfKind<K>;
-}
-
-/** Where an object is, as a collection keys it: namespace/name, or its name (a cluster-wide one). */
-export function keyOf(object: { metadata?: { name?: string; namespace?: string } }): string {
-  const { name = '', namespace } = object.metadata ?? {};
-  return namespace ? `${namespace}/${name}` : name;
 }

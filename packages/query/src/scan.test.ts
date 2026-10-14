@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkQuery, compare, type Fields, LIMITS, type ListQuery, scan, scanCount, valuesOf, type Where } from './index.ts';
+import { checkQuery, compare, type Fields, LIMITS, type ListQuery, ordered, scan, scanCount, valuesOf, type Where, windowOf } from './index.ts';
 
 const pod = (ns: string, name: string, phase: string, restarts: number, created: string, owners: string[] = [], labels: Record<string, string> = {}) => ({
   metadata: { namespace: ns, name, uid: `${ns}.${name}`, creationTimestamp: created, labels, ownerReferences: owners.map((uid) => ({ uid })) },
@@ -316,5 +316,27 @@ describe('a query checked', () => {
 
   it('takes no cursor of another query to scan: it says so', () => {
     expect(() => list({ page: { limit: 5, after: first }, sort: [{ field: 'core.created' }] })).toThrow('not a cursor of this query');
+  });
+});
+
+describe('an ordered query read by windows', () => {
+  it('answers every window, by offset or cursor, as scan does — the same items for the same objects', () => {
+    const pods = Array.from({ length: 300 }, (_, i) => ({ metadata: { name: `p${(i * 37) % 300}`, namespace: `n${i % 7}`, uid: `u${i}` }, n: i % 11 }));
+    const fields = new Map([['n', { type: 'number' as const, value: '.n' as const }]]);
+    const base = { kind: 'x', where: { field: 'n', op: 'ne' as const, value: 3 }, sort: [{ field: 'n', desc: true }, { field: '.metadata.name' as const }], select: ['n'] };
+    const all = ordered(pods, base, fields);
+    let after: string | undefined;
+    for (const offset of [0, 50, 120, 260, 299]) {
+      const q = { ...base, page: { offset, limit: 40 } };
+      const [a, b] = [scan(pods, q, fields), windowOf(all, q, fields)];
+      expect([b.items.map((i) => i.key), b.total, b.next]).toEqual([a.items.map((i) => i.key), a.total, a.next]);
+      expect(b.items.every((item, i) => item === a.items[i])).toBe(true);
+    }
+    for (let page = 0; page < 3; page++) {
+      const q = { ...base, page: { limit: 25, ...(after ? { after } : {}) } };
+      const [a, b] = [scan(pods, q, fields), windowOf(all, q, fields)];
+      expect(b.items.map((i) => i.key)).toEqual(a.items.map((i) => i.key));
+      after = a.next;
+    }
   });
 });

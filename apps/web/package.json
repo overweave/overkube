@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "@overkube/addon-core": "0.1.0",
-    "@overkube/client": "0.1.0",
+    "@overkube/connector": "0.1.0",
     "@overkube/kube-types": "0.1.0",
+    "@overkube/query": "0.1.0",
     "@overkube/runtime": "0.1.0",
     "@overkube/sdk": "0.1.0",
     "@overkube/shell": "0.1.0",
+    "@overkube/source": "0.1.0",
     "@overkube/uikit": "0.1.0",
     "@overweave/core": "0.4.0",
     "@overweave/ui": "0.4.0",
@@ -24,6 +26,7 @@
     "preact": "10.29.8"
   },
   "devDependencies": {
+    "@overkube/gateway": "0.1.0",
     "@preact/preset-vite": "2.10.6",
     "@testing-library/preact": "3.2.4",
     "happy-dom": "20.14.5"

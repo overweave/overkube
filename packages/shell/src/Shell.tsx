@@ -1,4 +1,4 @@
-import { type ComponentCluster, kindMatcher } from '@overkube/sdk';
+import { type Cluster, kindMatcher } from '@overkube/sdk';
 import { KubeProvider, type OpenMenu, PageProvider, type PageValue } from '@overkube/sdk/preact';
 import type { Registry } from '@overweave/core';
 import type { Failure } from '@overweave/ui';
@@ -85,7 +85,7 @@ export function failureField(failure: Failure): string {
 export interface ShellProps extends ShellOptions {
   // biome-ignore lint/suspicious/noExplicitAny: a registry of the dashboard's kinds.
   registry: Registry<any>;
-  cluster: ComponentCluster;
+  cluster: Cluster;
   /** The slots followed, for an overlay that shows them (slotTrace()); none: nothing kept. */
   trace?: SlotTrace;
 }

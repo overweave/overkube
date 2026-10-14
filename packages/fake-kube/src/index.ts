@@ -9,7 +9,7 @@ import type { KindInfo, KubeObject } from '@overkube/kube-types';
  * A fake Kubernetes API server for overkube's tests, behaving as the real
  * one does where the connector depends on it (the gateway in front of it):
  * - discovery (aggregated) of the kinds it serves;
- * - lists of a kind, in every namespace or one, by name
+ * - an object by its name; lists of a kind, in every namespace or one, by name
  *   (metadata.name=) and labels (a=b,c=d), in pages (limit, continue) of
  *   one snapshot; a continue expired (expire()) answers 410;
  * - watches from a resourceVersion: the events after it (its history; one
@@ -128,7 +128,14 @@ export class FakeKube {
     const url = new URL(req.url ?? '', 'http://kube');
     if (url.pathname === '/api' || url.pathname === '/apis') return json(res, 200, this.discovery(url.pathname === '/api'));
     const at = this.locate(url.pathname);
-    if (!at) return json(res, 404, { kind: 'Status', code: 404, reason: 'NotFound' });
+    if (!at) {
+      // One object, by its name (its collection's path and its name).
+      const cut = url.pathname.lastIndexOf('/');
+      const of = this.locate(url.pathname.slice(0, cut));
+      const name = url.pathname.slice(cut + 1);
+      const object = of && this.objects.get(of.root)?.get(of.namespace ? `${of.namespace}/${name}` : name);
+      return object ? json(res, 200, object) : json(res, 404, { kind: 'Status', code: 404, reason: 'NotFound' });
+    }
     if (this.forbidden.has(url.pathname)) return json(res, 403, { kind: 'Status', code: 403, reason: 'Forbidden', message: `${url.pathname} is forbidden` });
     const labels = (url.searchParams.get('labelSelector') ?? '')
       .split(',')

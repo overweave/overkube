@@ -20,5 +20,5 @@ export {
   everyOrder,
 } from '@overweave/testkit';
 export { type FakeCluster, type FakeClusterOptions, fakeCluster, type Refusal, type Write } from './cluster.ts';
-export { type DeepPartial, keyOf, make } from './make.ts';
+export { type DeepPartial, make } from './make.ts';
 export { type AddonEnv, addonEnv, addonRun, type KubeWorld, kubeWorld } from './world.ts';

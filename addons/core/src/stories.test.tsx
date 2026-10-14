@@ -16,7 +16,7 @@ const said: Record<string, string> = {
   Forbidden: 'pods cannot be had: Forbidden',
   Light: 'web-2',
   Loading: 'Loading pods',
-  PendingCells: '12m',
+  AnAddonsColumn: '1.27',
   ATheme: 'web-1',
   Arriving: 'Loading pods',
   InPolish: 'Przestrzeń nazw',

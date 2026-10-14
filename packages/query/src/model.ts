@@ -262,10 +262,34 @@ export interface Capabilities {
   ops: readonly Op[];
 }
 
+/**
+ * A column a kind's own definition says it is shown with (a CRD's
+ * additionalPrinterColumns): of which field, its name, its type and format
+ * as the definition says them (integer, date; int64, byte…), its priority
+ * (0: shown; 1: only when wide), what it is.
+ */
+export interface KindColumn {
+  field: FieldName;
+  name: string;
+  type: string;
+  format?: string;
+  priority: number;
+  description?: string;
+}
+
+/** A kind's fields, as its queries are answered by them: their definitions, those left out (why); the columns its own definition says. */
+export interface FieldsResult extends Result {
+  catalog?: FieldCatalog;
+  rejected?: Readonly<Record<FieldName, string>>;
+  columns?: readonly KindColumn[];
+}
+
 /** Whoever answers queries: the page, or a server. */
 export interface Source {
   readonly capabilities: Capabilities;
   get<O>(query: GetQuery): Live<GetResult<O>>;
   list<O>(query: ListQuery): Live<ListResult<O>>;
   count(query: CountQuery): Live<CountResult>;
+  /** A kind's fields (by its ref): what its queries may ask by. */
+  fields(kind: KindRef): Live<FieldsResult>;
 }

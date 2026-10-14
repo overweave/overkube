@@ -1,6 +1,6 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
-import { Action, type ActionSpec, type MissingState, type ResourceProps, type ResourceRef, slots, takes } from '@overkube/sdk';
-import { useCollection, useMenu, useNotify, useOpened, usePage, useSay } from '@overkube/sdk/preact';
+import { Action, type ActionSpec, kindRef, type MissingState, type ResourceProps, type ResourceRef, slots, takes } from '@overkube/sdk';
+import { useGet, useMenu, useNotify, useOpened, usePage, useSay } from '@overkube/sdk/preact';
 import { Button, Code, Modal, Notice, Section, toYaml } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
@@ -19,14 +19,12 @@ import { Waiting } from './Waiting.tsx';
  */
 export function ResourceView({ kind, namespace, name }: ResourceRef) {
   const { close } = useOpened();
-  const collection = useCollection(kind);
+  const say = useSay();
   const menu = useMenu('resource.context');
-  const object = collection.items.value.get(namespace ? `${namespace}/${name}` : name);
-  const state = collection.state.value;
-  const error = collection.error.value;
+  const { object, state, error } = useGet<KubeObject>({ kind: kindRef(kind), ...(namespace ? { namespace } : {}), name });
   // The same props while it (or why it is not there) is the same: its parts not drawn again for another object's change.
   const props = useMemo(() => object && { kind, object }, [kind, object]);
-  const missing = useMemo(() => ({ kind, namespace, name, state, error, retry: () => collection.retry() }), [kind, namespace, name, state, error, collection]);
+  const missing = useMemo(() => ({ kind, namespace, name, state, ...(error ? { error } : {}) }), [kind, namespace, name, state, error]);
   const named = `${kind.kind} ${namespace ? `${namespace}/` : ''}${name}`;
   if (!object || !props) {
     return (
@@ -49,6 +47,12 @@ export function ResourceView({ kind, namespace, name }: ResourceRef) {
       footer={slotElement(slots.resource.view.footer, props)}
     >
       <div class="uk-region uk-details">
+        {/* Shown as last seen: said so (the cluster's changes not coming, or refused). */}
+        {state !== 'live' && (
+          <Notice level="warn" icon="refresh">
+            <span title={error?.message}>{say(state === 'stale' ? T.kind.table.stale : T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
+          </Notice>
+        )}
         {slotElement(slots.resource.view.summary, props)}
         {slotElement(slots.resource.view.sections, props)}
       </div>
@@ -62,25 +66,17 @@ export function ResourceTitle({ kind, object }: ResourceProps) {
   return <>{`${kind.kind} ${ns ? `${ns}/` : ''}${object.metadata?.name ?? ''}`}</>;
 }
 
-/** Not there (the core's, resource.view.missing): on its way, refused (a way to try again), not served, gone. */
-export function ResourceMissing({ kind, name, state, error, retry }: ResourceRef & MissingState) {
+/** Not there (the core's, resource.view.missing): on its way, refused, not served, gone. */
+export function ResourceMissing({ kind, name, state, error }: ResourceRef & MissingState) {
   const say = useSay();
   if (state === 'loading') return <Waiting label={say(T.resource.view.missing.loading, { kind: kind.kind, name })} />;
-  if (state === 'error')
+  if (state === 'error' && error?.code === 'not_served') return <Notice icon="puzzle">{say(T.kind.notServed, { kind: kind.id })}</Notice>;
+  if (state === 'error' || state === 'denied')
     return (
-      <Notice
-        level="error"
-        icon="warning"
-        action={
-          <Button variant="ghost" size="sm" icon="refresh" onClick={retry}>
-            {say(T.retry)}
-          </Button>
-        }
-      >
+      <Notice level="error" icon="warning">
         <span title={error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
       </Notice>
     );
-  if (state === 'absent') return <Notice icon="puzzle">{say(T.kind.notServed, { kind: kind.id })}</Notice>;
   return <Notice icon="puzzle">{say(state === 'stale' ? T.resource.view.missing.goneStale : T.resource.view.missing.gone, { kind: kind.kind, name })}</Notice>;
 }
 

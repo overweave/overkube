@@ -4,7 +4,7 @@ import { proxy } from './proxy.ts';
 import { status } from './status.ts';
 import { change, type Streams, stream } from './stream.ts';
 import { fail, type UpstreamSource } from './upstream.ts';
-import { type WatchOptions, watch } from './watch.ts';
+import type { WatchOptions } from './watch.ts';
 
 /*
  * The gateway: the page's way to a Kubernetes cluster, as one handler over
@@ -12,11 +12,10 @@ import { type WatchOptions, watch } from './watch.ts';
  * node:http server, a framework's route (Fastify's req.raw and reply.raw,
  * Express's req and res), a platform's plugin. Under its prefix:
  *
- *   GET  /watch    several watches over one stream (watch.ts)
- *   GET  /stream   the same, changed while it is open; POST /stream/<name> changes it (stream.ts)
+ *   GET  /stream   several watches over one stream, changed while it is open; POST /stream/<name> changes it (stream.ts)
  *   GET  /status   its version and whether the cluster answers (status.ts)
  *   POST /patch    changes, as JSON (patch.ts)
- *   /**            the API server's /api, /apis, /version, /openapi/v3, passed on (proxy.ts) — never a watch (/watch is)
+ *   /**            the API server's /api, /apis, /version, /openapi/v3, passed on (proxy.ts) — never a watch (/stream is)
  *
  * Who may use it is the host's to decide before it hands a request over
  * (a session, an API key, a proxy in front). What the gateway itself holds
@@ -47,8 +46,8 @@ export interface GatewayOptions {
    * itself (a platform's own CSRF token).
    */
   header?: string | false;
-  /** The watch multiplexer's limits and timings. */
-  watch?: Omit<WatchOptions, 'upstream' | 'streams'>;
+  /** The watches' (a /stream's) limits and timings. */
+  stream?: Omit<WatchOptions, 'upstream' | 'streams'>;
 }
 
 /** What a host hands a request it has already read the body of (a framework that parses it). */
@@ -170,13 +169,12 @@ export function createGateway(options: GatewayOptions): Gateway {
         fail(res, 403, 'cross_site', `a request that is not a read carries the ${header} header`);
         return true;
       }
-      if (route === '/watch' || route === '/status' || route === '/stream') {
+      if (route === '/status' || route === '/stream') {
         if (method !== 'GET') {
           fail(res, 405, 'bad_method', `${route} is asked with GET`);
           return true;
         }
-        if (route === '/watch') watch({ url: rest }, res, { ...options.watch, upstream, streams });
-        else if (route === '/stream') stream(res, { ...options.watch, upstream, streams }, changing);
+        if (route === '/stream') stream(res, { ...options.stream, upstream, streams }, changing);
         else void status(res, { upstream, version: options.version });
         return true;
       }
@@ -201,7 +199,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         jsonOf(req, res, given, '/patch', (body) => patch({ body }, res, { upstream, fieldManager: options.fieldManager }));
         return true;
       }
-      const pass = (body?: unknown) => proxy({ method, url: rest, headers: req.headers, body }, res, { upstream, maxChannels: options.watch?.maxChannels });
+      const pass = (body?: unknown) => proxy({ method, url: rest, headers: req.headers, body }, res, { upstream, maxChannels: options.stream?.maxChannels });
       if (reading) pass();
       else bodyOf(req, res, given, pass);
       return true;

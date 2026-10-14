@@ -17,8 +17,8 @@ export type Services = Signal<ReadonlyMap<string, { provider: string; value: unk
 
 /** Where an addon runs: what it is given, where what it does is told. */
 export interface RunEnv {
-  /** The cluster for this run: what it holds goes with onDispose; once signal aborts, it writes nothing. */
-  open(run: { id: string; onDispose(dispose: () => void): () => void; signal: AbortSignal }): Cluster;
+  /** The cluster for this run: once signal aborts, it writes nothing. */
+  open(run: { id: string; signal: AbortSignal }): Cluster;
   readonly services: Services;
   notify(notification: Notification, from: string): string;
   dismiss(id: string): void;
@@ -74,7 +74,7 @@ export function runAddon(addon: Addon, contributor: KubeContributor, env: RunEnv
 
   const ctx: Ctx = {
     contributor,
-    cluster: env.open({ id, onDispose: (d) => scope.add(d), signal: scope.controller.signal }),
+    cluster: env.open({ id, signal: scope.controller.signal }),
     services: { get: <T>(name: string) => (env.services.value.get(name)?.value as T | undefined) ?? null },
     signal: scope.controller.signal,
     notify(n) {

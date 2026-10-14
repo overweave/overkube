@@ -1,4 +1,4 @@
-import { compilePath, type FieldDef, type FieldName, type FieldType, type KindRef } from '@overkube/query';
+import { compilePath, type FieldDef, type FieldName, type FieldType, type KindColumn, type KindRef } from '@overkube/query';
 import { type Defs, define } from './define.ts';
 
 /*
@@ -29,15 +29,9 @@ export interface CrdLike {
   };
 }
 
-/** A column as its CRD says it: of which field, its name, type, format, priority (1: only wide), description; its version deprecated. */
-export interface CrdColumn {
-  field: FieldName;
+/** A column as its CRD says it (a KindColumn): of which version's kind; that version deprecated. */
+export interface CrdColumn extends KindColumn {
   kind: KindRef;
-  name: string;
-  type: string;
-  format?: string;
-  priority: number;
-  description?: string;
   deprecated: boolean;
 }
 

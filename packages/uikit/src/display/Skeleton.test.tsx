@@ -71,19 +71,6 @@ describe('a table on its way', () => {
     act(() => void vi.advanceTimersByTime(1));
     expect([folding(view.container), view.container.querySelector('.uk-table-empty')?.textContent]).toEqual([5, 'Nothing']);
   });
-
-  it('sorts again by a value that changed on its own', () => {
-    const cpu: Record<string, number | undefined> = { x: 2, y: undefined };
-    const sorted = (rows: string[]) => (
-      <Table rows={rows} rowKey={(r) => r} initialSort={{ id: 'cpu' }} columns={[{ id: 'cpu', header: 'CPU', cell: (r) => String(cpu[r] ?? ''), sort: (r) => cpu[r] }]} />
-    );
-    const list = ['x', 'y'];
-    const view = render(sorted(list));
-    expect(rows(view.container).map((r) => r.dataset.key)).toEqual(['x', 'y']);
-    cpu.y = 1;
-    view.rerender(sorted(list));
-    expect(rows(view.container).map((r) => r.dataset.key)).toEqual(['y', 'x']);
-  });
 });
 
 describe('Skeleton', () => {

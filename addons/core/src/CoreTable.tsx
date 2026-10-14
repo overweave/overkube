@@ -1,192 +1,154 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
-import { Column, type ColumnContext, type ColumnSpec, type KindTableProps, type ListState, PENDING, slots, TableView, takes } from '@overkube/sdk';
-import { useCollection, useMenu, useSay } from '@overkube/sdk/preact';
-import { Button, Notice, Skeleton, Table, type TableColumn } from '@overkube/uikit';
-import type { Definition } from '@overweave/core';
-import { inOrder } from '@overweave/ui';
-import { Guarded, slotElement, useDefinition, useDefinitions, Wrapped } from '@overweave/ui/preact';
+import type { Item, ListResult, Where } from '@overkube/query';
+import { type CellValue, type KindTableProps, kindRef, type ListState, slots, TableView } from '@overkube/sdk';
+import { useCluster, useCount, useList, useMenu, useSay } from '@overkube/sdk/preact';
+import { Notice, Table, type TableColumn, type TableSort } from '@overkube/uikit';
+import { slotElement, useDefinition } from '@overweave/ui/preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useFailures } from './failures.ts';
-import { clock, useLive } from './live.ts';
+import { Cell } from './cell.tsx';
+import { useColumns } from './columns.tsx';
+import { fieldOf, useFailures } from './failures.ts';
 import { T } from './texts.ts';
 import { useWaited } from './waited.ts';
 
 /**
  * A kind's objects as a table — the core's kind.table, drawn wherever an
- * SDK <KindTable> is (unless another's takes its place) — all of it from
- * the definitions: the Columns whose target (and when) takes the kind, set
- * out as its TableView says (order, hidden — none said: as the column is —, widths, sort, which objects —
- * and of those, the ones the table's own filter takes). Sorted by a
- * column's value (the TableView's sort; none: by name, Name shown so),
- * those of the same value by their place (namespace/name); a cell its display (one that reads now: drawn again as
- * it changes, where its text does), or its render. Over it, its title (if
- * given) and its toolbar (kind.table.toolbar, given the list); in a
- * column's header, kind.table.column.content; a cell in the Wraps of its
- * column's name; no rows, kind.table.empty; a row's menu, the resource's
- * (resource.context). A column's value or display that throws is its
- * owner's failure (nothing in that cell: "—"), told once while it is as it
- * is, not once a cell nor once a tick; its
- * render is drawn apart (Guarded, tried again when its object changes),
- * the rest of the table goes on. On their way, the rows wait in the table
- * as it will be (its columns, as set out: no shift once they come); a cell
- * whose value is not there yet (PENDING) waits on its own. A kind no
- * Column takes has no table. Objects the page can no longer keep current
- * (stale) stay shown, said to be so.
+ * SDK <KindTable> is (unless another's takes its place) — of a query: the
+ * kind, in the table's scope, those its TableView's where and the table's
+ * own take, sorted by a column's field (the TableView's sort, then the
+ * user's; none: by name), the window of them in view, the fields its
+ * columns are made of. It holds no objects: the rows in view, their
+ * values. Its columns as useColumns sets them out; a cell, its column's
+ * format of its values (Cell). Over it, its title (if given) and its
+ * toolbar (kind.table.toolbar, given the list); in a column's header,
+ * kind.table.column.content; no rows, kind.table.empty; a row's menu, the
+ * resource's (resource.context: the object, whole, as the cluster has it).
+ * Another window of the same query on its way, the last one's rows stay
+ * shown; not all of it there (behind, some namespaces refused), said so; a
+ * field that cannot be worked out of some objects, its owner's failure.
  */
+
+/** Rows asked for at first, before the table says which are in view. */
+const FIRST = 50;
+
+/** A where of all of these (none: none). */
+const allOf = (...wheres: (Where | undefined)[]): Where | undefined => {
+  const given = wheres.filter((w): w is Where => w !== undefined);
+  return given.length < 2 ? given[0] : { op: 'and', args: given };
+};
+
+/** An object as its row knows it — its kind, namespace, name, uid: what a menu has of it, the object itself not had. */
+const objectOf = (kind: KindInfo, key: string, uid: string | undefined): KubeObject => {
+  const at = kind.namespaced ? key.indexOf('/') : -1;
+  const metadata = at < 0 ? { name: key, uid } : { namespace: key.slice(0, at), name: key.slice(at + 1), uid };
+  return { apiVersion: kind.group ? `${kind.group}/${kind.version}` : kind.version, kind: kind.kind, metadata };
+};
+
 export function CoreTable(table: KindTableProps) {
   const { kind, title } = table;
+  const ref = kindRef(kind);
   // The page waited for this kind already (the last one shown meanwhile): its placeholders at once.
   const waited = useWaited();
-  const collection = useCollection(kind);
-  // Said to those who cannot see it, once it is there to be read out (a region's first words are often not): loading, then how many.
-  const [said, setSaid] = useState('');
-  const loadingNow = collection.state.value === 'loading';
-  const count = collection.items.value.size;
   const say = useSay();
   const menu = useMenu('resource.context');
-  useEffect(
-    () => setSaid(loadingNow ? say(T.kind.table.loading, { kind: kind.plural }) : say(T.kind.table.count, { count, kind: kind.plural })),
-    [loadingNow, count, kind.plural, say],
-  );
-  // What failed while drawn, told once as its owner's (useFailures).
   const failed = useFailures();
-
   const view = useDefinition(TableView, kind.id)?.spec ?? {};
-  // Of those its target takes, those its when does (one that throws: not drawn, its failure told).
-  const all = useDefinitions(Column).filter((c) => {
-    if (!takes(c.spec.target, kind)) return false;
-    try {
-      return c.spec.when?.(kind) ?? true;
-    } catch (error) {
-      failed(c, 'Column', c.name, 'when', error);
-      return false;
-    }
-  });
-  const placed = useMemo(() => {
-    // Hidden as the view says, else as the column is (for this kind, if it says so by kind: one that throws, shown — its failure told).
-    const hidden = (c: (typeof all)[number]) => {
-      const h = view.hidden?.[c.name] ?? c.spec.hidden;
-      if (typeof h !== 'function') return !!h;
-      try {
-        return h(kind);
-      } catch (error) {
-        failed(c, 'Column', c.name, 'hidden', error);
-        return false;
-      }
-    };
-    return arranged(all, view).filter((c) => !hidden(c));
-    // Definitions are new objects only when they change: the same ones, the same columns.
-  }, [view.columns, view.hidden, kind, failed, ...all]);
+  const { placed, catalog } = useColumns(kind, view, failed);
 
-  // What a column's value and display are worked out with: now as it is (a sort does not follow the clock), or — in a cell's text — as
-  // it ticks (that text drawn again only where it changes); every object of the kind listed (set below, as they come).
-  const listed = useRef<readonly KubeObject[]>([]);
-  const contexts = useMemo(
-    () => ({
-      still: {
-        get now() {
-          return Date.now();
-        },
-        get objects() {
-          return listed.current;
-        },
-        kind,
-      } satisfies ColumnContext,
-      live: {
-        get now() {
-          return clock.value;
-        },
-        get objects() {
-          return listed.current;
-        },
-        kind,
-      } satisfies ColumnContext,
-    }),
-    [kind],
+  const [range, setRange] = useState({ first: 0, last: FIRST });
+  const [asked, setAsked] = useState<TableSort>();
+  // A sort by a column there is, that sorts (one by another: none); the user's, else its TableView's, else by name.
+  const sorting = (s: TableSort | undefined) => (s && placed.some((c) => c.definition.name === s.id && c.definition.spec.sort) ? s : undefined);
+  const sort = sorting(asked) ?? sorting(view.sort && { id: view.sort.column, desc: view.sort.descending }) ?? sorting({ id: 'core.name' });
+  const sortBy = placed.find((c) => c.definition.name === sort?.id)?.definition.spec.sort;
+  const where = allOf(view.where, table.where);
+  const select = useMemo(() => [...new Set(placed.flatMap((c) => c.fields))], [placed]);
+  const asking = {
+    kind: ref,
+    ...(table.scope ? { scope: table.scope } : {}),
+    ...(where ? { where } : {}),
+    ...(sortBy ? { sort: [{ field: sortBy, desc: sort?.desc ?? false }] } : {}),
+  };
+  const answer = useList({ ...asking, page: { offset: range.first, limit: Math.max(1, range.last - range.first) }, select });
+  // Another window of the same query (scrolled) on its way: the last one's rows shown till it is in — no flash of placeholders. Of
+  // another query (another kind, scope, where, sort): none of the last one's kept.
+  const same = JSON.stringify(asking);
+  const last = useRef<{ answer: ListResult; offset: number; same: string } | null>(null);
+  const settled = answer.state !== 'loading' || answer.items.length > 0;
+  if (settled) last.current = { answer, offset: range.first, same };
+  const kept = !settled && last.current?.same === same ? last.current : null;
+  // How many there are of those the table may show (its where aside: "none shown of 12").
+  const all = useCount({ kind: ref, ...(table.scope ? { scope: table.scope } : {}) });
+
+  const result = kept?.answer ?? answer;
+  const offset = kept?.offset ?? range.first;
+  const state = result.state;
+  const error = result.error;
+  // Its rows not in yet, or its fields' definitions (how a time is shown): placeholders.
+  const loading = (state === 'loading' && result.items.length === 0) || !catalog;
+  // A field that could not be worked out of some objects: its owner's failure (its cells: "—").
+  for (const [name, e] of Object.entries(result.fieldErrors ?? {})) failed(fieldOf(name), 'Field', name, 'value', new Error(`${e.code}: ${e.message} (${e.count} objects)`));
+  const count = result.total?.count;
+  // Said to those who cannot see it, once it is there to be read out (a region's first words are often not): loading, then how many.
+  const [said, setSaid] = useState('');
+  useEffect(
+    () => setSaid(loading ? say(T.kind.table.loading, { kind: kind.plural }) : say(T.kind.table.count, { count: count ?? 0, kind: kind.plural })),
+    [loading, count, kind.plural, say],
   );
+
+  // A row's values for a column: the same array while the row is the same (its cell not worked out again for another's change).
+  const cached = useMemo(() => new WeakMap<Item, Map<string, readonly CellValue[]>>(), [placed]);
+  const valuesOf = (item: Item, name: string, fields: readonly string[]) => {
+    let row = cached.get(item);
+    if (!row) {
+      row = new Map();
+      cached.set(item, row);
+    }
+    let values = row.get(name);
+    if (!values) {
+      values = fields.map((f) => (item.values?.[f] ?? null) as CellValue);
+      row.set(name, values);
+    }
+    return values;
+  };
+  // The object a row is, as its menu is given it: the whole of it, as the cluster has it now (the same uid), else as the row knows it.
+  const cluster = useCluster();
+  const objectFor = (item: Item): KubeObject => {
+    const known = objectOf(kind, item.key, item.uid);
+    const got = cluster.source.get<KubeObject>({ kind: ref, ...(known.metadata?.namespace ? { namespace: known.metadata.namespace } : {}), name: known.metadata?.name ?? '' });
+    const off = got.subscribe(() => {});
+    const object = got.value.object;
+    off();
+    return object && object.metadata?.uid === item.uid ? object : known;
+  };
 
   const columns = useMemo(
     () =>
-      placed.map((c): TableColumn<KubeObject> => {
-        const width = view.widths?.[c.name] ?? c.spec.width;
-        // Its value, its display: either may throw, the column's failure (no value: sorted last; no display: nothing in the cell).
-        const value = (o: KubeObject) => {
-          try {
-            return { value: c.spec.value(o, contexts.still) };
-          } catch (error) {
-            failed(c, 'Column', c.name, 'value', error);
-            return undefined;
-          }
-        };
-        // Live: worked out again as now changes, if it reads it.
-        const display = (o: KubeObject) => {
-          try {
-            return c.spec.display(o, contexts.live);
-          } catch (error) {
-            failed(c, 'Column', c.name, 'display', error);
-            return '';
-          }
-        };
+      placed.map(({ definition: c, fields }): TableColumn<(typeof result.items)[number]> => {
         const header = say(c.spec.header);
+        const width = view.widths?.[c.name] ?? c.spec.width;
         return {
           id: c.name,
           label: header,
           header: slotElement(slots.kind.table.column.content, { kind, column: { name: c.name, header } }),
           width: width === undefined ? undefined : `${width}px`,
-          // Not there yet (PENDING), or not a thing to sort by: last.
-          sort: (o) => {
-            const v = value(o)?.value;
-            return typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean' ? v : undefined;
-          },
-          cell: (o) => <Cell column={c} kind={kind} object={o} objects={listed.current} value={value(o)?.value} display={display} />,
+          sortable: c.spec.sort !== undefined,
+          cell: (item) => <Cell column={c} fields={fields} values={valuesOf(item, c.name, fields)} kind={kind} catalog={catalog} failed={failed} />,
         };
       }),
-    [placed, view.widths, kind, failed, say, contexts],
+    [placed, view.widths, kind, catalog, failed, say],
   );
 
   if (placed.length === 0) return <Notice icon="grid">{say(T.kind.table.noColumns, { kind: kind.id })}</Notice>;
-
-  const state = collection.state.value;
-  const error = collection.error.value;
-  // Sorted as its TableView says; told nothing, by name (the column shown so: sorted by it, its arrow up) — where there is one.
-  const initialSort = view.sort ? { id: view.sort.column, desc: view.sort.descending } : placed.some((c) => c.name === 'core.name') ? { id: 'core.name' } : undefined;
-  if (state === 'absent') return <Notice icon="puzzle">{say(T.kind.notServed, { kind: kind.id })}</Notice>;
-  if (state === 'error')
+  if (state === 'error' && error?.code === 'not_served') return <Notice icon="puzzle">{say(T.kind.notServed, { kind: kind.id })}</Notice>;
+  if (state === 'error' || state === 'denied')
     return (
-      <Notice
-        level="error"
-        icon="warning"
-        action={
-          <Button variant="ghost" size="sm" icon="refresh" onClick={() => collection.retry()}>
-            {say(T.retry)}
-          </Button>
-        }
-      >
+      <Notice level="error" icon="warning">
         <span title={error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
       </Notice>
     );
 
-  const loading = state === 'loading';
-  const items = loading ? [] : [...collection.items.value.values()];
-  listed.current = items;
-  // Which objects: as the TableView's filter says, and the table's own (drawn by whoever drew this KindTable) — an object either throws on is shown, the failure told as that filter's.
-  const filters = [
-    [view.filter, 'TableView'],
-    [table.filter, 'KindTable'],
-  ] as const;
-  const rows = items.filter((o) =>
-    filters.every(([f, whose]) => {
-      if (!f) return true;
-      try {
-        return f(o);
-      } catch (error) {
-        failed(f, whose, kind.id, 'filter', error);
-        return true;
-      }
-    }),
-  );
-
-  const list: ListState = { shown: rows.length, total: items.length, state, error };
+  const list: ListState = { state, ...(count === undefined ? {} : { shown: count }), ...(all.total ? { total: all.total.count } : {}), ...(error ? { error } : {}) };
   // One tree, loading or not: the table stays the same table — its placeholders give way to its rows in place.
   return (
     <div class="uk-region">
@@ -200,100 +162,37 @@ export function CoreTable(table: KindTableProps) {
           <span title={error?.message}>{say(T.kind.table.stale)}</span>
         </Notice>
       )}
+      {state === 'partial' && (
+        <Notice level="warn" icon="shield">
+          {say(T.kind.table.partial, { namespaces: result.coverage.denied.join(', ') })}
+        </Notice>
+      )}
       {title && <h2 class="uk-region-title">{say(title)}</h2>}
       <span class="uk-sr-only" role="status">
         {said}
       </span>
       {slotElement(slots.kind.table.toolbar, { ...table, list })}
       <Table
-        rows={rows}
+        rows={result.items}
+        offset={offset}
+        {...(count === undefined ? {} : { total: count })}
+        onRange={(first, last) => setRange((r) => (r.first === first && r.last === last ? r : { first, last }))}
+        sort={sort}
+        onSort={setAsked}
         columns={columns}
-        rowKey={rowKey}
+        rowKey={(item) => item.key}
         loading={loading}
         placeholdersAfter={waited ? 0 : undefined}
         empty={slotElement(slots.kind.table.empty, { ...table, list }, { limit: 1 })}
-        onRowMenu={(o, e) => menu({ kind, object: o }, e, `${kind.kind} ${o.metadata?.namespace ? `${o.metadata.namespace}/` : ''}${o.metadata?.name ?? ''}`)}
-        initialSort={initialSort}
+        onRowMenu={(item, e) => menu({ kind, object: objectFor(item) }, e, `${kind.kind} ${item.key}`)}
       />
     </div>
   );
 }
 
-/**
- * A cell: its column's display of its object (nothing — empty, none,
- * kubectl's <none> —: "—"; a 0 is a 0) — live: worked out again as now changes, if it reads
- * it, drawn again only where its text does —, or its render (given it,
- * drawn apart: Guarded, tried again when its object changes), or waiting
- * (its value not there yet: PENDING); in the Wraps of its column's name
- * (each kept apart: one that throws, what it wraps drawn instead; followed
- * as they come and go), given the same props while its object, value and
- * text are the same — its wraps chosen again only then (a live text's: as
- * it changes, each second at most).
- */
-function Cell({
-  column,
-  kind,
-  object,
-  objects,
-  value,
-  display,
-}: {
-  column: Definition<ColumnSpec>;
-  kind: KindInfo;
-  object: KubeObject;
-  objects: readonly KubeObject[];
-  value: unknown;
-  display: (object: KubeObject) => string;
-}) {
-  const say = useSay();
-  // Worked out again as its object, the objects listed with it, or now (if it reads it) change.
-  const waiting = value === PENDING;
-  const text = useLive(() => (waiting ? '' : display(object)), [display, object, objects, waiting]);
-  const shown = text;
-  const drawn = shownAs(shown);
-  const props = useMemo(() => ({ kind, object, value, display: shown }), [kind, object, value, shown]);
-  const Render = column.spec.render;
-  return (
-    <Wrapped name={column.name} props={props}>
-      {waiting ? (
-        <>
-          <Skeleton width="60%" />
-          <span class="uk-sr-only">{say(T.kind.table.cellLoading)}</span>
-        </>
-      ) : Render ? (
-        // Tried again when its object changes (a fix in the object, or another under its name).
-        <Guarded key={`${object.metadata?.uid}:${object.metadata?.resourceVersion}`} definition={column}>
-          <Render {...props} />
-        </Guarded>
-      ) : (
-        drawn
-      )}
-    </Wrapped>
-  );
-}
-
-/** A kind's columns as its TableView sets them out: those it names first, in its order; the others after, in theirs. */
-export function arranged<C extends { name: string; spec: { order?: number } }>(all: readonly C[], view: { readonly columns?: readonly string[] }): C[] {
-  const order = [...new Set(view.columns ?? [])];
-  return [...order.map((name) => all.find((c) => c.name === name)).filter((c): c is C => !!c), ...inOrder(all.filter((c) => !order.includes(c.name)))];
-}
-
-/** What an empty cell shows. */
-export const EMPTY = '—';
-
-/** kubectl's words for nothing there: drawn as nothing ("—"); its others (<pending>, <unknown>) say a state, and stay. */
-const NOTHING = new Set(['', '<none>', '<unset>']);
-
-/** A display as drawn: nothing (empty, none, kubectl's <none>) "—"; a 0 a 0 — one that broke its word (JavaScript's: none, a number) as text all the same. */
-export function shownAs(display: unknown): string {
-  return display === undefined || display === null || NOTHING.has(display as string) ? EMPTY : String(display);
-}
-
-/** A row's key: where the object is. */
-const rowKey = (o: KubeObject) => `${o.metadata?.namespace ?? ''}/${o.metadata?.name}`;
-
 /** No rows (the core's, kind.table.empty's last): none at all, or none shown of those there are. */
 export function TableEmpty({ kind, list }: { kind: KindInfo; list: ListState }) {
   const say = useSay();
-  return <>{list.shown < list.total ? say(T.kind.table.noneShown, { kind: kind.plural, total: list.total }) : say(T.kind.table.none, { kind: kind.plural })}</>;
+  const total = list.total ?? 0;
+  return <>{(list.shown ?? 0) < total ? say(T.kind.table.noneShown, { kind: kind.plural, total }) : say(T.kind.table.none, { kind: kind.plural })}</>;
 }

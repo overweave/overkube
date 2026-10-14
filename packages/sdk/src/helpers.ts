@@ -1,19 +1,19 @@
-import type { ObjectOfKind } from '@overkube/client';
-import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import type { KindInfo, KubeObject, ObjectOf } from '@overkube/kube-types';
 import type { FillSpec, Placement, WrapSpec } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
 import type { ComponentChildren, ComponentType } from 'preact';
-import type { ActionSpec, ColumnContext, ColumnRenderProps, ColumnSpec, MenuItemSpec, MenuPage, MenuSubject, MenuSubjects, PageProps, Target } from './kinds.ts';
+import type { ActionSpec, ColumnSpec, MenuItemSpec, MenuPage, MenuSubject, MenuSubjects, PageProps, Target } from './kinds.ts';
 import { type ResourceProps, slots } from './slots.ts';
 import { forKinds } from './target.ts';
 import type { Label } from './text.ts';
 
 /*
- * The usual definitions, typed by the kinds they are for: each gives a spec
- * to add — contributor.add('Column', 'images.tag', column({ kinds: [Pod], … })).
- * A function given is typed by the kinds' objects (a Pod's column gets
- * Pods), so the kinds are said whenever it is: without them, it is every
- * kind's, and gets any object. An empty list is for no kind.
+ * The usual definitions, their target said by the kinds they are for:
+ * each gives a spec to add — contributor.add('Column', 'images.tag',
+ * column({ kinds: [Pod], … })). A function given an object (a section's,
+ * an action's) is typed by the kinds' objects (a Pod's section gets Pods):
+ * without kinds, it is every kind's, and gets any object. An empty list is
+ * for no kind.
  */
 
 /** Some kinds, at least one. */
@@ -22,26 +22,15 @@ type Kinds = readonly [KindInfo, ...KindInfo[]];
 /** Objects of any of these kinds. */
 type ObjectOfAny<KS extends readonly KindInfo[]> = KS[number] extends infer K ? (K extends KindInfo ? ObjectOfKind<K> : never) : never;
 
+/** A kind's objects' type: its own when the kinds table knows it, else any object's. */
+export type ObjectOfKind<K extends KindInfo> = [ObjectOf<K>] extends [never] ? KubeObject : ObjectOf<K>;
+
 const targetOf = (kinds: readonly KindInfo[] | undefined): Target => (kinds === undefined ? {} : forKinds(...kinds));
 
-interface ColumnOf<O extends KubeObject> {
-  header: Label;
-  value: (object: O, context: ColumnContext<O>) => unknown;
-  display: (object: O, context: ColumnContext<O>) => string;
-  render?: ComponentType<ColumnRenderProps<O>>;
-  when?: (kind: KindInfo) => boolean;
-  hidden?: boolean | ((kind: KindInfo) => boolean);
-  width?: number;
-  order?: number;
-}
-
-/** A column of these kinds' tables. */
-export function column<const KS extends Kinds>(spec: { kinds: KS } & ColumnOf<ObjectOfAny<KS>>): ColumnSpec;
-/** A column of every kind's tables — or of kinds known only as it runs (its function gets any object). */
-export function column(spec: { kinds?: readonly KindInfo[] } & ColumnOf<KubeObject>): ColumnSpec;
-export function column(spec: { kinds?: readonly KindInfo[] } & ColumnOf<KubeObject>): ColumnSpec {
+/** A column of these kinds' tables (none: every kind's): ColumnSpec, its target said by its kinds. */
+export function column(spec: { kinds?: readonly KindInfo[] } & Omit<ColumnSpec, 'target'>): ColumnSpec {
   const { kinds, ...rest } = spec;
-  return { ...rest, target: targetOf(kinds), render: spec.render as PreactComponent | undefined };
+  return { ...rest, target: targetOf(kinds) };
 }
 
 interface SectionOf<O extends KubeObject> extends Placement {

@@ -51,7 +51,7 @@ export interface PageValue {
   readonly menu: ReadonlySignal<OpenMenu | null>;
   openMenu(menu: Omit<OpenMenu, 'id'>): void;
   closeMenu(): void;
-  /** A definition's function failed (a column's value, a filter): told as whoever says that field — once the drawing is done, each once. */
+  /** A definition failed (a column's format, a field that cannot be worked out): told as whoever says that field — once the drawing is done, each once. */
   report(definition: { kind: string; name: string }, field: string, error: unknown): void;
 }
 
@@ -100,11 +100,6 @@ export function useOpened(): Opened {
   const opened = useContext(OpenedContext);
   if (!opened) throw new Error('nothing opened: useOpened is for what draws resource.view');
   return opened;
-}
-
-/** Go somewhere: navigate('/k/pods.v1'). */
-export function useNavigate(): PageValue['navigate'] {
-  return usePage().navigate;
 }
 
 /** Tell the user something. */

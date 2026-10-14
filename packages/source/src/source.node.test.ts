@@ -1,12 +1,14 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { Layer } from '@overkube/cel';
 import { type Connector, createConnector } from '@overkube/connector';
 import { FakeKube, kindOf } from '@overkube/fake-kube';
 import { createGateway, fromKubeconfig, type Gateway, resetWatchState } from '@overkube/gateway';
 import type { KubeObject } from '@overkube/kube-types';
 import type { Live } from '@overkube/query';
+import { signal } from '@preact/signals';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createSource, type PageSource, type SourceOptions } from './source.ts';
+import { createSource, type SourceOptions } from './source.ts';
 
 /*
  * Queries answered from the cluster as the page watches it — the real
@@ -53,7 +55,7 @@ async function until(ok: () => boolean): Promise<void> {
 async function setup(objects: [ReturnType<typeof kindOf>, KubeObject][] = [], options: SourceOptions = {}, lingerMs = 30) {
   const kube = new FakeKube([Pod, Namespace, Node, CRD, APIService, Thing]);
   for (const [kind, o] of objects) kube.put(kind, o);
-  const gateway = createGateway({ upstream: fromKubeconfig(await kube.listen()), watch: { retryMs: 20 } });
+  const gateway = createGateway({ upstream: fromKubeconfig(await kube.listen()), stream: { retryMs: 20 } });
   const server = createServer((req, res) => {
     if (!gateway.handle(req, res)) res.writeHead(404).end();
   });
@@ -61,7 +63,7 @@ async function setup(objects: [ReturnType<typeof kindOf>, KubeObject][] = [], op
   const connector = createConnector({ http: { base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` }, stream: { debounceMs: 5 }, feeds: { lingerMs } });
   const offs: (() => void)[] = [];
   opened.push({ kube, gateway, server, connector, offs });
-  const source: PageSource = createSource(connector, options);
+  const source = createSource(connector, options);
   const read = <T>(live: Live<T>): Live<T> => {
     offs.push(live.subscribe(() => {}));
     return live;
@@ -147,6 +149,30 @@ describe('what a query is told', () => {
     expect(fields.value.catalog?.fields['things.v1.example.com.v']).toMatchObject({ value: '.spec.b' });
   });
 
+  it('a kind’s fields, those addons add over its own (held to CEL’s bound), as they come; a CRD’s columns as it says them', async () => {
+    const layers = signal<readonly Layer[]>([]);
+    const crd = thingsCrd([{ name: 'Size', type: 'integer', jsonPath: '.spec.size', priority: 1 } as never]);
+    const { source, read } = await setup([[CRD, crd], ...spread(3)], { layers });
+    const things = read(source.fields('things.v1.example.com'));
+    const byOwn = read(source.list({ kind: 'pods.v1', sort: [{ field: 'acme.n', desc: true }], page: { limit: 1 }, select: ['acme.n'] }));
+    await until(() => things.value.state === 'live' && byOwn.value.state === 'error');
+    expect(things.value.columns).toEqual([expect.objectContaining({ field: 'things.v1.example.com.size', name: 'Size', type: 'integer', priority: 1 })]);
+    expect(byOwn.value.error?.code).toBe('unknown_field');
+    layers.value = [
+      {
+        fields: {
+          'acme.n': { kinds: ['pods.v1'], type: 'number', value: { cel: 'int(self.metadata.name.substring(1))' } },
+          'acme.bad': { type: 'number', value: { cel: 'nope(' } },
+        },
+      },
+    ];
+    await until(() => byOwn.value.state === 'live');
+    expect(byOwn.value.items[0]?.values).toEqual({ 'acme.n': 2 });
+    const pods = read(source.fields('pods.v1'));
+    await until(() => pods.value.state === 'live');
+    expect(Object.keys(pods.value.rejected ?? {})).toEqual(['acme.bad']);
+  });
+
   it('closing the connector while queries are read throws nothing', async () => {
     const { connector, source, read } = await setup(spread(3));
     const all = read(source.count({ kind: 'pods.v1' }));
@@ -212,6 +238,8 @@ describe('a plan', () => {
     const all = read(source.count({ kind: 'pods.v1' }));
     const a = read(source.count({ kind: 'pods.v1', scope: { namespaces: ['a'] } }));
     await until(() => all.value.state === 'live' && a.value.state === 'live');
+    // What the lists told settled (once a frame).
+    await new Promise((r) => setTimeout(r, 50));
     const revision = a.value.revision;
     kube.put(Pod, pod('late', 'b'));
     await until(() => all.value.total?.count === 7);
@@ -225,6 +253,16 @@ describe('a plan', () => {
     const one = read(source.get({ kind: 'nodes.v1', namespace: 'x', name: 'n1' }));
     await until(() => one.value.state === 'live');
     expect(one.value.object).toMatchObject({ metadata: { name: 'n1' } });
+  });
+
+  it('lists one object by its name in one namespace as it gets it: by its name alone, no namespace listed', async () => {
+    const { source, read, kube } = await setup(spread(3));
+    const one = read(
+      source.list({ kind: 'pods.v1', scope: { namespaces: ['b'] }, where: { field: 'core.name', op: 'eq', value: 'p1' }, page: { limit: 1 }, select: ['core.name'] }),
+    );
+    await until(() => one.value.state === 'live');
+    expect(one.value.items.map((i) => i.key)).toEqual(['b/p1']);
+    expect(kube.requests.filter((r) => r.includes('/namespaces/b/pods') && !r.includes('fieldSelector'))).toEqual([]);
   });
 
   it('gets one object from a feed others hold that has it, else by its name alone', async () => {

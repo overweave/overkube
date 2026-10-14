@@ -1,7 +1,8 @@
-import type { ApiError, CollectionState } from '@overkube/client';
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import type { QueryError, Scope, State, Where } from '@overkube/query';
 import type { CatalogItemParts, TabParts } from '@overkube/uikit';
 import { type SlotRef, slot } from '@overweave/ui';
+import type { ComponentChildren } from 'preact';
 import type { PageProps } from './kinds.ts';
 import type { Label } from './text.ts';
 
@@ -17,11 +18,11 @@ import type { Label } from './text.ts';
 
 /** A kind's table, as its toolbar and its empty state are given it. */
 export interface ListState {
-  /** Objects shown (after the table's filter) and there are. */
-  shown: number;
-  total: number;
-  state: CollectionState;
-  error: Pick<ApiError, 'status' | 'code' | 'message'> | null;
+  /** Objects shown (those its where takes) and there are (none: not known yet). */
+  shown?: number;
+  total?: number;
+  state: State;
+  error?: QueryError;
 }
 
 /** About a kind. */
@@ -29,9 +30,10 @@ export interface KindProps {
   kind: KindInfo;
 }
 
-/** A table of a kind's objects: which kind, which of its objects (none: all; and the TableView's filter — give a stable one), what it is called over it (none: nothing). */
+/** A table of a kind's objects: which kind, which of its objects (where, scope — with the TableView's where; none: all), what it is called over it (none: nothing). */
 export interface KindTableProps extends KindProps {
-  filter?: (object: KubeObject) => boolean;
+  where?: Where;
+  scope?: Scope;
   title?: Label;
 }
 
@@ -42,11 +44,10 @@ export interface ResourceRef {
   name: string;
 }
 
-/** A resource not there: on its way, refused (its error; retry: ask again), or gone (stale: as last seen). */
+/** A resource not there: on its way, refused (its error), or gone. */
 export interface MissingState {
-  state: CollectionState;
-  error: Pick<ApiError, 'status' | 'code' | 'message'> | null;
-  retry: () => void;
+  state: State;
+  error?: QueryError;
 }
 
 /** About one resource of a kind: its kind, the object. */
@@ -64,6 +65,8 @@ export interface ResourceFieldProps extends ResourceProps {
   field: { name: string; label: string };
   value: unknown;
   display: string;
+  /** What its column draws (a summary's field: its cell, live). */
+  drawn?: ComponentChildren;
 }
 
 /** One of a resource's conditions (status.conditions), as the API gives it. */

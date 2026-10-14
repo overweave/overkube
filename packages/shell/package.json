@@ -29,7 +29,6 @@
     "preact": "^10.29.8"
   },
   "devDependencies": {
-    "@overweave/testkit": "0.4.0",
     "@preact/signals": "2.11.2",
     "@testing-library/preact": "3.2.4",
     "happy-dom": "20.14.5",

@@ -94,9 +94,9 @@ describe('the server', () => {
     expect(said.find((m) => m.startsWith('WARNING'))).toMatch(/0\.0\.0\.0 with no sign-in: anyone who reaches it reads the cluster/);
   });
 
-  it('stops even with a watch open', async () => {
+  it('stops even with a stream open', async () => {
     const r = await startServer({ host: '127.0.0.1', port: 0, prefix: '/kube', readOnly: false, cluster: { from: 'kubeconfig', path: kubeconfig } }, { log: () => {} });
-    const res = await fetch(`${r.url}/kube/watch?w=pods::/api/v1/pods`);
+    const res = await fetch(`${r.url}/kube/stream`);
     const reader = (res.body as ReadableStream<Uint8Array>).getReader();
     await reader.read();
     const started = Date.now();

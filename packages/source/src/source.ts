@@ -1,3 +1,4 @@
+import type { Layer } from '@overkube/cel';
 import { type Connector, type Feed, type FeedHold, type FeedSpec, feedKey } from '@overkube/connector';
 import type { CrdLike } from '@overkube/kube-fields';
 import { type KindInfo, type KubeObject, kinds as known } from '@overkube/kube-types';
@@ -5,23 +6,27 @@ import {
   type CountQuery,
   type CountResult,
   checkQuery,
-  type FieldCatalog,
-  type FieldName,
+  type FieldsResult,
   type GetQuery,
   type GetResult,
   type KindRef,
+  kindRef,
   type ListQuery,
   type ListResult,
   type Live,
+  type Ordered,
+  ordered,
   type QueryError,
   type Result,
   type Scope,
   type Source,
   scan,
   scanCount,
+  type Where,
+  windowOf,
 } from '@overkube/query';
-import { computed, effect, signal } from '@preact/signals';
-import { capabilities, FieldsCache, type KindFields, refOf } from './fields.ts';
+import { computed, effect, type ReadonlySignal, type Signal, signal, untracked } from '@preact/signals';
+import { capabilities, FieldsCache, type KindFields } from './fields.ts';
 
 /*
  * Queries answered by the page, from the cluster's data as it watches it.
@@ -51,17 +56,10 @@ import { capabilities, FieldsCache, type KindFields, refOf } from './fields.ts';
 export interface SourceOptions {
   /** Namespaces to ask one by one when the user may list a kind neither in every namespace nor list the namespaces (a kubeconfig's namespace, say). */
   namespaces?: readonly string[];
-}
-
-/** A kind's fields as its queries are answered by them (a CRD's columns of its CRD as it is now): their definitions, those left out and why. */
-export interface FieldsResult extends Result {
-  catalog?: FieldCatalog;
-  rejected?: Readonly<Record<FieldName, string>>;
-}
-
-export interface PageSource extends Source {
-  /** A kind's fields (by its ref: pods.v1), live. */
-  fields(kind: KindRef): Live<FieldsResult>;
+  /** Fields (and CEL functions) addons add, over the kinds' own: read as they change (a new array: every kind's fields made anew). */
+  layers?: ReadonlySignal<readonly Layer[]>;
+  /** The most namespaces asked one by one when every one cannot be (default 150: the stream's watches are few); past them, partial. */
+  maxNamespaces?: number;
 }
 
 /** A feed a plan reads, and the namespaces it reads of it (none: all of it). */
@@ -75,17 +73,51 @@ interface Part {
 /** What a query reads (or why nothing); n: which plan of the query it is (in its revision). */
 type Plan = (
   | { readonly parts?: undefined; readonly state: 'loading' | 'error' | 'denied'; readonly error?: QueryError }
-  | { readonly parts: readonly Part[]; readonly fields: KindFields; readonly namespaces: 'all' | readonly string[] }
+  | { readonly parts: readonly Part[]; readonly fields: KindFields; readonly namespaces: 'all' | readonly string[]; readonly skipped?: number }
 ) & { readonly n?: number };
 
 const LOADING: Plan = { state: 'loading' };
+const NO_LAYERS: readonly Layer[] = [];
 const CRD = known.apiextensions.v1.CustomResourceDefinition;
 const NAMESPACE = known.core.v1.Namespace;
 
 type Ask = { as: 'get'; query: GetQuery } | { as: 'list'; query: ListQuery } | { as: 'count'; query: CountQuery } | { as: 'fields'; query: { kind: KindRef } };
 
-export function createSource(connector: Connector, options: SourceOptions = {}): PageSource {
+export function createSource(connector: Connector, options: SourceOptions = {}): Source {
   const fields = new FieldsCache();
+  /** The queries read now, by what they ask. */
+  const lives = new Map<string, Live<unknown>>();
+  /** Lists ordered whole, by query (its window aside) and what it read: windows of one query read of it while its objects are as they were. */
+  const orderings = new Map<string, { stamp: string; page: string; ordered?: Ordered<unknown> }>();
+  /** CRDs read whole by name, again when their metadata says they changed (their generation): no watch of each. */
+  const crdsRead = new Map<string, Signal<{ asked?: string; generation?: string; crd?: CrdLike; error?: QueryError }>>();
+  const maxNamespaces = options.maxNamespaces ?? 150;
+
+  /** A CRD as last read whole, read again (by GET) when its generation is another than the one read. */
+  const crdOf = (name: string, meta: KubeObject) => {
+    const generation = String(meta.metadata?.generation ?? meta.metadata?.resourceVersion ?? '');
+    let read = crdsRead.get(name);
+    if (!read) {
+      read = signal({});
+      crdsRead.set(name, read);
+    }
+    const now = read.value;
+    if (now.asked !== generation) {
+      const into = read;
+      untracked(() => {
+        into.value = { ...now, asked: generation };
+        connector.http
+          .get<CrdLike>(`/apis/apiextensions.k8s.io/v1/customresourcedefinitions/${name}`)
+          .then((crd) => {
+            if (into.peek().asked === generation) into.value = { asked: generation, generation, crd };
+          })
+          .catch((e: unknown) => {
+            if (into.peek().asked === generation) into.value = { ...into.peek(), error: errorOf(e as never) };
+          });
+      });
+    }
+    return now;
+  };
   const byRef = new WeakMap<ReadonlyMap<string, KindInfo>, Map<string, KindInfo>>();
   const caps = capabilities();
 
@@ -95,7 +127,7 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     if (!kinds) return null;
     let index = byRef.get(kinds);
     if (!index) {
-      index = new Map([...kinds.values()].map((k) => [refOf(k), k]));
+      index = new Map([...kinds.values()].map((k) => [kindRef(k), k]));
       byRef.set(kinds, index);
     }
     return index.get(ref);
@@ -103,17 +135,24 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
 
   /** A query held while read: planned (its feeds held) from when it is first read till it is no longer. */
   function live<T>(ask: Ask, answer: (plan: Plan) => T): Live<T> {
+    // The same query asked again while one is read: that one (one plan, one answer worked out, however many read it).
+    const key = JSON.stringify(ask);
+    const had = lives.get(key);
+    if (had) return had as Live<T>;
     const plan = signal<Plan>(LOADING);
     let stop: (() => void) | null = null;
-    return computed(() => answer(plan.value), {
+    const made: Live<T> = computed(() => answer(plan.value), {
       watched() {
+        lives.set(key, made);
         stop = planning(ask, plan);
       },
       unwatched() {
         stop?.();
         stop = null;
+        if (lives.get(key) === made) lives.delete(key);
       },
     });
+    return made;
   }
 
   /** Plan a query, and again as what it depends on changes, into plan; its end: the function given back. */
@@ -187,14 +226,15 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
       const crds = connector.feeds.find({ kind: CRD, projection: 'metadata' });
       const name = `${kind.plural}.${kind.group}`;
       crds?.revision.value;
-      if (crds?.objects.has(name)) {
-        const own = want({ kind: CRD, name });
-        own.revision.value;
-        crd = own.objects.get(name) as CrdLike | undefined;
-        if (!crd) return own.state.value === 'error' ? { state: 'error', error: errorOf(own.error.value) } : LOADING;
+      const meta = crds?.objects.get(name);
+      if (meta) {
+        const read = crdOf(name, meta);
+        // Its columns as last read: the CRD read again once it changed (till then, those it had).
+        crd = read.crd;
+        if (!crd) return read.error ? { state: 'error', error: read.error } : LOADING;
       } else if (crds && !crds.whole.value) return LOADING;
     }
-    const made = fields.of(kind, crd);
+    const made = fields.of(kind, crd, options.layers?.value ?? NO_LAYERS);
     if (ask.as === 'fields') return { parts: [], fields: made, namespaces: 'all' };
     const wrong = checkQuery(query, made.fields, ask.as);
     if (wrong) return { state: 'error', error: wrong };
@@ -208,6 +248,15 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
       const scoped = kind.namespaced && namespace ? { namespace } : {};
       const cover = borrow(every) ?? (namespace && kind.namespaced ? borrow({ kind, namespace }) : undefined);
       return { parts: [{ feed: cover ?? want({ kind, ...scoped, name }) }], fields: made, namespaces: kind.namespaced && namespace ? [namespace] : 'all' };
+    }
+    // One object by its name (where core.name is it), in one namespace or of none: as a get — a feed others hold that has it, else one of it alone.
+    const named = nameIn(ask.query.where);
+    const scope0 = ask.query.scope;
+    const one = !kind.namespaced ? undefined : scope0 && scope0 !== 'all' && new Set(scope0.namespaces).size === 1 ? scope0.namespaces[0] : null;
+    if (named !== undefined && one !== null) {
+      const cover = borrow(every) ?? (one ? borrow({ kind, namespace: one }) : undefined);
+      const feed = cover ?? want({ kind, ...(one ? { namespace: one } : {}), name: named });
+      return { parts: [{ feed, ...(one && cover ? { only: new Set([one]) } : {}) }], fields: made, namespaces: one ? [one] : 'all' };
     }
     if (!kind.namespaced) return { parts: [{ feed: want(every) }], fields: made, namespaces: 'all' };
 
@@ -228,7 +277,37 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     if (spaces.state.value === 'error' && !forbidden(spaces)) return { state: 'error', error: errorOf(spaces.error.value) };
     const names = forbidden(spaces) ? [...new Set(options.namespaces ?? [])] : [...spaces.objects.values()].map((o) => o.metadata?.name ?? '').filter(Boolean);
     if (forbidden(spaces) && names.length === 0) return { state: 'denied', error: errorOf(cluster.error.value) };
-    return { parts: names.map((namespace) => ({ feed: want({ kind, namespace }), namespace })), fields: made, namespaces: names };
+    // More than may be watched one by one: the first of them (by name), the rest not had — said so (partial).
+    const asked = names.length > maxNamespaces ? [...names].sort().slice(0, maxNamespaces) : names;
+    return {
+      parts: asked.map((namespace) => ({ feed: want({ kind, namespace }), namespace })),
+      fields: made,
+      namespaces: asked,
+      ...(asked.length < names.length ? { skipped: names.length - asked.length } : {}),
+    };
+  }
+
+  /**
+   * A list's window: of its query ordered whole, when another window of it
+   * was asked of its objects as they are now (scrolled: no scan again);
+   * else a scan of that window alone (its first, or its objects changed).
+   */
+  function listOf(plan: Plan & { parts: readonly Part[] }, query: ListQuery) {
+    const { page, select, ...base } = query;
+    const key = `${idOf(plan.fields)}|${plan.parts.map((p) => `${idOf(p.feed)}${p.only ? `:${[...p.only].join(',')}` : ''}`).join(';')}|${JSON.stringify(base)}`;
+    const stamp = plan.parts.map((p) => (p.only ? [...p.only].map((ns) => p.feed.revisionIn(ns).value).join(':') : p.feed.revision.value)).join('.');
+    const asked = JSON.stringify(page);
+    const was = orderings.get(key);
+    if (was && was.stamp === stamp) {
+      if (!was.ordered && was.page !== asked) was.ordered = ordered(objectsOf(plan.parts), base, plan.fields.fields);
+      if (was.ordered) return windowOf(was.ordered, query, plan.fields.fields);
+    } else {
+      orderings.delete(key);
+      orderings.set(key, { stamp, page: asked });
+      // A few kept: the queries read now.
+      if (orderings.size > 32) orderings.delete(orderings.keys().next().value as string);
+    }
+    return scan(objectsOf(plan.parts), query, plan.fields.fields);
   }
 
   return {
@@ -236,7 +315,7 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     fields(kind: KindRef): Live<FieldsResult> {
       return live({ as: 'fields', query: { kind } }, (plan) => {
         const status = statusOf(plan);
-        return plan.parts ? { ...status, catalog: plan.fields.catalog, rejected: plan.fields.rejected } : status;
+        return plan.parts ? { ...status, catalog: plan.fields.catalog, rejected: plan.fields.rejected, columns: plan.fields.columns } : status;
       });
     },
     get<O>(query: GetQuery): Live<GetResult<O>> {
@@ -253,17 +332,31 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
       return live({ as: 'list', query }, (plan) => {
         const status = statusOf(plan);
         if (!plan.parts) return { ...status, items: [] };
-        return { ...status, ...scan(objectsOf(plan.parts) as Iterable<O>, query, plan.fields.fields) };
+        return { ...status, ...listOf(plan, query) } as ListResult<O>;
       });
     },
     count(query: CountQuery): Live<CountResult> {
       return live({ as: 'count', query }, (plan) => {
         const status = statusOf(plan);
         if (!plan.parts) return status;
+        // How many of all of them: as many as there are (no scan).
+        if (!query.where && query.groupBy === undefined) return { ...status, total: { count: sizeOf(plan.parts), exact: true } };
         return { ...status, ...scanCount(objectsOf(plan.parts), query, plan.fields.fields) };
       });
     },
   };
+}
+
+/** The name a where holds an object to (core.name eq it, alone or among all of an and), if it does. */
+function nameIn(where: Where | undefined): string | undefined {
+  if (!where) return undefined;
+  if ('field' in where) return where.field === 'core.name' && where.op === 'eq' && typeof where.value === 'string' ? where.value : undefined;
+  if (where.op === 'and')
+    for (const w of where.args) {
+      const n = nameIn(w);
+      if (n !== undefined) return n;
+    }
+  return undefined;
 }
 
 /** Whether a plan can be taken: nothing in use yet, an error, or its feeds in (none loading) — else the one in use is read till it is. */
@@ -318,7 +411,7 @@ function statusOf(plan: Plan): Result {
     }
   }
   const namespaces = plan.namespaces === 'all' ? 'all' : plan.namespaces.filter((n) => !denied.includes(n));
-  const state =
+  let state: Result['state'] =
     error !== undefined
       ? 'error'
       : plan.parts.length > 0 && denied.length === plan.parts.length
@@ -330,6 +423,9 @@ function statusOf(plan: Plan): Result {
             : denied.length
               ? 'partial'
               : 'live';
+  // Namespaces past those that may be watched: partial, said so.
+  if (plan.skipped && state === 'live') state = 'partial';
+  if (plan.skipped && !error && !behind) behind = { code: 'too_many_namespaces', message: `${plan.skipped} more namespaces not watched: narrow the scope` };
   const told = error ?? behind;
   return { state, coverage: { namespaces, denied }, revision: revisions.join('.'), ...(told ? { error: told } : {}) };
 }
@@ -340,4 +436,26 @@ function* objectsOf(parts: readonly Part[]): Iterable<KubeObject> {
     if (!only) yield* feed.objects.values();
     else for (const namespace of only) yield* feed.inNamespace(namespace).values();
   }
+}
+
+/** How many objects a plan's feeds have, of the namespaces each is read for. */
+function sizeOf(parts: readonly Part[]): number {
+  let n = 0;
+  for (const { feed, only } of parts) {
+    if (!only) n += feed.objects.size;
+    else for (const namespace of only) n += feed.inNamespace(namespace).size;
+  }
+  return n;
+}
+
+/** An object's number, while it lives (what keys are made of: one feed, one catalog, not another of the same name). */
+const ids = new WeakMap<object, number>();
+let lastId = 0;
+function idOf(o: object): number {
+  let id = ids.get(o);
+  if (id === undefined) {
+    id = ++lastId;
+    ids.set(o, id);
+  }
+  return id;
 }

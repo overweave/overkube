@@ -5,7 +5,6 @@
  * Under the gateway's prefix:
  *
  *   /api/**, /apis/**, /version, /openapi/v3/**   the API server's, passed on (never PATCH)
- *   GET  /watch?w=<id>:<resourceVersion>:<path>    WatchLine per line (NDJSON)
  *   GET  /stream                                   StreamLine per line (NDJSON), HELLO first
  *   POST /stream/<stream>                          StreamChange → 204 (read only or not: it changes no cluster)
  *   POST /patch                                    PatchBody → the API server's answer
@@ -14,8 +13,8 @@
  * Anything but a read carries the gateway's header (x-overkube: any value),
  * and no request comes from another site's page (Sec-Fetch-Site: cross-site,
  * an Origin not the gateway's): 403 cross_site. A /patch is
- * application/json. A path holds no "%" and no "." segment; w values are
- * URL-encoded (a selector's "&" and "=" too).
+ * application/json, as is a /stream change. A path holds no "%" and no "."
+ * segment.
  *
  * The gateway's own failures answer ErrorAnswer; the API server's (a Status)
  * come back as it sent them.
@@ -27,9 +26,9 @@ export type ErrorCode =
   | 'bad_path'
   | 'bad_patch'
   | 'bad_body'
-  | 'bad_watch'
   | 'bad_stream'
   | 'no_stream'
+  /** The gateway's budget of streams and watches spent (a followed log counts as a watch): try again later. */
   | 'too_many_watches'
   | 'too_large'
   | 'read_only'
@@ -39,39 +38,11 @@ export type ErrorCode =
   | 'kube_error';
 
 export interface ErrorAnswer {
-  /** w: for bad_watch, the watch at fault (its id), when one is; f: for bad_stream, the subscription. */
-  error: { code: ErrorCode; message: string; w?: string; f?: string };
+  /** f: for bad_stream, the subscription at fault, when one is. */
+  error: { code: ErrorCode; message: string; f?: string };
 }
 
-/**
- * What a /watch takes — the client checks its watches by the same rules
- * before it asks: at most watchesPerStream watches; each
- * <id>:<resourceVersion>:<path>, its id letters, digits and . / - _ (at most
- * idLength), its resourceVersion opaque (anything but ":" and spaces, empty:
- * from now).
- */
-export const WATCH = {
-  watchesPerStream: 50,
-  idLength: 100,
-  spec: /^([\w./-]{1,100}):([^:\s]*):(\/.*)$/,
-} as const;
-
-/** One line of a /watch stream: a watch's event, its state, or the stream's own. */
-export type WatchLine =
-  /** The watch is (again) open. */
-  | { w: string; type: 'OPEN' }
-  /** The API server's event, metadata.managedFields left out. */
-  | { w: string; type: 'ADDED' | 'MODIFIED' | 'DELETED' | 'BOOKMARK'; object: unknown }
-  /** The cluster went away for it, or erred: tried again by the gateway itself. */
-  | { w: string; type: 'RETRY'; error: { code: ErrorCode; message: string } }
-  /** A Status: that watch is over (410: list again; 403, 404). */
-  | { w: string; type: 'ERROR'; object: unknown }
-  /** Now and then, so the client knows the stream is alive. */
-  | { type: 'PING' }
-  /** The stream ends: the client read too slowly, or the gateway is stopping — open it again (after a while). */
-  | { type: 'CLOSE'; reason: 'slow_client' | 'shutdown' };
-
-/** What a /stream takes: at most this many subscriptions in one stream; ids as /watch's. */
+/** What a /stream takes: at most this many subscriptions in one stream; an id at most so long, a selector too. */
 export const STREAM = {
   subscriptions: 200,
   idLength: 100,
@@ -99,7 +70,7 @@ export interface StreamChange {
   remove?: string[];
 }
 
-/** One line of a /stream: a subscription's (as WatchLine's, f for w), or the stream's own. */
+/** One line of a /stream: a subscription's watch's (its state, the API server's events), or the stream's own. */
 export type StreamLine =
   /** First: the stream's name, to change it by. */
   | { type: 'HELLO'; stream: string }

@@ -1,14 +1,15 @@
 import { kinds } from '@overkube/kube-types';
 import { column, defineAddon, section, slots } from '@overkube/sdk';
-import { useCollection } from '@overkube/sdk/preact';
+import { useCount } from '@overkube/sdk/preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { assertContributions, assertSays, cleanup, everyOrder, fakeCluster, kubeWorld, make } from './index.ts';
 import { renderSlot } from './preact/index.ts';
 
 /*
  * The testkit as an addon's test meets it: a cluster in memory told what
- * happens and keeping what is written, objects made, addons run as on the
- * page and stopped, their slots drawn over the cluster.
+ * happens (read through queries, as the page's) and keeping what is
+ * written, objects made, addons run as on the page and stopped, their
+ * slots drawn over the cluster.
  */
 
 afterEach(cleanup);
@@ -26,17 +27,18 @@ describe('make', () => {
 });
 
 describe('fakeCluster', () => {
-  it('keeps the objects it is told of, as a watch tells them', () => {
+  it('keeps the objects it is told of, read through queries as the page’s; a kind’s state as said', () => {
     const cluster = fakeCluster();
-    const pods = cluster.peek(Pod);
+    const pods = cluster.source.list({ kind: 'pods.v1', page: { limit: 10 }, select: ['.spec.nodeName'] });
     cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop' } }));
     cluster.change(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop' }, spec: { nodeName: 'n2', containers: [] } }));
-    expect([...pods.items.value.keys()]).toEqual(['shop/web']);
-    expect(cluster.get(Pod, 'web', 'shop')?.spec?.nodeName).toBe('n2');
+    expect(pods.value.items.map((i) => [i.key, i.values?.['.spec.nodeName']])).toEqual([['shop/web', ['n2']]]);
     cluster.take(Pod, 'web', 'shop');
-    expect(pods.items.value.size).toBe(0);
+    expect(pods.value.items).toEqual([]);
     cluster.state(Pod, 'error', { status: 403, code: 'Forbidden' });
-    expect([pods.state.value, pods.error.value?.code]).toEqual(['error', 'Forbidden']);
+    expect([pods.value.state, pods.value.error?.code]).toEqual(['error', 'Forbidden']);
+    cluster.state(Pod, 'live');
+    expect(pods.value.state).toBe('live');
   });
 
   it('keeps what is written: a merge patch applied, a delete; a refusal once', async () => {
@@ -69,11 +71,10 @@ describe('kubeWorld', () => {
     id: 'images',
     title: 'Images',
     setup(ctx) {
-      ctx.cluster.collection(Pod);
       ctx.contributor.add(
         'Column',
         'images.tag',
-        column({ kinds: [Pod], header: 'Tag', value: (p) => p.spec?.containers[0]?.image?.split(':')[1], display: (p) => p.spec?.containers[0]?.image?.split(':')[1] ?? '' }),
+        column({ kinds: [Pod], header: 'Tag', sort: '.spec.containers[0].image', format: ([image]) => String(image ?? '').split(':')[1] ?? '' }),
       );
       ctx.contributor.patch('Column', 'core.name', { header: 'Pod' });
     },
@@ -82,10 +83,10 @@ describe('kubeWorld', () => {
     id: 'core',
     title: 'Core',
     layer: 'core',
-    setup: ({ contributor }) => void contributor.add('Column', 'core.name', column({ header: 'Name', value: (o) => o.metadata?.name, display: (o) => o.metadata?.name ?? '' })),
+    setup: ({ contributor }) => void contributor.add('Column', 'core.name', column({ header: 'Name', sort: 'core.name' })),
   });
 
-  it('runs addons as the page does: at their layers, what they said and held taken back when they stop', () => {
+  it('runs addons as the page does: at their layers, what they said taken back when they stop', () => {
     const w = kubeWorld();
     w.addon(core);
     w.addon(images);
@@ -94,11 +95,9 @@ describe('kubeWorld', () => {
       { kind: 'Column', name: 'core.name', operation: 'patch', status: 'included' },
     ]);
     assertSays(w, 'Column', 'core.name', ['header'], 'images');
-    expect(w.cluster.held()).toEqual(['v1/Pod']);
-    const pod = make(Pod, { spec: { containers: [{ name: 'app', image: 'nginx:latest' }] } });
-    expect(w.get('Column', 'images.tag')?.spec.value(pod, { now: 0, objects: [], kind: Pod })).toBe('latest');
+    expect(w.get('Column', 'images.tag')?.spec.format?.(['nginx:latest'], { now: 0, kind: Pod, say: (() => '') as never })).toBe('latest');
     w.stop('images');
-    expect([w.get('Column', 'images.tag'), w.get('Column', 'core.name')?.spec.header, w.cluster.held()]).toEqual([undefined, 'Name', []]);
+    expect([w.get('Column', 'images.tag'), w.get('Column', 'core.name')?.spec.header]).toEqual([undefined, 'Name']);
   });
 
   it('reads the same whatever order its addons start in', () => {
@@ -148,7 +147,6 @@ describe('kubeWorld', () => {
         title: 'Slow',
         async setup(c) {
           ctx = c;
-          c.cluster.collection(Pod);
           await new Promise<void>((done) => {
             finish = done;
           });
@@ -160,9 +158,8 @@ describe('kubeWorld', () => {
     );
     finish();
     await w.ready('slow');
-    expect(w.cluster.held()).toEqual(['v1/Pod']);
     w.stop('slow');
-    expect([w.cluster.held(), w.failures('slow').map((e) => (e as Error).message)]).toEqual([[], ['slow: stopping: cleanup failed']]);
+    expect(w.failures('slow').map((e) => (e as Error).message)).toEqual(['slow: stopping: cleanup failed']);
     ctx?.effect(() => {
       effects++;
     });
@@ -175,15 +172,14 @@ describe('kubeWorld', () => {
       defineAddon({
         id: 'broken',
         title: 'Broken',
-        async setup({ contributor, cluster }) {
-          contributor.add('Column', 'broken.c', column({ header: 'C', value: () => 1, display: () => '1' }));
-          cluster.collection(Pod);
+        async setup({ contributor }) {
+          contributor.add('Column', 'broken.c', column({ header: 'C', sort: 'core.name' }));
           throw new Error('no luck');
         },
       }),
     );
     await expect(w.ready('broken')).rejects.toThrow('no luck');
-    expect([w.get('Column', 'broken.c'), w.cluster.held(), w.failures('broken').length]).toEqual([undefined, [], 1]);
+    expect([w.get('Column', 'broken.c'), w.failures('broken').length]).toEqual([undefined, 1]);
   });
 
   it('keeps a service its provider’s: another giving it is refused; an effect follows it', () => {
@@ -242,7 +238,7 @@ describe('drawing', () => {
     const w = kubeWorld();
     w.cluster.add(Pod, make(Pod, { metadata: { name: 'a' } }));
     w.cluster.add(Pod, make(Pod, { metadata: { name: 'b' } }));
-    const Count = () => <b>{useCollection(Pod).items.value.size} pods</b>;
+    const Count = () => <b>{useCount({ kind: 'pods.v1' }).total?.count} pods</b>;
     w.addon(defineAddon({ id: 'pods', title: 'Pods', setup: ({ contributor }) => void contributor.add('Fill', 'pods.count', section({ kinds: [Pod], render: Count })) }));
     const pod = w.cluster.get(Pod, 'a', 'default');
     expect(renderSlot(w, slots.resource.view.sections, { kind: Pod, object: pod as never }).text()).toBe('2 pods');

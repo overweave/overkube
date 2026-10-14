@@ -1,8 +1,10 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import { checkFieldDef, type FieldName, type FieldType, type Path, type Unit, type Value, type Where } from '@overkube/query';
 import { TOKENS, type Tokens } from '@overkube/uikit';
 import { defineKind, type Problem } from '@overweave/core';
 import { uiKinds } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
+import type { ComponentChildren } from 'preact';
 import type { Notification } from './addon.ts';
 import type { Say } from './say.ts';
 import type { NavTabProps, ResourceProps } from './slots.ts';
@@ -15,7 +17,7 @@ import { canonicalLocale, isLabel, isPhrase, KEY, type Label, type Phrase } from
  * each at its priority, with its rights:
  *
  *   configure    how things look: titles, order, widths, what is hidden (everyone, the user too)
- *   behaviour    what they do: values, renders, health, filters, actions (addons, not the user)
+ *   behaviour    what they do: fields, formats, renders, actions (addons, not the user)
  *
  * Adding something that does anything (a Column, an Action, a kind's views,
  * the UI's Fill and Wrap) is behaviour too — an add says every field at
@@ -74,12 +76,6 @@ function fields(checks: Record<string, [Check, string]>) {
 
 const looks = { title: [isLabel, 'notText'], icon: [text, 'notText'], order: [finite, 'notANumber'] } as Record<string, [Check, string]>;
 
-/** How an object is doing: the dots on tabs, "3 need a look". */
-export interface Health {
-  level: 'ok' | 'warn' | 'error';
-  reason?: string;
-}
-
 /** How a kind of the cluster is shown. Named by the kind's id. */
 export interface KindViewSpec {
   title: Label;
@@ -91,14 +87,13 @@ export interface KindViewSpec {
   hidden?: boolean;
   /** Kept at hand: a tab of its own (the user pins and unpins, as with a table's widths). */
   pinned?: boolean;
-  health?: (object: KubeObject) => Health | undefined;
 }
 
 export const KindView = defineKind<KindViewSpec>()('KindView', {
   required: ['title'],
   createRight: behaviour,
-  validate: fields({ ...looks, category: [text, 'notText'], hidden: [flag, 'notAFlag'], pinned: [flag, 'notAFlag'], health: [fn, 'notAFunction'] }),
-  patchRights: { title: configure, category: configure, icon: configure, order: configure, hidden: configure, pinned: configure, health: behaviour },
+  validate: fields({ ...looks, category: [text, 'notText'], hidden: [flag, 'notAFlag'], pinned: [flag, 'notAFlag'] }),
+  patchRights: { title: configure, category: configure, icon: configure, order: configure, hidden: configure, pinned: configure },
 });
 
 /** A group of kinds, as the picker shows them. */
@@ -114,78 +109,98 @@ export const Category = defineKind<CategorySpec>()('Category', {
   patchRights: { title: configure, icon: configure, order: configure },
 });
 
-/**
- * A column's value not there yet — its own data on its way (metrics, an
- * image's tags): its cell drawn waiting, sorted last. value: (pod) =>
- * metrics.get(pod) ?? PENDING.
- */
-export const PENDING: unique symbol = Symbol.for('overkube.pending');
+/** A value of a field as a list gives it: one, several (a many field), none (null). */
+export type CellValue = Value | readonly Value[] | null;
 
-/** What a column's render — and a Wrap of its cell — is drawn with: the object, its kind, the column's value of it, its display (live: as now changes, if it reads it). */
-export interface ColumnRenderProps<O extends KubeObject = KubeObject> {
-  object: O;
+/** What a Wrap of a column's cell is given: the kind, the column's values, its text (none: it draws more than text). */
+export interface CellProps {
   kind: KindInfo;
-  value: unknown;
+  values: readonly CellValue[];
   display: string;
 }
 
-/**
- * What a column's value and display are worked out with: when it is (what
- * an age is counted to — a display that reads it is drawn again as it
- * changes, only where its text does), every object of its kind listed (a
- * default among them — not only those a filter shows), their kind.
- */
-export interface ColumnContext<O extends KubeObject = KubeObject> {
+/** What a column's format is given beside its values: when it is (a format that reads it is drawn again as it changes), the kind, how to say things in the page's language. */
+export interface ColumnContext {
   readonly now: number;
-  readonly objects: readonly O[];
   readonly kind: KindInfo;
+  readonly say: Say;
 }
 
 /**
- * A column of kinds' tables: its value of each object, what it is sorted
- * by (PENDING: not there yet); its display, its cell's text — drawn as is
- * unless it has a render (given ColumnRenderProps); of the kinds its target
- * takes, those its when does (none: all). Hidden: shown only when asked
- * (TableView.hidden: false) — kubectl's -o wide; for some kinds only, a
- * function of the kind (an Event's name).
+ * A column of kinds' tables — of the kinds its target takes, those its when
+ * does (none: all). Its data are fields (@overkube/query: a field's name,
+ * or a path): what it sorts and filters by (sort; none: not sortable),
+ * what its cell is made of (values; none: [sort]) — answered wherever
+ * queries are, the page or a server. Its cell is the page's: format, of
+ * those values only (never the object: a table holds no objects of its
+ * own), a text or anything drawn; none — as their field's type says it (a
+ * time: an age; bytes: 1.5Gi). Wide: shown only when the table is (kubectl's
+ * -o wide); for some kinds only, a function of the kind.
  */
 export interface ColumnSpec {
   target: Target;
   header: Label;
-  value: (object: KubeObject, context: ColumnContext) => unknown;
-  display: (object: KubeObject, context: ColumnContext) => string;
-  render?: PreactComponent;
+  sort?: FieldName;
+  values?: readonly FieldName[];
+  format?: (values: readonly CellValue[], context: ColumnContext) => ComponentChildren;
   when?: (kind: KindInfo) => boolean;
-  hidden?: boolean | ((kind: KindInfo) => boolean);
+  wide?: boolean | ((kind: KindInfo) => boolean);
   width?: number;
   order?: number;
 }
 
 export const Column = defineKind<ColumnSpec>()('Column', {
-  required: ['target', 'header', 'value', 'display'],
+  required: ['target', 'header'],
   createRight: behaviour,
-  validate: fields({
-    target: [target, 'notATarget'],
-    header: [isLabel, 'notText'],
-    value: [fn, 'notAFunction'],
-    display: [fn, 'notAFunction'],
-    render: [fn, 'notAFunction'],
-    when: [fn, 'notAFunction'],
-    hidden: [(v) => flag(v) || fn(v), 'notAFlag'],
-    width: [finite, 'notANumber'],
-    order: [finite, 'notANumber'],
-  }),
+  validate: (spec) => {
+    const problems = fields({
+      target: [target, 'notATarget'],
+      header: [isLabel, 'notText'],
+      sort: [text, 'notAField'],
+      values: [(v) => texts(v) && (v as string[]).length > 0, 'notFields'],
+      format: [fn, 'notAFunction'],
+      when: [fn, 'notAFunction'],
+      wide: [(v) => flag(v) || fn(v), 'notAFlag'],
+      width: [finite, 'notANumber'],
+      order: [finite, 'notANumber'],
+    })(spec);
+    // Something to show: a field sorted by, or those its cell is made of.
+    const empty = spec.sort === undefined && spec.values === undefined ? [{ code: 'noFields', field: 'values' }] : [];
+    return problems || empty.length ? [...(problems ?? []), ...empty] : undefined;
+  },
   patchRights: {
     target: behaviour,
     header: configure,
     width: configure,
     order: configure,
-    value: behaviour,
-    display: behaviour,
-    render: behaviour,
+    sort: behaviour,
+    values: behaviour,
+    format: behaviour,
     when: behaviour,
-    hidden: configure,
+    wide: configure,
   },
+});
+
+/**
+ * A field addons ask by, beside the kinds' own (@overkube/kube-fields):
+ * named as it is asked by (its addon's: images.tag), of these kinds' refs
+ * (none: every kind), its value a path or CEL (self: the object) — data, so
+ * that whoever answers queries (the page; a server) works it out; held to
+ * CEL's bound there, its errors told with the answers that ask by it.
+ */
+export interface FieldSpec {
+  kinds?: readonly string[];
+  type: FieldType;
+  many?: boolean;
+  unit?: Unit;
+  value: Path | { readonly cel: string };
+}
+
+export const Field = defineKind<FieldSpec>()('Field', {
+  required: ['type', 'value'],
+  createRight: behaviour,
+  validate: (spec) => (checkFieldDef(spec) ? [{ code: 'notAField', field: 'value' }] : undefined),
+  patchRights: { kinds: behaviour, type: behaviour, many: behaviour, unit: behaviour, value: behaviour },
 });
 
 /** How a kind's table is set out. Named by the kind's id. */
@@ -195,8 +210,8 @@ export interface TableViewSpec {
   hidden?: Record<string, boolean>;
   widths?: Record<string, number>;
   sort?: { column: string; descending?: boolean };
-  /** Which objects it shows (none: all). */
-  filter?: (object: KubeObject) => boolean;
+  /** Which objects it shows (none: all), as a query says it. */
+  where?: Where;
 }
 
 export const TableView = defineKind<TableViewSpec>()('TableView', {
@@ -206,9 +221,9 @@ export const TableView = defineKind<TableViewSpec>()('TableView', {
     hidden: [mapOf(flag), 'notFlags'],
     widths: [mapOf(finite), 'notNumbers'],
     sort: [sort, 'notASort'],
-    filter: [fn, 'notAFunction'],
+    where: [(v) => typeof v === 'object' && v !== null && !Array.isArray(v), 'notAWhere'],
   }),
-  patchRights: { columns: configure, hidden: configure, widths: configure, sort: configure, filter: behaviour },
+  patchRights: { columns: configure, hidden: configure, widths: configure, sort: configure, where: configure },
   merge: { maps: ['hidden', 'widths'] },
 });
 
@@ -445,7 +460,7 @@ export const Language = defineKind<LanguageSpec>()('Language', {
 });
 
 /** The dashboard's own kinds (the UI's beside them). */
-export const kubeOwnKinds = [KindView, Category, Column, TableView, Page, Action, MenuItem, NavView, Theme, Appearance, Messages, Language] as const;
+export const kubeOwnKinds = [KindView, Category, Column, Field, TableView, Page, Action, MenuItem, NavView, Theme, Appearance, Messages, Language] as const;
 
 /** Every kind the dashboard has: its registry is made of them. */
 export const kubeKinds = [ui.Slot, ui.Fill, ui.Wrap, ...kubeOwnKinds] as const;

@@ -22,8 +22,8 @@ export const clock = signal(Date.now(), {
   },
 });
 
-/** A text, live: worked out again as what it reads changes (the clock, if it reads clock.value) or deps do; the component drawn again only as it changes. */
-export function useLive(text: () => string, deps: readonly unknown[]): string {
-  const live = useMemo(() => computed(text), deps);
+/** A text (or what is drawn), live: worked out again as what it reads changes (the clock, if it reads clock.value) or deps do; the component drawn again only as it changes. */
+export function useLive<T>(make: () => T, deps: readonly unknown[]): T {
+  const live = useMemo(() => computed(make), deps);
   return live.value;
 }

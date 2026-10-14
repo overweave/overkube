@@ -1,4 +1,3 @@
-import type { KindInfo } from '@overkube/kube-types';
 import { runAddon } from '@overkube/runtime';
 import { type Addon, type Cluster, type KubeContributor, kubeOwnKinds, standingOf, ui } from '@overkube/sdk';
 import { type Notifications, notifications } from '@overkube/shell';
@@ -10,7 +9,7 @@ import { type FakeCluster, fakeCluster } from './cluster.ts';
  * A world of the dashboard's kinds (overweave's testkit world), a cluster in
  * memory, and addons run in it as the page runs them: each a contributor at
  * its layer (its priority, its rights), given its ctx — the cluster (what it
- * holds let go of when it stops, what it writes in its name), the services
+ * writes in its name, nothing once it stops), the services
  * others provide (followed by effects), its signal, onDispose, effect,
  * guard. What it throws in a callback (or a promise of it rejects with) is
  * kept, as its failure; a setup that takes a while is waited for (ready). Not
@@ -39,26 +38,14 @@ export interface KubeWorld extends KubeWorldBase {
   language(locale: string): void;
 }
 
-/** The cluster for one run: what it holds is let go of when the run stops; what it writes is in its name; after, it writes nothing. */
-function scoped(cluster: Cluster, run: { id: string; onDispose(dispose: () => void): () => void; signal: AbortSignal }): Cluster {
+/** The cluster for one run: what it writes is in its name; after it stops, it writes nothing. */
+function scoped(cluster: Cluster, run: { id: string; signal: AbortSignal }): Cluster {
   const live = () => {
     if (run.signal.aborted) throw new Error('the addon has stopped: it writes nothing more');
   };
   return {
     discovery: cluster.discovery,
-    collection(kind) {
-      run.onDispose(cluster.hold(kind));
-      return cluster.peek(kind);
-    },
-    peek: (kind) => cluster.peek(kind),
-    hold(kind: KindInfo) {
-      const release = cluster.hold(kind);
-      const drop = run.onDispose(release);
-      return () => {
-        drop();
-        release();
-      };
-    },
+    source: cluster.source,
     served: (g) => cluster.served(g),
     status: (s) => cluster.status(s),
     patch: async (kind, object, change) => {
@@ -135,6 +122,8 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
   const env = addonEnv(options.cluster ?? fakeCluster());
   const { cluster, services } = env;
   const w = uiWorld(ui, ...kubeOwnKinds);
+  // The fields its addons define, asked by.
+  cluster.follow(w.registry);
   const runs = new Map<string, Run<KubeContributor>>();
   const started = new Map<string, Promise<void>>();
 

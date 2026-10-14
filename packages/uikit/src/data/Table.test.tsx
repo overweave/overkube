@@ -1,8 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'preact/hooks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Table, type TableColumn, type TableProps } from './Table';
+import { Table, type TableColumn, type TableProps, type TableSort } from './Table';
 
 /*
  * The table as a user has it: the mouse and the keyboard (user-event), what
@@ -18,14 +17,14 @@ interface Row {
 }
 
 const COLUMNS: TableColumn<Row>[] = [
-  { id: 'name', header: 'Name', cell: (r) => r.name, sort: (r) => r.name },
-  { id: 'n', header: 'N', width: '100px', cell: (r) => String(r.n ?? '—'), sort: (r) => r.n },
+  { id: 'name', header: 'Name', cell: (r) => r.name, sortable: true },
+  { id: 'n', header: 'N', width: '100px', cell: (r) => String(r.n ?? '—'), sortable: true },
   { id: 'note', header: 'Note', cell: (r) => r.note },
 ];
 const many = (n: number): Row[] => Array.from({ length: n }, (_, i) => ({ name: `pod-${i}`, n: i, note: `note ${i}` }));
 const FEW: Row[] = [
-  { name: 'b', n: 10, note: 'x' },
   { name: 'a', n: 9, note: 'y' },
+  { name: 'b', n: 10, note: 'x' },
   { name: 'c', note: 'z' },
 ];
 
@@ -163,51 +162,46 @@ describe('Table: drawing', () => {
 });
 
 describe('Table: sorting', () => {
-  it('sorts by a header clicked, then the other way, numbers as numbers', async () => {
-    const { user, firsts, button, header } = mount();
-    // Sorted by nothing: by their keys (they came b, a, c).
-    expect(firsts()).toEqual(['a', 'b', 'c']);
-    expect(header('N').getAttribute('aria-sort')).toBe('none');
-    await user.click(button('N'));
-    expect(firsts()).toEqual(['a', 'b', 'c']);
-    expect(header('N').getAttribute('aria-sort')).toBe('ascending');
-    expect(header('N').querySelector('.uk-table-sort')?.getAttribute('data-dir')).toBe('asc');
-    await user.click(button('N'));
-    // Those with nothing to sort by go last, either way.
-    expect(firsts()).toEqual(['b', 'a', 'c']);
-    expect(header('N').getAttribute('aria-sort')).toBe('descending');
-    await user.click(button('Name'));
-    expect(firsts()).toEqual(['a', 'b', 'c']);
-    expect(header('N').getAttribute('aria-sort')).toBe('none');
-    expect(header('N').querySelector('.uk-table-sort')).toBeNull();
+  it('sorts nothing itself: its rows as given; a sortable header clicked asks for a sort, the sort said back shown', async () => {
+    const asked: TableSort[] = [];
+    const t = mount({ onSort: (sort) => asked.push(sort) });
+    const given = [FEW[1], FEW[0], FEW[2]];
+    t.rerender(<Table rows={given} columns={COLUMNS} rowKey={(r) => r.name} onSort={(sort) => asked.push(sort)} />);
+    expect(t.firsts()).toEqual(['b', 'a', 'c']);
+    expect(t.header('N').getAttribute('aria-sort')).toBe('none');
+    await t.user.click(t.button('N'));
+    expect([asked, t.firsts()]).toEqual([[{ id: 'n' }], ['b', 'a', 'c']]);
+    t.rerender(<Table rows={FEW} columns={COLUMNS} rowKey={(r) => r.name} sort={{ id: 'n' }} onSort={(sort) => asked.push(sort)} />);
+    expect(t.header('N').getAttribute('aria-sort')).toBe('ascending');
+    expect(t.header('N').querySelector('.uk-table-sort')?.getAttribute('data-dir')).toBe('asc');
+    await t.user.click(t.button('N'));
+    expect(asked.at(-1)).toEqual({ id: 'n', desc: true });
+    t.rerender(<Table rows={FEW} columns={COLUMNS} rowKey={(r) => r.name} sort={{ id: 'n', desc: true }} />);
+    expect(t.header('N').getAttribute('aria-sort')).toBe('descending');
   });
 
-  it('does not sort by a column with nothing to sort by', async () => {
-    const { user, firsts, button, header } = mount();
-    await user.click(button('Note'));
-    expect(firsts()).toEqual(['a', 'b', 'c']);
-    expect(header('Note').hasAttribute('aria-sort')).toBe(false);
+  it('asks nothing of a column not sortable', async () => {
+    const asked: TableSort[] = [];
+    const t = mount({ onSort: (sort) => asked.push(sort) });
+    await t.user.click(t.button('Note'));
+    expect([asked, t.header('Note').hasAttribute('aria-sort')]).toEqual([[], false]);
   });
+});
 
-  it('sorts those of the same value by their keys — one order, the same either way, however the rows came', () => {
-    const same: Row[] = [
-      { name: 'c', n: 1, note: '' },
-      { name: 'a', n: 1, note: '' },
-      { name: 'd', n: 2, note: '' },
-      { name: 'b', n: 1, note: '' },
-      { name: 'e', note: '' },
-    ];
-    const t = mount({ rows: same, initialSort: { id: 'n' } });
-    expect(t.firsts()).toEqual(['a', 'b', 'c', 'd', 'e']);
-    t.rerender(<Table rows={[...same].reverse()} columns={COLUMNS} rowKey={(r) => r.name} initialSort={{ id: 'n', desc: true }} />);
-    expect(t.firsts()).toEqual(['d', 'a', 'b', 'c', 'e']);
-  });
-
-  it('sorts as it is told at first, and again when told otherwise', () => {
-    const { firsts, rerender } = mount({ initialSort: { id: 'name', desc: true } });
-    expect(firsts()).toEqual(['c', 'b', 'a']);
-    rerender(<Table rows={FEW} columns={COLUMNS} rowKey={(r) => r.name} initialSort={{ id: 'n' }} />);
-    expect(firsts()).toEqual(['a', 'b', 'c']);
+describe('Table: a window of rows', () => {
+  it('draws the rows given where they are among all of them, placeholders where none are given yet; says which are in view', () => {
+    const ranges: [number, number][] = [];
+    const all = many(1000);
+    const t = mount({ rows: all.slice(0, 20), total: 1000, onRange: (first, last) => ranges.push([first, last]) });
+    expect(t.container.querySelector('[role=table]')?.getAttribute('aria-rowcount')).toBe('1001');
+    expect(ranges.at(-1)).toEqual([0, 26]);
+    expect(t.firsts().slice(18, 21)).toEqual(['pod-18', 'pod-19', undefined]);
+    expect(t.container.querySelectorAll('.uk-table-row[data-skeleton]').length).toBe(6);
+    fireEvent.scroll(t.body(), { target: { scrollTop: 34 * 500 + 32 } });
+    expect(ranges.at(-1)).toEqual([492, 526]);
+    t.rerender(<Table rows={all.slice(490, 530)} offset={490} total={1000} columns={COLUMNS} rowKey={(r) => r.name} />);
+    expect(t.firsts()[0]).toBe('pod-492');
+    expect(t.rows()[0].getAttribute('aria-rowindex')).toBe('494');
   });
 });
 
@@ -361,81 +355,6 @@ describe('Table: column order', () => {
   });
 });
 
-describe('Table: picking rows', () => {
-  function picking(initial: string[] = []) {
-    const changes: string[][] = [];
-    const clicked: string[] = [];
-    function Picker() {
-      const [selected, setSelected] = useState<Set<string>>(new Set(initial));
-      return (
-        <Table
-          rows={FEW}
-          columns={COLUMNS}
-          rowKey={(r) => r.name}
-          onRowClick={(r) => clicked.push(r.name)}
-          selection={{
-            selected,
-            label: 'All rows',
-            onChange: (next) => {
-              changes.push([...next].sort());
-              setSelected(next);
-            },
-          }}
-        />
-      );
-    }
-    const view = render(<Picker />);
-    const all = () => view.getByRole('checkbox', { name: 'All rows' }) as HTMLInputElement;
-    const box = (key: string) => view.getByRole('checkbox', { name: key }) as HTMLInputElement;
-    const selectedRows = () =>
-      view
-        .getAllByRole('row')
-        .filter((r) => r.getAttribute('aria-selected') === 'true')
-        .map((r) => r.getAttribute('data-key'));
-    return { ...view, user: userEvent.setup(), changes, clicked, all, box, selectedRows };
-  }
-
-  it('picks a row by its check, not opening it', async () => {
-    const { user, box, changes, clicked, selectedRows } = picking();
-    await user.click(box('a'));
-    expect(changes).toEqual([['a']]);
-    expect(clicked).toEqual([]);
-    expect(selectedRows()).toEqual(['a']);
-    expect(box('a').checked).toBe(true);
-    await user.click(box('a'));
-    expect(changes.at(-1)).toEqual([]);
-  });
-
-  it('picks a run with Shift, from the last one picked', async () => {
-    const { user, box, changes } = picking();
-    await user.click(box('b'));
-    await user.keyboard('{Shift>}');
-    await user.click(box('c'));
-    await user.keyboard('{/Shift}');
-    // As they are shown (by their keys: a, b, c): from b to c.
-    expect(changes.at(-1)).toEqual(['b', 'c']);
-  });
-
-  it('picks all of them by the head’s check, and none again; says when some are', async () => {
-    const { user, all, changes } = picking(['a']);
-    expect(all().checked).toBe(false);
-    expect(all().indeterminate).toBe(true);
-    await user.click(all());
-    expect(changes.at(-1)).toEqual(['a', 'b', 'c']);
-    expect(all().checked).toBe(true);
-    expect(all().indeterminate).toBe(false);
-    await user.click(all());
-    expect(changes.at(-1)).toEqual([]);
-  });
-
-  it('has a column for the checks, not dragged nor resized', () => {
-    const { container, getAllByRole } = picking();
-    expect((container.querySelector('.uk-table-head') as HTMLElement).style.gridTemplateColumns.startsWith('20px ')).toBe(true);
-    expect(getAllByRole('separator')).toHaveLength(2);
-    expect(container.querySelector('.uk-table-pick[data-sort-id]')).toBeNull();
-  });
-});
-
 describe('Table: what the data changes', () => {
   const pods = (names: string[]) => names.map((name, i) => ({ name, n: i, note: '' }));
   // Rows stand where their place among their siblings says (34px each); a slide is an animation asked of a row.
@@ -497,26 +416,24 @@ describe('Table: what the data changes', () => {
 
   it('slides the rows a few changes moved, not those that stayed', () => {
     const t = live(['b', 'c', 'd', 'e']);
-    // a comes first (by its key): b, c, d and e step down.
-    t.set(['b', 'c', 'd', 'e', 'a']);
+    // a comes first: b, c, d and e step down.
+    t.set(['a', 'b', 'c', 'd', 'e']);
     expect(slid.sort()).toEqual(['b', 'c', 'd', 'e']);
     slid = [];
-    t.set(['b', 'c', 'd', 'e', 'a']);
+    t.set(['a', 'b', 'c', 'd', 'e']);
     expect(slid).toEqual([]);
   });
 
   it('draws many changes at once (a filter, another namespace): nothing kept, nothing comes in', () => {
     const t = live(['a', 'b', 'c', 'd', 'e']);
     t.set(['v', 'w', 'x', 'y', 'z', 'a']);
-    expect(t.drawn()).toEqual(['a', 'v', 'w', 'x', 'y', 'z']);
+    expect(t.drawn()).toEqual(['v', 'w', 'x', 'y', 'z', 'a']);
     expect(t.entering()).toEqual([]);
   });
 
-  it('draws a new sort at once', async () => {
+  it('draws a new sort at once', () => {
     const t = live(['a', 'b', 'c']);
-    const user = userEvent.setup();
-    await user.click(t.getByRole('button', { name: 'Name' }));
-    await user.click(t.getByRole('button', { name: 'Name' }));
+    t.rerender(<Table rows={pods(['c', 'b', 'a'])} columns={COLUMNS} rowKey={(r) => r.name} sort={{ id: 'name', desc: true }} />);
     expect(t.drawn()).toEqual(['c', 'b', 'a']);
     expect(slid).toEqual([]);
   });

@@ -1,13 +1,16 @@
-import { createClient } from '@overkube/client';
-import { FakeGateway } from '@overkube/client/testing';
-import { kinds } from '@overkube/kube-types';
+import { Discovery, Http } from '@overkube/connector';
+import { type KubeObject, kinds } from '@overkube/kube-types';
+import { Field, fieldLayers, kubeKinds } from '@overkube/sdk';
+import { memorySource } from '@overkube/source';
+import { createRegistry } from '@overweave/core';
+import { signal } from '@preact/signals';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clusterAccess } from './cluster.ts';
 
 /*
- * The cluster as addons see it, over the client and a fake gateway: what
- * the cluster serves, a kind held for a run and let go of when it stops,
- * nothing written once it has.
+ * The cluster as addons see it: what the cluster serves (discovery), what
+ * is read (a source: in memory here), writes in an addon's name — none
+ * once it has stopped — and the fields addons define, the source's layers.
  */
 
 const { Pod } = kinds.core.v1;
@@ -16,43 +19,35 @@ afterEach(() => {
   for (const close of closing.splice(0)) close();
 });
 
-const { APIService } = kinds.apiregistration.v1;
+/** The aggregated discovery of the core group's pods. */
+const DISCOVERY = {
+  kind: 'APIGroupDiscoveryList',
+  items: [{ metadata: {}, versions: [{ version: 'v1', resources: [{ resource: 'pods', responseKind: { kind: 'Pod' }, scope: 'Namespaced', verbs: ['list', 'watch'] }] }] }],
+};
 
-function setup(served = [Pod, APIService, kinds.apiextensions.v1.CustomResourceDefinition]) {
-  const fake = new FakeGateway(served);
-  /** What was sent, with its body. */
+/** A gateway answering discovery and writes; every request sent, with its body; a write held back while hold is set. */
+function setup(objects: Record<string, KubeObject[]> = {}) {
   const sent: { request: string; body: unknown }[] = [];
-  const fetch: typeof fake.fetch = (url, init) => {
-    sent.push({
-      request: `${init?.method ?? 'GET'} ${new URL(String(url), 'http://page').pathname.replace(/^\/kube/, '')}`,
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
-    });
-    return fake.fetch(url, init);
-  };
-  const client = createClient({ api: { fetch }, stream: { debounceMs: 5 }, store: { lingerMs: 0 } });
-  closing.push(() => client.close());
-  return { fake, client, sent, access: clusterAccess(client) };
+  const state = { hold: false };
+  const fetch = (async (url: string, init?: RequestInit) => {
+    const request = `${init?.method ?? 'GET'} ${new URL(url, 'http://page').pathname.replace(/^\/kube/, '')}`;
+    sent.push({ request, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (request === 'GET /api') return Response.json(DISCOVERY);
+    if (request === 'GET /apis') return Response.json({ kind: 'APIGroupDiscoveryList', items: [] });
+    if (state.hold) return new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+    return Response.json({ kind: 'Pod', metadata: { name: 'web' } });
+  }) as typeof globalThis.fetch;
+  const http = new Http({ fetch });
+  const discovery = new Discovery(http);
+  void discovery.load();
+  closing.push(() => discovery.close());
+  return { sent, state, access: clusterAccess({ http, discovery }, memorySource(signal(objects))) };
 }
 
-/** A run the test stops: what it holds, kept until then (or dropped). */
-function aRun(id = 'images') {
+const aRun = (id = 'images') => {
   const controller = new AbortController();
-  const kept = new Set<() => void>();
-  return {
-    id,
-    signal: controller.signal,
-    onDispose(d: () => void) {
-      kept.add(d);
-      return () => kept.delete(d);
-    },
-    kept,
-    stop() {
-      controller.abort();
-      for (const d of kept) d();
-      kept.clear();
-    },
-  };
-}
+  return { id, signal: controller.signal, stop: () => controller.abort() };
+};
 
 describe('clusterAccess', () => {
   it('says what the cluster serves, once discovery has answered', async () => {
@@ -62,70 +57,34 @@ describe('clusterAccess', () => {
     expect([access.facts.served('v1/Pod'), access.facts.served('metrics.k8s.io')]).toEqual([true, false]);
   });
 
-  it('holds a kind for a run, and lets it go when the run stops; writes nothing after', async () => {
-    const { fake, client, access } = setup();
-    fake.add(Pod, { apiVersion: 'v1', kind: 'Pod', metadata: { name: 'web', namespace: 'shop', uid: 'u1' } });
-    const run = new AbortController();
-    const disposers: (() => void)[] = [];
-    const cluster = access.open({
-      id: 'images',
-      onDispose: (d) => {
-        disposers.push(d);
-        return () => {};
-      },
-      signal: run.signal,
+  it('says whether an APIService is available, as the source has it', () => {
+    const { access } = setup({
+      'apiservices.v1.apiregistration.k8s.io': [
+        { metadata: { name: 'v1beta1.metrics.k8s.io' }, status: { conditions: [{ type: 'Available', status: 'True' }] } } as KubeObject,
+        { metadata: { name: 'v1.down' }, status: { conditions: [{ type: 'Available', status: 'False' }] } } as KubeObject,
+      ],
     });
-    const pods = cluster.collection(Pod);
-    await expect.poll(() => pods.items.value.size).toBe(1);
-    expect(client.store.kinds).toContain('v1/Pod');
-    run.abort();
-    for (const d of disposers) d();
-    await expect.poll(() => client.store.kinds.includes('v1/Pod')).toBe(false);
-    await expect(cluster.remove(Pod, pods.items.value.get('shop/web') as never)).rejects.toThrow(/stopped/);
+    expect(['v1beta1.metrics.k8s.io', 'v1.down', 'v1.none'].map((n) => access.facts.available(n))).toEqual([true, false, false]);
   });
 
-  it('keeps the APIServices for the page’s life once a condition asks: still known long after (not a peek let go of)', async () => {
-    const { fake, client, access } = setup();
-    fake.add(APIService, {
-      apiVersion: 'apiregistration.k8s.io/v1',
-      kind: 'APIService',
-      metadata: { name: 'v1beta1.metrics.k8s.io', uid: 'a1' },
-      status: { conditions: [{ type: 'Available', status: 'True' }] },
-    } as never);
-    expect(access.facts.available('v1beta1.metrics.k8s.io')).toBeUndefined();
-    await expect.poll(() => access.facts.available('v1beta1.metrics.k8s.io')).toBe(true);
-    await new Promise((r) => setTimeout(r, 50));
-    expect([access.facts.available('v1beta1.metrics.k8s.io'), access.facts.available('v1.other')]).toEqual([true, false]);
-    expect(client.store.kinds).toContain(APIService.id);
-  });
-
-  it('says an APIService is not available where the cluster serves none (not: not known yet)', async () => {
-    const { access } = setup([Pod]);
-    access.facts.available('v1beta1.metrics.k8s.io');
-    await expect.poll(() => access.facts.available('v1beta1.metrics.k8s.io')).toBe(false);
-  });
-
-  it('writes in the addon’s name; what is in flight when it stops is cut off', async () => {
-    const { fake, sent, access } = setup();
+  it('writes in the addon’s name; what is in flight when it stops is cut off, nothing written after', async () => {
+    const { sent, state, access } = setup();
     const run = aRun();
     const cluster = access.open(run);
-    fake.answer('POST /patch', { status: 200, body: { kind: 'Pod', metadata: { name: 'web' } } });
     await cluster.patch(Pod, { metadata: { name: 'web', namespace: 'shop' } }, { type: 'merge', patch: {} });
     expect(sent.find((s) => s.request === 'POST /patch')?.body).toMatchObject({ path: '/api/v1/namespaces/shop/pods/web', fieldManager: 'overkube-images' });
-    const held = fake.hold('POST /patch');
+    state.hold = true;
     const late = cluster.patch(Pod, { metadata: { name: 'web', namespace: 'shop' } }, { type: 'merge', patch: {}, fieldManager: 'mine' });
     await expect.poll(() => sent.filter((s) => s.request === 'POST /patch').length).toBe(2);
     expect(sent.at(-1)?.body).toMatchObject({ fieldManager: 'mine' });
     run.stop();
     await expect(late).rejects.toThrow();
-    held.release();
+    await expect(cluster.patch(Pod, { metadata: { name: 'web' } }, { type: 'merge', patch: {} })).rejects.toThrow(/stopped/);
   });
 
   it('deletes only the object seen: its uid sent as a precondition; one with no uid is not sent at all', async () => {
-    const { fake, sent, access } = setup();
-    fake.add(Pod, { apiVersion: 'v1', kind: 'Pod', metadata: { name: 'web', namespace: 'shop', uid: 'u1' } });
+    const { sent, access } = setup();
     const cluster = access.open(aRun());
-    fake.answer('DELETE /api/v1/namespaces/shop/pods/web', { status: 200, body: { kind: 'Status', status: 'Success' } });
     await expect(cluster.remove(Pod, { metadata: { name: 'web', namespace: 'shop' } })).rejects.toThrow(/no uid/);
     expect(sent.some((s) => s.request.startsWith('DELETE'))).toBe(false);
     await cluster.remove(Pod, { metadata: { name: 'web', namespace: 'shop', uid: 'u1' } });
@@ -134,21 +93,15 @@ describe('clusterAccess', () => {
       body: { apiVersion: 'v1', kind: 'DeleteOptions', preconditions: { uid: 'u1' } },
     });
   });
+});
 
-  it('lets go of a kind held and released: no longer the run’s to let go of', async () => {
-    const { client, access } = setup();
-    const run = aRun();
-    const cluster = access.open(run);
-    const release = cluster.hold(Pod);
-    expect(run.kept.size).toBe(1);
-    release();
-    release();
-    expect(run.kept.size).toBe(0);
-    await expect.poll(() => client.store.kinds.includes('v1/Pod')).toBe(false);
-  });
-
-  it('gives components no collection(): what they hold, they hold while drawn', () => {
-    const { access } = setup();
-    expect('collection' in access.components()).toBe(false);
+describe('fieldLayers', () => {
+  it('is the fields addons define, as one layer: anew as they come and go', () => {
+    const registry = createRegistry({ kinds: kubeKinds });
+    const layers = fieldLayers(registry);
+    expect(layers.value).toEqual([{ fields: {} }]);
+    const images = registry.contributor('images', { priority: 200, rights: ['configure', 'behaviour'] });
+    images.add(Field.name, 'images.tag', { kinds: ['pods.v1'], type: 'string', value: '.spec.containers[0].image' });
+    expect(layers.value).toEqual([{ fields: { 'images.tag': { kinds: ['pods.v1'], type: 'string', value: '.spec.containers[0].image' } } }]);
   });
 });

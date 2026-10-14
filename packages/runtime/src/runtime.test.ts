@@ -17,15 +17,7 @@ function env() {
   const said: string[] = [];
   let next = 0;
   const e: RunEnv = {
-    open: (run) =>
-      ({
-        hold: (kind: { id: string }) => {
-          held.push(kind.id);
-          const release = () => held.splice(held.indexOf(kind.id), 1);
-          run.onDispose(release);
-          return release;
-        },
-      }) as unknown as Cluster,
+    open: () => ({}) as unknown as Cluster,
     services: signal(new Map()),
     notify: (n) => {
       const id = `n${++next}`;
@@ -45,7 +37,6 @@ const contributor = () => {
 };
 
 const addon = (setup: Addon['setup'], more: Partial<Addon> = {}): Addon => ({ id: 'a', title: 'A', setup, ...more });
-const Pod = { id: 'v1/Pod' } as never;
 
 describe('runAddon', () => {
   it('lets go of everything when it stops: what it held, said, told (but errors); nothing after', () => {
@@ -54,7 +45,8 @@ describe('runAddon', () => {
     let ran = 0;
     const run = runAddon(
       addon((ctx) => {
-        ctx.cluster.hold(Pod);
+        held.push('v1/Pod');
+        ctx.onDispose(() => held.splice(held.indexOf('v1/Pod'), 1));
         ctx.notify({ text: 'saved' });
         ctx.notify({ level: 'error', text: 'refused' });
         ctx.effect(() => {
@@ -77,7 +69,8 @@ describe('runAddon', () => {
       runAddon(
         addon(
           (ctx) => {
-            ctx.cluster.hold(Pod);
+            held.push('v1/Pod');
+            ctx.onDispose(() => held.splice(held.indexOf('v1/Pod'), 1));
             throw new Error('no luck');
           },
           { provides: { first: () => 1 } },
@@ -110,7 +103,8 @@ describe('runAddon', () => {
     const c = contributor();
     const run = runAddon(
       addon(async (ctx) => {
-        ctx.cluster.hold(Pod);
+        held.push('v1/Pod');
+        ctx.onDispose(() => held.splice(held.indexOf('v1/Pod'), 1));
         throw new Error('later');
       }),
       c,

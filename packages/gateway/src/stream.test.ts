@@ -188,7 +188,7 @@ describe('a changing stream', () => {
   });
 
   it('holds to its budget: subscriptions in the stream, watches over the process', async () => {
-    const { open } = await setup({ watch: { maxChannels: 3 } });
+    const { open } = await setup({ stream: { maxChannels: 3 } });
     const s = await open();
     const subs = (n: number, prefix = 'p') => Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i}`, path: `/api/v1/namespaces/n${i}/pods` }));
     const many = await s.change({ add: subs(201) });

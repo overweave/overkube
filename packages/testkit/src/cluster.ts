@@ -1,17 +1,19 @@
-import type { CollectionState, CollectionView, ObjectOfKind } from '@overkube/client';
 import type { StatusAnswer } from '@overkube/gateway/protocol';
 import { type KindInfo, type KubeObject, knownKinds } from '@overkube/kube-types';
-import type { Cluster, ObjectChange } from '@overkube/sdk';
-import { batch, computed, type Signal, signal } from '@preact/signals';
-import { keyOf } from './make.ts';
+import { keyOf, type QueryError, type State } from '@overkube/query';
+import { type Cluster, type FieldLayer, fieldLayers, kindRef, type ObjectChange, type ObjectOfKind } from '@overkube/sdk';
+import { type MemoryState, memorySource } from '@overkube/source';
+import { batch, computed, type ReadonlySignal, signal } from '@preact/signals';
 
 /*
  * A cluster in memory, as an addon works with it (the SDK's Cluster): its
- * objects put, changed and taken away by the test, as a watch tells them; a
- * kind's state set (loading, stale, error, absent); what is served and
- * available said; what the addon writes kept, applied (a merge patch, a
- * delete), or refused once, as the API server would — a delete of an object
- * not seen as it is now (another uid under its name, or none) refused too.
+ * objects put, changed and taken away by the test, read through queries
+ * answered as the page's are (a source in memory: the same fields, the same
+ * answers); a kind's state set (loading, stale, error, denied); what is
+ * served and available said; what the addon writes kept, applied (a merge
+ * patch, a delete), or refused once, as the API server would — a delete of
+ * an object not seen as it is now (another uid under its name, or none)
+ * refused too.
  */
 
 /** What an addon wrote. */
@@ -31,13 +33,6 @@ export interface Refusal {
   message?: string;
 }
 
-interface Kept {
-  kind: KindInfo;
-  items: Signal<ReadonlyMap<string, KubeObject>>;
-  state: Signal<CollectionState>;
-  error: Signal<Refusal | null>;
-}
-
 export interface FakeCluster extends Cluster {
   /** An object comes (ADDED); one under its name already is replaced. */
   add<K extends KindInfo>(kind: K, object: ObjectOfKind<K>): ObjectOfKind<K>;
@@ -46,16 +41,16 @@ export interface FakeCluster extends Cluster {
   /** An object goes (DELETED). */
   take(kind: KindInfo, name: string, namespace?: string): void;
   get<K extends KindInfo>(kind: K, name: string, namespace?: string): ObjectOfKind<K> | undefined;
-  /** A kind's state, as the page would see it (an error: what the cluster said). */
-  state(kind: KindInfo, state: CollectionState, error?: Refusal): void;
+  /** A kind's answers' state, as the page would see it (an error: what the cluster said); live again: live. */
+  state(kind: KindInfo, state: State, error?: Refusal): void;
   /** A group ('traefik.io') or a kind ('v1/Pod') served, or no longer. */
   serve(groupOrKind: string, served?: boolean): void;
   /** What the addon wrote, in order. */
   readonly writes: readonly Write[];
   /** The next write of this kind refused with this. */
   refuse(op: Write['op'], refusal: Refusal): void;
-  /** The kinds held now (by an addon's run, a component), by id. */
-  held(): string[];
+  /** The fields a registry's addons define (Field), asked by as the page's source asks by them: followed from now on. */
+  follow(registry: Parameters<typeof fieldLayers>[0]): void;
   /** Discovery as the page would see it: not answered yet, or failed (what the cluster said); ready again with none. */
   discover(state: 'loading' | 'ready' | 'error', error?: Refusal): void;
 }
@@ -79,14 +74,12 @@ function merge(target: unknown, patch: unknown): unknown {
 }
 
 export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
-  const kinds = new Map<string, Kept>();
   const served = signal<ReadonlySet<string> | null>(options.served ? new Set(options.served) : null);
-  const holds = new Map<string, number>();
   const writes: Write[] = [];
   const refusals = new Map<Write['op'], Refusal[]>();
   let version = 1;
   const discoveryState = signal<'loading' | 'ready' | 'error'>('ready');
-  const discoveryError = signal<Refusal | null>(null);
+  const discoveryError = signal<QueryError | null>(null);
   const all = [...knownKinds, ...(options.kinds ?? [])];
   // What discovery says: the kinds known (and given) that are served, once it has answered.
   const discovered = computed(() => {
@@ -94,63 +87,57 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
     const set = served.value;
     return new Map(all.filter((k) => set === null || set.has(k.id) || set.has(k.group)).map((k) => [k.id, k]));
   });
+  // The objects, by kind's ref and key; as the source reads them, by ref.
+  const kept = new Map<string, Map<string, KubeObject>>();
+  const objects = signal<Readonly<Record<string, readonly KubeObject[]>>>({});
+  const states = signal<Readonly<Record<string, MemoryState>>>({});
+  const followed = signal<ReadonlySignal<readonly FieldLayer[]> | null>(null);
+  const source = memorySource(objects, {
+    kinds: options.kinds,
+    states,
+    layers: computed(() => followed.value?.value ?? []),
+    // As its discovery says: a kind not served is not; discovery not answered yet, its answers on their way.
+    serves: (kind) => discovered.value?.has(kind.id),
+  });
 
-  const kept = (kind: KindInfo): Kept => {
-    let k = kinds.get(kind.id);
+  const of = (kind: KindInfo) => {
+    const ref = kindRef(kind);
+    let k = kept.get(ref);
     if (!k) {
-      k = { kind, items: signal(new Map()), state: signal('live'), error: signal(null) };
-      kinds.set(kind.id, k);
+      k = new Map();
+      kept.set(ref, k);
     }
     return k;
   };
-  const view = <K extends KindInfo>(kind: K) => {
-    const k = kept(kind);
-    return { kind, items: k.items, state: k.state, error: k.error, retry() {} } as unknown as CollectionView<ObjectOfKind<K>>;
+  const told = (kind: KindInfo) => {
+    objects.value = { ...objects.peek(), [kindRef(kind)]: [...of(kind).values()] };
   };
   const put = (kind: KindInfo, object: KubeObject) => {
-    const k = kept(kind);
-    const was = k.items.peek().get(keyOf(object));
+    const k = of(kind);
+    const was = k.get(keyOf(object));
     // Its uid: the one it came with, the one it has (a change), or one of its own (as the API server gives).
     const uid = object.metadata?.uid ?? was?.metadata?.uid ?? `fake-${++version}`;
     const next = { ...object, metadata: { ...object.metadata, uid, resourceVersion: String(++version) } };
-    k.items.value = new Map(k.items.peek()).set(keyOf(next), next);
+    k.set(keyOf(next), next);
+    told(kind);
     return next;
   };
   const refused = (op: Write['op']) => {
     const r = refusals.get(op)?.shift();
     if (r) throw Object.assign(new Error(r.message ?? r.code), { status: r.status, code: r.code });
   };
-  const hold = (kind: KindInfo) => {
-    holds.set(kind.id, (holds.get(kind.id) ?? 0) + 1);
-    let done = false;
-    return () => {
-      if (done) return;
-      done = true;
-      const n = (holds.get(kind.id) ?? 1) - 1;
-      if (n) holds.set(kind.id, n);
-      else holds.delete(kind.id);
-    };
-  };
 
   return {
     add: (kind, object) => put(kind, object as KubeObject) as never,
     change: (kind, object) => put(kind, object as KubeObject) as never,
     take(kind, name, namespace) {
-      const k = kept(kind);
-      const next = new Map(k.items.peek());
-      next.delete(namespace ? `${namespace}/${name}` : name);
-      k.items.value = next;
+      of(kind).delete(namespace ? `${namespace}/${name}` : name);
+      told(kind);
     },
-    get: (kind, name, namespace) =>
-      kept(kind)
-        .items.peek()
-        .get(namespace ? `${namespace}/${name}` : name) as never,
+    get: (kind, name, namespace) => of(kind).get(namespace ? `${namespace}/${name}` : name) as never,
     state(kind, state, error) {
-      const k = kept(kind);
-      batch(() => {
-        k.state.value = state;
-        k.error.value = error ?? null;
-      });
+      const { [kindRef(kind)]: _, ...rest } = states.peek();
+      states.value = state === 'live' && !error ? rest : { ...rest, [kindRef(kind)]: { state, ...(error ? { error: { ...error, message: error.message ?? error.code } } : {}) } };
     },
     serve(groupOrKind, yes = true) {
       const now = new Set(served.peek() ?? []);
@@ -164,11 +151,13 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
     refuse(op, refusal) {
       refusals.set(op, [...(refusals.get(op) ?? []), refusal]);
     },
-    held: () => [...holds.keys()].sort(),
+    follow(registry) {
+      followed.value = fieldLayers(registry);
+    },
     discover(state, error) {
       batch(() => {
         discoveryState.value = state;
-        discoveryError.value = error ?? null;
+        discoveryError.value = error ? { ...error, message: error.message ?? error.code } : null;
       });
     },
 
@@ -176,12 +165,10 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
     discovery: {
       kinds: discovered,
       state: discoveryState,
-      error: discoveryError as never,
+      error: discoveryError,
       retry() {},
     },
-    collection: (kind) => view(kind),
-    peek: (kind) => view(kind),
-    hold,
+    source,
     served(groupOrKind) {
       const set = served.value;
       return set === null ? true : set.has(groupOrKind);
@@ -192,7 +179,7 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
       const namespace = object.metadata?.namespace;
       writes.push({ op: 'patch', kind: kind.id, name, ...(namespace ? { namespace } : {}), change });
       refused('patch');
-      const now = (kept(kind).items.peek().get(keyOf(object)) ?? object) as KubeObject;
+      const now = (of(kind).get(keyOf(object)) ?? object) as KubeObject;
       return change.type === 'merge' ? put(kind, merge(now, change.patch) as KubeObject) : now;
     },
     async remove(kind, object) {
@@ -203,7 +190,7 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
       if (!uid) throw new Error(`${kind.id} ${name}: no uid — only an object read from the cluster is deleted`);
       writes.push({ op: 'remove', kind: kind.id, name, ...(namespace ? { namespace } : {}) });
       refused('remove');
-      const now = kept(kind).items.peek().get(keyOf(object));
+      const now = of(kind).get(keyOf(object));
       if (now?.metadata?.uid !== uid)
         throw Object.assign(new Error(`${kind.id} ${name}: not the object seen (its uid ${uid}, now ${now?.metadata?.uid ?? 'none'})`), { status: 409, code: 'Conflict' });
       this.take(kind, name, namespace);

@@ -107,20 +107,6 @@ describe('createGateway', () => {
     expect(await res.json()).toEqual({ version: '0.1.0', kube: { reachable: true, version: 'v1.35.7' } });
   });
 
-  it('streams several watches over /watch', async () => {
-    const abort = new AbortController();
-    const res = await fetch(`${await host()}/watch?w=pods::/api/v1/pods`, { signal: abort.signal });
-    const reader = (res.body as ReadableStream<Uint8Array>).getReader();
-    let text = '';
-    while (!text.includes('ADDED')) text += new TextDecoder().decode((await reader.read()).value);
-    abort.abort();
-    const lines = text
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l));
-    expect(lines.map((l) => l.type)).toEqual(['OPEN', 'ADDED']);
-  });
-
   it('reads a body off the request: a /patch as JSON, a POST passed on as it came', async () => {
     const base = await host();
     const patched = await send(`${base}/patch`, {
@@ -156,7 +142,7 @@ describe('createGateway', () => {
     expect(seen).toEqual([]);
   });
 
-  it('read only: reads, watches and tells its status; changes nothing', async () => {
+  it('read only: reads and tells its status; changes nothing', async () => {
     const base = await host({ readOnly: true });
     expect((await fetch(`${base}/api/v1/pods`)).status).toBe(200);
     expect((await fetch(`${base}/status`)).status).toBe(200);
@@ -204,11 +190,11 @@ describe('createGateway: no other site’s page through its visitor’s browser'
 });
 
 describe('createGateway: methods, bodies, answers', () => {
-  it('asks /watch and /status with GET, /patch with POST', async () => {
+  it('asks /stream and /status with GET, /patch with POST', async () => {
     const base = await host();
     for (const [method, path] of [
       ['HEAD', '/status'],
-      ['POST', '/watch'],
+      ['POST', '/stream'],
       ['GET', '/patch'],
     ]) {
       expect([method, path, (await send(`${base}${path}`, { method })).status]).toEqual([method, path, 405]);
@@ -228,10 +214,10 @@ describe('createGateway: methods, bodies, answers', () => {
     expect(seen).toEqual([]);
   });
 
-  it('passes on no watch (/watch is its way), and counts a followed log in its budget of watches', async () => {
-    const base = await host({ watch: { maxChannels: 0 } });
+  it('passes on no watch (/stream is its way), and counts a followed log in its budget of watches', async () => {
+    const base = await host({ stream: { maxChannels: 0 } });
     const watching = await fetch(`${base}/api/v1/pods?watch=1`);
-    expect([watching.status, (await watching.json()).error.code]).toEqual([400, 'bad_watch']);
+    expect([watching.status, (await watching.json()).error.code]).toEqual([400, 'bad_stream']);
     const following = await fetch(`${base}/api/v1/namespaces/a/pods/b/log?follow=true`);
     expect([following.status, (await following.json()).error.code]).toEqual([503, 'too_many_watches']);
     expect(seen).toEqual([]);
@@ -257,10 +243,10 @@ describe('createGateway: methods, bodies, answers', () => {
   it('tells its streams CLOSE (shutdown) when it closes', async () => {
     const gateway = createGateway({ upstream: fromKubeconfig(kubeconfig) });
     const srv = createServer((req, res) => void gateway.handle(req, res));
-    const res = await fetch(`http://127.0.0.1:${await listen(srv)}/watch?w=pods::/api/v1/pods`);
+    const res = await fetch(`http://127.0.0.1:${await listen(srv)}/stream`);
     const reader = (res.body as ReadableStream<Uint8Array>).getReader();
     let text = '';
-    while (!text.includes('ADDED')) text += new TextDecoder().decode((await reader.read()).value);
+    while (!text.includes('HELLO')) text += new TextDecoder().decode((await reader.read()).value);
     gateway.close();
     for (;;) {
       const { value, done } = await reader.read();

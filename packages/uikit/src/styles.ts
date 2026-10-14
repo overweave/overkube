@@ -224,8 +224,6 @@ export const css = `
 .uk-table-row[data-clickable]:focus-visible { outline: 2px solid var(--uk-focus); outline-offset: -2px; }
 .uk-table-row > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .uk-table-row > [data-wrap] { white-space: normal; overflow-wrap: anywhere; padding: 8px 0; }
-.uk-table-pick { display: flex; align-items: center; justify-content: center; }
-.uk-table-pick input { margin: 0; width: 14px; height: 14px; accent-color: var(--uk-accent); cursor: pointer; }
 .uk-table-empty { padding: 16px; color: var(--uk-muted); }
 /* What the data changed: a row new to the list fades in; a row gone fades and folds, the rows under it rising. */
 .uk-table-row[data-enter] { animation: uk-row-enter .22s cubic-bezier(.2, 0, 0, 1) both; }
@@ -433,11 +431,6 @@ export const css = `
 .uk-form-row { display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: 12px; }
 .uk-form-row > .uk-switch { grid-column: 1 / -1; }
 .uk-form-row label { color: var(--uk-muted); }
-.uk-slot:empty { display: none; }
-.uk-slot-empty { border: 1px dashed var(--uk-border); border-radius: var(--uk-radius); padding: 6px 10px; color: var(--uk-muted); font-size: 11px; font-family: var(--uk-mono); }
-.uk-value { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
-.uk-value-open { all: unset; cursor: pointer; border-bottom: 1px dotted var(--uk-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.uk-value-open:focus-visible { outline: 2px solid var(--uk-focus); border-radius: 3px; }
 /* A number at a glance. Clickable: its title brightens and an arrow comes under the pointer; it gives a little, pressed. */
 .uk-stat { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; width: 100%; height: 100%; cursor: default; transition: transform .08s; }
 button.uk-stat { cursor: pointer; }

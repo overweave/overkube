@@ -1,32 +1,16 @@
 import type { ClientRequest, IncomingMessage, ServerResponse } from 'node:http';
-import { classify, splitQuery } from './paths.ts';
-import { WATCH } from './protocol.ts';
-import { fail as failRequest, isDown, openUpstream, type UpstreamSource } from './upstream.ts';
+import { isDown, openUpstream, type UpstreamSource } from './upstream.ts';
 
 /*
- * The watch multiplexer: several Kubernetes watches over one response, so the
- * page needs one connection however many kinds it shows (a browser keeps six
- * per site over HTTP/1.1, and the host page may use some of them).
- *
- *   GET /watch?w=<id>:<resourceVersion>:<path>&w=…
- *
- * <id> is the client's name for the watch, <resourceVersion> where it starts
- * (empty: from now, with the objects there are as ADDED), <path> a collection
- * (/api/v1/pods, /apis/apps/v1/namespaces/media/deployments), with a
- * labelSelector or fieldSelector if any. The answer is one JSON per line:
- *
- *   {"w":"pods","type":"OPEN"}                   the watch is (again) open
- *   {"w":"pods","type":"ADDED","object":{…}}     the API server's events (MODIFIED, DELETED, BOOKMARK too),
- *                                                without metadata.managedFields
- *   {"w":"pods","type":"RETRY","error":{…}}      the cluster went away for it, or erred; tried again by itself
- *   {"w":"pods","type":"ERROR","object":{…}}     a Status: that watch is over (410: list again; 403, 404)
- *   {"type":"PING"}                              now and then, so the client knows the stream is alive
- *   {"type":"CLOSE","reason":"slow_client"}      the client read too slowly: the stream ends; open it again
- *
- * The gateway keeps each watch's last resourceVersion: when the API server
- * ends a watch (it does every few minutes) or the cluster comes back, it goes
- * on from there. The client reopens the stream only when the watches it wants
- * change, after an ERROR, or after a CLOSE.
+ * Watches kept open against the API server, for a stream of them (the
+ * changing stream: stream.ts): each from the last resourceVersion it saw —
+ * when the API server ends a watch (it does every few minutes) or the
+ * cluster comes back, it goes on from there; tried again after a wait that
+ * grows while it fails; its events passed on as one JSON per line, tagged
+ * as its stream says, metadata.managedFields left out. The stream holds
+ * them back while its client does not read, and lets a slow one go. Over
+ * every stream of the process: a budget of streams and watches, a minutely
+ * summary.
  */
 
 export interface WatchOptions {
@@ -92,38 +76,8 @@ export interface Spec {
   accept?: string;
 }
 
-/** At most this many watches in one stream; each as the protocol says (its resourceVersion opaque). */
-const MAX_WATCHES = WATCH.watchesPerStream;
-const SPEC = WATCH.spec;
-const SELECTORS = new Set(['labelSelector', 'fieldSelector']);
+/** What a watch's line from the API server may be. */
 const EVENT_TYPES = new Set(['ADDED', 'MODIFIED', 'DELETED', 'BOOKMARK', 'ERROR']);
-
-/** The watches a request asks for, or why it cannot have them. */
-export function parseWatches(url: string): Spec[] | string {
-  const query = new URL(url, 'http://gateway').searchParams.getAll('w');
-  if (query.length === 0) return 'no watch asked for (w=<id>:<resourceVersion>:<path>)';
-  if (query.length > MAX_WATCHES) return `at most ${MAX_WATCHES} watches in one stream`;
-  const specs: Spec[] = [];
-  for (const w of query) {
-    const m = w.match(SPEC);
-    if (!m) return `${w}: not <id>:<resourceVersion>:<path>`;
-    const [path, query] = splitQuery(m[3]);
-    if (classify(path)?.type !== 'collection') return `${path} is not a collection of the API: only those can be watched`;
-    const selectors = new URLSearchParams(query);
-    for (const key of selectors.keys()) if (!SELECTORS.has(key)) return `${path}: only labelSelector and fieldSelector may be given, not ${key}`;
-    if (specs.some((s) => s.id === m[1])) return `${m[1]} is asked for twice`;
-    specs.push({ id: m[1], path, selectors, resourceVersion: m[2] });
-  }
-  return specs;
-}
-
-/** The watch at fault in a request refused, when one alone is (its id): the client ends that one, not the others. */
-function culprit(url: string): { w?: string } {
-  for (const w of new URL(url, 'http://gateway').searchParams.getAll('w')) {
-    if (typeof parseWatches(`/watch?w=${encodeURIComponent(w)}`) === 'string') return { w: w.split(':')[0] };
-  }
-  return {};
-}
 
 // ── Over every stream of the process ──────────────────────────────────────
 
@@ -146,7 +100,7 @@ export function resetWatchState(): void {
 }
 
 /**
- * A place in the budget of watches for something streamed outside a /watch
+ * A place in the budget of watches for something streamed outside a /stream
  * (a followed log through the proxy): its release, or null when the budget
  * is spent.
  */
@@ -187,25 +141,6 @@ function serverWait(seconds: unknown): number | undefined {
 }
 
 // ── A stream: one client ──────────────────────────────────────────────────
-
-/** Serve one multiplexed stream until the client leaves. */
-export function watch(req: { url: string }, res: ServerResponse, options: WatchOptions): void {
-  const settings = settingsOf(options);
-  // An answer already gone (its client left while its host was deciding): nothing is opened for it.
-  if (res.destroyed || res.writableEnded) return;
-  const specs = parseWatches(req.url);
-  if (typeof specs === 'string') {
-    failRequest(res, 400, 'bad_watch', specs, culprit(req.url));
-    return;
-  }
-  const full = tooManyStreams(settings) ?? overBudget(settings, specs.length);
-  if (full) {
-    failRequest(res, 503, 'too_many_watches', full);
-    return;
-  }
-  const stream = new Stream(res, settings);
-  stream.begin(specs.map((spec) => new Channel(spec, { w: spec.id }, stream, settings)));
-}
 
 /** Whether the stream has the budget for this many more watches: if not, why. */
 export function overBudget(settings: Settings, more: number): string | undefined {
@@ -291,17 +226,12 @@ export class Stream {
     if (!this.open) return;
     this.res.end(`${JSON.stringify({ type: 'CLOSE', reason: 'slow_client' })}\n`);
     this.close();
+    // Not all of it taken by then (its CLOSE among what is left): its connection cut. ('close' is no sign: an answer ended says it at once.)
     const res = this.res;
-    const cut = setTimeout(() => res.destroy(), this.settings.closeGraceMs);
+    const cut = setTimeout(() => {
+      if (!res.writableFinished) res.destroy();
+    }, this.settings.closeGraceMs);
     cut.unref?.();
-    res.once('close', () => clearTimeout(cut));
-  }
-
-  /** One of its watches is over for good: with none left, the stream ends (a client asking only for kinds it may not see keeps nothing open). */
-  ended(): void {
-    if (!this.open || ![...this.channels].every((c) => c.stopped)) return;
-    this.res.end();
-    this.close();
   }
 
   /** Its gateway closes: the client is told, then the stream ends. */
@@ -354,7 +284,7 @@ export class Channel {
   /** Whether it is counted in the budget of watches (until it stops). */
   private counted = true;
   private readonly spec: Spec;
-  /** What each of its lines is told by: { w } in a /watch, { f, ns } in a /stream. */
+  /** What each of its lines is told by: its subscription's id ({ f }).*/
   private readonly tag: object;
   private readonly stream: Stream;
   private readonly settings: Settings;
@@ -468,7 +398,6 @@ export class Channel {
     totals.errors++;
     this.stream.send({ ...this.tag, type: 'ERROR', object: status });
     this.stop();
-    this.stream.ended();
   }
 
   private answered(answer: IncomingMessage, current: () => boolean, ask: { server: string; withBookmarks: boolean }): void {

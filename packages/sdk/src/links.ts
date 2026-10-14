@@ -1,4 +1,5 @@
 import type { KindInfo } from '@overkube/kube-types';
+import { kindRef } from '@overkube/query';
 
 /*
  * Where things are on the page, as paths: a kind as kubectl says it
@@ -14,10 +15,8 @@ type Named = { metadata?: { name?: string; namespace?: string } };
 /** A kind's page, as a Page's path. */
 export const KIND_PAGE = '/k/:kind';
 
-/** A kind as one part of a path: pods.v1, deployments.v1.apps. */
-export function kindRef(kind: KindLike): string {
-  return [kind.plural, kind.version, ...(kind.group ? [kind.group] : [])].join('.');
-}
+/** A kind as one part of a path: its ref, as queries name it (pods.v1, deployments.v1.apps). */
+export { kindRef };
 
 /** The kind a ref names, of these. */
 export function kindOfRef<K extends KindLike>(kinds: Iterable<K>, ref: string): K | undefined {

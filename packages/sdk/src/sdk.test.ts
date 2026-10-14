@@ -1,18 +1,18 @@
-import type { CollectionView } from '@overkube/client';
-import { type KindInfo, kinds } from '@overkube/kube-types';
+import { type KubeObject, kinds } from '@overkube/kube-types';
+import { memorySource } from '@overkube/source';
 import { assertContributions, assertResult, assertSays, cleanup, uiWorld } from '@overweave/testkit';
 import { mount, renderSlot } from '@overweave/testkit/preact';
 import { signal } from '@preact/signals';
 import { h } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { action, type Cluster, column, defineAddon, kindMatcher, kubeOwnKinds, section, slots, standingOf, takes, tile, ui, wrap } from './index.ts';
-import { KubeProvider, useCollection } from './preact/index.ts';
+import { KubeProvider, useList } from './preact/index.ts';
 
 /*
  * The SDK as an addon meets it: the dashboard's kinds layered by overweave
  * (who may say what), fills chosen by the kinds they are for, the usual
  * definitions typed by their kinds, an addon defined and run at its layer,
- * a kind's objects held while a component is drawn.
+ * queries answered live while a component is drawn.
  */
 
 afterEach(cleanup);
@@ -30,12 +30,11 @@ function dashboard() {
 }
 
 describe('the kinds, layered', () => {
-  it('a kind’s view: the core’s, an addon’s health over it, the user’s title over both — the user says nothing of what it does', () => {
+  it('a kind’s view: the core’s, an addon’s icon over it, the user’s title over both', () => {
     const { w, core, builtin, user } = dashboard();
     core.add('KindView', Pod.id, { title: 'pods', category: 'workloads' });
-    assertResult(builtin.patch('KindView', Pod.id, { title: 'Pods', icon: 'box', health: () => ({ level: 'ok' }) }), 'included');
+    assertResult(builtin.patch('KindView', Pod.id, { title: 'Pods', icon: 'box' }), 'included');
     assertResult(user.patch('KindView', Pod.id, { title: 'My pods' }), 'included');
-    assertResult(user.patch('KindView', Pod.id, { health: () => undefined } as never), 'rejected', ['noRight']);
     assertSays(w, 'KindView', Pod.id, ['title'], 'user');
     assertSays(w, 'KindView', Pod.id, ['icon'], 'kubernetes');
     expect(w.get('KindView', Pod.id)?.spec.category).toBe('workloads');
@@ -56,7 +55,7 @@ describe('the kinds, layered', () => {
 describe('who may add what', () => {
   it('the user adds nothing that does anything, nor moves what does to other kinds — it arranges', () => {
     const { builtin, user } = dashboard();
-    const name = column({ kinds: [Pod], header: 'Node', value: (p) => p.spec?.nodeName, display: (p) => p.spec?.nodeName ?? '' });
+    const name = column({ kinds: [Pod], header: 'Node', sort: '.spec.nodeName' });
     const restart = action({ kinds: [Pod], title: 'Restart', run: () => {} });
     assertResult(builtin.add('Column', 'pods.node', name), 'included');
     assertResult(builtin.add('Action', 'pods.restart', restart), 'included');
@@ -70,7 +69,7 @@ describe('who may add what', () => {
       ['Action', restart],
       ['Fill', section({ render: () => null })],
       ['Wrap', { wraps: 'pods.f', render: () => null }],
-      ['KindView', { title: 'Mine', health: () => undefined }],
+      ['KindView', { title: 'Mine' }],
       ['TableView', { filter: () => false }],
     ] as const)
       assertResult(u.add(kind, `mine.${kind}`, spec), 'rejected', ['noRight']);
@@ -84,14 +83,14 @@ describe('who may add what', () => {
   it('checks the fields’ values: what would only break when drawn is refused when said', () => {
     const { builtin } = dashboard();
     const b = builtin as unknown as { add(kind: string, name: string, spec: object): ReturnType<typeof builtin.add> };
-    assertResult(b.add('Column', 'c1', { target: { kinds: 'apps/v1/Deployment' }, header: 'h', value: () => 1, display: () => '' }), 'rejected', ['invalid']);
-    assertResult(b.add('Column', 'c2', { target: {}, header: 'h', value: 3, display: () => '' }), 'rejected', ['invalid']);
-    assertResult(b.add('Column', 'c3', { target: {}, header: 'h', value: () => 1, display: () => '', width: Number.NaN }), 'rejected', ['invalid']);
+    assertResult(b.add('Column', 'c1', { target: { kinds: 'apps/v1/Deployment' }, header: 'h', sort: 'core.name' }), 'rejected', ['invalid']);
+    assertResult(b.add('Column', 'c2', { target: {}, header: 'h', sort: 'core.name', format: 3 }), 'rejected', ['invalid']);
+    assertResult(b.add('Column', 'c3', { target: {}, header: 'h', sort: 'core.name', width: Number.NaN }), 'rejected', ['invalid']);
     assertResult(b.add('TableView', Pod.id, { widths: { name: 'wide' } }), 'rejected', ['invalid']);
     assertResult(b.add('TableView', Deployment.id, { sort: { column: 'age', descending: 'yes' } }), 'rejected', ['invalid']);
     assertResult(b.add('Action', 'a1', { target: {}, title: 't', run: 'go' }), 'rejected', ['invalid']);
     assertResult(b.add('Page', 'p1', { path: '/p1', title: 'P', regions: [{ name: 'a.b' }] }), 'rejected', ['invalid']);
-    assertResult(b.add('KindView', Pod.id, { title: 'Pods', health: 'ok' }), 'rejected', ['invalid']);
+    assertResult(b.add('KindView', Pod.id, { title: 'Pods', pinned: 'yes' } as never), 'rejected', ['invalid']);
   });
 });
 
@@ -127,33 +126,28 @@ describe('fills chosen by their kinds', () => {
 });
 
 describe('the usual definitions', () => {
-  it('a column and an action, for some kinds: their functions typed by the kind', () => {
-    const node = column({ kinds: [Pod], header: 'Node', value: (pod) => pod.spec?.nodeName, display: (pod) => pod.spec?.nodeName ?? '' });
-    expect(node).toMatchObject({ target: { kinds: ['v1/Pod'] }, header: 'Node' });
-    expect(node.value({ apiVersion: 'v1', kind: 'Pod', spec: { nodeName: 'n1', containers: [] } }, { now: 0, objects: [], kind: Pod })).toBe('n1');
-    const restart = action({ kinds: [Deployment], title: 'Restart', dangerous: true, run: (d) => d.spec?.replicas });
-    expect(restart.target).toEqual({ kinds: ['apps/v1/Deployment'] });
-    // @ts-expect-error a Pod has no replicas
-    column({ kinds: [Pod], header: 'Replicas', value: (pod) => pod.spec?.replicas, display: () => '' });
-    const any = column({ header: 'Name', value: (o) => o.metadata?.name, display: (o) => o.metadata?.name ?? '' });
-    expect(any.target).toEqual({});
-    const either = column({
-      kinds: [Pod, Deployment],
-      header: 'Kind',
-      value: (o) => (o.spec && 'containers' in o.spec ? o.spec.nodeName : o.spec?.replicas),
-      display: (o) => o.kind ?? '',
-    });
-    expect(either.target).toEqual({ kinds: ['v1/Pod', 'apps/v1/Deployment'] });
+  it('a column: its data fields (sorted by, its cell made of), its cell the page’s — of those values only; something to show, always', () => {
+    const ready = column({ kinds: [Pod], header: 'Ready', sort: 'pods.v1.ready', values: ['pods.v1.ready', 'pods.v1.containers'], format: ([r, all]) => `${r}/${all}` });
+    expect(ready).toMatchObject({ target: { kinds: ['v1/Pod'] }, header: 'Ready' });
+    expect(ready.format?.([1, 2], { now: 0, kind: Pod, say: (() => '') as never })).toBe('1/2');
+    expect([column({ header: 'Name', sort: 'core.name' }).target, takes(column({ kinds: [], header: 'None', sort: 'core.name' }).target, Pod)]).toEqual([{}, false]);
+    const { core } = dashboard();
+    assertResult(core.add('Column', 'empty', column({ header: 'Nothing' })), 'rejected', ['invalid']);
+    assertResult(core.add('Column', 'bad', column({ header: 'Bad', sort: 1 as never })), 'rejected', ['invalid']);
   });
 
-  it('a function typed for some kinds is for those kinds only: said, never left out', () => {
+  it('an action, for some kinds: its functions typed by the kind, for those kinds only', () => {
+    const restart = action({ kinds: [Deployment], title: 'Restart', dangerous: true, run: (d) => d.spec?.replicas });
+    expect(restart.target).toEqual({ kinds: ['apps/v1/Deployment'] });
     // @ts-expect-error typed for Pods, it says it is
-    column<readonly [typeof Pod]>({ header: 'Node', value: (pod) => pod.spec?.nodeName, display: () => '' });
-    // @ts-expect-error the same of an action
     action<readonly [typeof Pod]>({ title: 'Go', run: (pod) => pod.spec?.nodeName });
-    // An empty list: for no kind (not every one).
-    const none = column({ kinds: [], header: 'None', value: () => 1, display: () => '1' });
-    expect([takes(none.target, Pod), takes(column({ header: 'All', value: () => 1, display: () => '1' }).target, Pod)]).toEqual([false, true]);
+  });
+
+  it('a field an addon asks by: data, checked when said', () => {
+    const { core } = dashboard();
+    assertResult(core.add('Field', 'images.tag', { kinds: ['pods.v1'], type: 'string', value: '.spec.containers[0].image' }), 'included');
+    assertResult(core.add('Field', 'images.oom', { type: 'number', value: { cel: 'self.status.containerStatuses.size()' } }), 'included');
+    assertResult(core.add('Field', 'images.bad', { type: 'nonsense', value: '.a' } as never), 'rejected', ['invalid']);
   });
 
   it('a page and its region are slots of their own: a page named as its addon names it, a region’s name with no "." or ":"', () => {
@@ -184,7 +178,7 @@ describe('an addon', () => {
       id: 'images',
       title: 'Images',
       setup(ctx) {
-        ctx.contributor.add('Column', 'images.tag', column({ kinds: [Pod], header: 'Tag', value: () => 'latest', display: () => 'latest' }));
+        ctx.contributor.add('Column', 'images.tag', column({ kinds: [Pod], header: 'Tag', sort: '.spec.containers[0].image' }));
         ctx.contributor.patch('KindView', Pod.id, { icon: 'box' });
       },
     });
@@ -199,34 +193,29 @@ describe('an addon', () => {
   });
 });
 
-describe('a kind’s objects in a component', () => {
-  /** A cluster that only counts what is held. */
-  function fakeCluster() {
-    const held: string[] = [];
-    const view = { kind: Pod, items: signal(new Map()), state: signal('live'), error: signal(null), retry() {} } as unknown as CollectionView;
-    const cluster = {
-      peek: () => view,
-      hold(kind: KindInfo) {
-        held.push(kind.id);
-        return () => held.splice(held.indexOf(kind.id), 1);
-      },
-    } as unknown as Cluster;
-    return { cluster, held };
-  }
+describe('a query in a component', () => {
+  const pod = (name: string) => ({ metadata: { name, namespace: 'a', uid: name } }) as KubeObject;
 
-  it('holds the kind while it is drawn, and lets it go after', () => {
+  it('is answered while it is drawn, and again as what it asks changes', () => {
     const { w } = dashboard();
-    const { cluster, held } = fakeCluster();
-    const Pods = () => h('span', null, useCollection(Pod).state.value);
+    const objects = signal<Record<string, KubeObject[]>>({ 'pods.v1': [pod('x')] });
+    const cluster = { source: memorySource(objects) } as unknown as Cluster;
+    const Pods = () => {
+      const pods = useList({ kind: 'pods.v1', sort: [{ field: 'core.name' }], page: { limit: 5 }, select: ['core.name'] });
+      return h('span', null, `${pods.state}:${pods.items.map((i) => i.values?.['core.name']).join(',')}`);
+    };
     const view = mount(w, h(KubeProvider, { cluster }, h(Pods, null)));
-    expect([view.text(), held]).toEqual(['live', ['v1/Pod']]);
+    expect(view.text()).toBe('live:x');
+    view.act(() => {
+      objects.value = { 'pods.v1': [pod('y'), pod('x')] };
+    });
+    expect(view.text()).toBe('live:x,y');
     view.unmount();
-    expect(held).toEqual([]);
   });
 
   it('says so when no cluster is given', () => {
     const { w } = dashboard();
-    const Pods = () => h('span', null, useCollection(Pod).state.value);
+    const Pods = () => h('span', null, useList({ kind: 'pods.v1', page: { limit: 1 } }).state);
     expect(() => mount(w, h(Pods, null))).toThrow(/no KubeProvider/);
   });
 });

@@ -1,4 +1,5 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import { keyOf } from '@overkube/query';
 import { batch, type ReadonlySignal, type Signal, signal } from '@preact/signals';
 import { ApiError, collectionPath, type Http, type Status } from './http.ts';
 import type { Subscriber, WatchEvent, WatchStream } from './stream.ts';
@@ -46,12 +47,6 @@ export interface FeedSpec {
 /** A feed's key: the same spec, the same key. */
 export function feedKey(spec: FeedSpec): string {
   return JSON.stringify([spec.kind.id, spec.namespace ?? '', spec.name ?? '', spec.labelSelector ?? '', spec.projection ?? '']);
-}
-
-/** The key of an object in its feed: namespace/name, or the name of one of no namespace. */
-export function objectKey(object: { metadata?: { name?: string; namespace?: string } }): string {
-  const { name = '', namespace } = object.metadata ?? {};
-  return namespace ? `${namespace}/${name}` : name;
 }
 
 export interface FeedOptions {
@@ -103,6 +98,8 @@ export class Feed implements Subscriber {
   private controller: AbortController | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private publishing = false;
+  /** A first list's pages coming after its first: not told till it is whole (its first page shown at once, the rest at the end). */
+  private quiet = false;
 
   constructor(spec: FeedSpec, http: Http, stream: WatchStream, options: FeedOptions = {}) {
     this.spec = spec;
@@ -116,7 +113,7 @@ export class Feed implements Subscriber {
     this.options = { pageSize: 500, retryMs: 1000, maxRetryMs: 30_000, pollMs: 30_000, ...options };
   }
 
-  /** The objects, by objectKey: one map, changed in place (read revision first). */
+  /** The objects, by keyOf (namespace/name): one map, changed in place (read revision first). */
   get objects(): ReadonlyMap<string, KubeObject> {
     return this.data;
   }
@@ -126,7 +123,7 @@ export class Feed implements Subscriber {
     return this.revisionSignal;
   }
 
-  /** The objects of one namespace ("": of none), by objectKey: changed in place (read revisionIn first). */
+  /** The objects of one namespace ("": of none), by keyOf (namespace/name): changed in place (read revisionIn first). */
   inNamespace(namespace: string): ReadonlyMap<string, KubeObject> {
     return this.spaces.get(namespace) ?? NONE;
   }
@@ -135,8 +132,14 @@ export class Feed implements Subscriber {
   revisionIn(namespace: string): ReadonlySignal<number> {
     let s = this.spaceRevisions.get(namespace);
     if (!s) {
-      s = signal(0);
-      this.spaceRevisions.set(namespace, s);
+      const spaces = this.spaceRevisions;
+      // Kept while read (or while it has objects): one read no more, of no objects, let go.
+      s = signal(0, {
+        unwatched: () => {
+          if (!this.spaces.has(namespace)) spaces.delete(namespace);
+        },
+      });
+      spaces.set(namespace, s);
     }
     return s;
   }
@@ -206,7 +209,7 @@ export class Feed implements Subscriber {
     const version = event.object.metadata?.resourceVersion;
     if (version) this.version = version;
     if (event.type === 'BOOKMARK') return;
-    const key = objectKey(object);
+    const key = keyOf(object);
     if (event.type === 'DELETED') {
       // One it never had: nothing changed.
       if (!this.remove(key)) return;
@@ -304,6 +307,18 @@ export class Feed implements Subscriber {
    * as it goes; a list again, what there is stays until it is whole.
    */
   private async list(going: () => boolean, signal: AbortSignal): Promise<boolean> {
+    try {
+      return await this.listing(going, signal);
+    } finally {
+      // Whole, given up or failed: what came of it told at once.
+      if (this.quiet) {
+        this.quiet = false;
+        this.publish();
+      }
+    }
+  }
+
+  private async listing(going: () => boolean, signal: AbortSignal): Promise<boolean> {
     const fresh = !this.listed;
     const query = { labelSelector: this.labelSelector, fieldSelector: this.fieldSelector, limit: String(this.options.pageSize) };
     const accept = this.projection === 'metadata' ? METADATA_LIST : undefined;
@@ -318,9 +333,11 @@ export class Feed implements Subscriber {
           if (!going()) return false;
           for (const o of page.items ?? []) {
             if (o.metadata?.managedFields) delete o.metadata.managedFields;
-            if (into === this.data) this.add(objectKey(o), o);
-            else into.set(objectKey(o), o);
+            if (into === this.data) this.add(keyOf(o), o);
+            else into.set(keyOf(o), o);
           }
+          // Its first page told; the rest, once it is whole (not each: whoever reads it reads it all again).
+          if (into === this.data) this.quiet = true;
           next = page.metadata?.continue || undefined;
           version = page.metadata?.resourceVersion ?? '';
         } while (next);
@@ -383,9 +400,9 @@ export class Feed implements Subscriber {
 
   /** The revisions moved once the events at hand are in: the feed's, those of the namespaces changed. */
   private publish(): void {
-    if (this.publishing) return;
+    if (this.publishing || this.quiet) return;
     this.publishing = true;
-    queueMicrotask(() => {
+    nextFrame(() => {
       this.publishing = false;
       const touched = this.touched;
       this.touched = new Set();
@@ -403,3 +420,11 @@ export class Feed implements Subscriber {
 }
 
 const NONE: ReadonlyMap<string, KubeObject> = new Map();
+
+/**
+ * Once the frame being drawn is done (the page's next animation frame;
+ * none — a server, a test: a frame's time): whoever reads the objects reads
+ * them once a frame however many events came, not once an event.
+ */
+const nextFrame: (then: () => void) => void =
+  typeof globalThis.requestAnimationFrame === 'function' ? (then) => void globalThis.requestAnimationFrame(() => then()) : (then) => void setTimeout(then, 16);

@@ -36,8 +36,9 @@ export {
   type SetupResult,
   standingOf,
 } from './addon.ts';
-export type { Cluster, ComponentCluster, Discovery, ObjectChange } from './cluster.ts';
-export { action, column, menuItem, section, tile, wrap } from './helpers.ts';
+export type { Cluster, Discovery, ObjectChange } from './cluster.ts';
+export { type FieldLayer, fieldLayers } from './fields.ts';
+export { action, column, menuItem, type ObjectOfKind, section, tile, wrap } from './helpers.ts';
 export {
   Action,
   type ActionSpec,
@@ -45,11 +46,13 @@ export {
   type AppearanceSpec,
   Category,
   type CategorySpec,
+  type CellProps,
+  type CellValue,
   Column,
   type ColumnContext,
-  type ColumnRenderProps,
   type ColumnSpec,
-  type Health,
+  Field,
+  type FieldSpec,
   KindView,
   type KindViewSpec,
   type KubeKinds,
@@ -70,7 +73,6 @@ export {
   Page,
   type PageProps,
   type PageSpec,
-  PENDING,
   type Region,
   type ResourceContext,
   RIGHTS,

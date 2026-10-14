@@ -1,9 +1,10 @@
-import { ageColumn, type KindInfo, type KubeObject, kinds, nameColumn, type PrinterColumn } from '@overkube/kube-types';
-import { column, defineAddon, KIND_PAGE, type KindViewSpec, type Label, type MenuPage, menuItem, openIn, section, slots } from '@overkube/sdk';
+import { type KindInfo, kinds } from '@overkube/kube-types';
+import { defineAddon, KIND_PAGE, type KindViewSpec, type Label, type MenuPage, menuItem, openIn, section, slots } from '@overkube/sdk';
 import { copyText, Highlight, toYaml } from '@overkube/uikit';
 import { fill } from '@overweave/ui/preact';
 import { signal } from '@preact/signals';
 import { CoreTable, TableEmpty } from './CoreTable.tsx';
+import { addColumns } from './columns.tsx';
 import {
   ConditionChanged,
   ConditionMessage,
@@ -28,8 +29,7 @@ import {
 import { titleOf } from './kinds.ts';
 import { Menu } from './Menu.tsx';
 import { NavSide, NavTab, NavTabMark, NavTabs, Picker, PickerButton, PickerGroups, PickerItem, PickerSearch, type TabsKept, type TabsState } from './Nav.tsx';
-import { KindMissing, NameCell, Overview, PageTable, Welcome } from './pages.tsx';
-import { PRINTED } from './printed.ts';
+import { KindMissing, Overview, PageTable, Welcome } from './pages.tsx';
 import { Actions, ResourceMissing, ResourceTitle, ResourceView, YamlSection } from './ResourceView.tsx';
 import { Toasts } from './Toasts.tsx';
 import { T } from './texts.ts';
@@ -42,7 +42,7 @@ import { T } from './texts.ts';
  *              a kind's page (/k/<kind>: page.kind) — its table among what is on it; a resource opened over any page (resource.view, the last in its slot: another's for a kind
  *              takes its place)
  *   tables     a kind's table, wherever drawn (kind.table: the last in its slot)
- *   columns    every kind's: its objects' names (a link to each), namespaces, ages
+ *   columns    every kind's: its objects' names (a link to each), namespaces, ages; the usual kinds' own; a CRD's (columns.tsx)
  *   objects    their YAML, as the last section
  *   navigation as tabs across the top (each one the nav.tabs.tab slot's: its title in nav.tabs.tab.content), or the
  *              same tabs down the side in a rail — collapsed, peeking, pinned (NavView: the user's to switch)
@@ -102,13 +102,6 @@ const CATEGORIES: [string, Label][] = [
 function slotNames(tree: object): string[] {
   return Object.values(tree).flatMap((v) => (v && typeof v === 'object' ? [...(typeof v.name === 'string' ? [v.name] : []), ...slotNames(v)] : []));
 }
-
-/** A column's name as kubectl heads it, for a definition's name: "Port(s)" port-s, "Nominated Node" nominated-node. */
-const slug = (header: string) =>
-  header
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
 
 export default defineAddon({
   id: 'core',
@@ -189,43 +182,8 @@ export default defineAddon({
 
     // Defaults that yield: another's add of one takes its place.
     const fallback = { fallback: true };
-    // The built-in kinds' own, as kubectl has them: core.<kind>.<column> (core.v1/Pod.restarts), in its order around the core's own (those
-    // before its age, after its name and namespace; those after, after the age) — those of -o wide hidden. Their names are the core's
-    // (a kind's own Name — "(default)" after one — drawn by it); their ages too, but for those with none (a time made instead).
-    /** The kinds' own Name (kubectl's: its object's name marked so). */
-    const names = new Map<string, PrinterColumn<KubeObject>>();
-    /** The kinds whose Name kubectl shows only with -o wide (Events): hidden there. */
-    const wide = new Set<string>();
-    const printed = new Set<string>();
-    const aged = new Set<string>();
-    for (const [kind, columns] of PRINTED) {
-      printed.add(kind.id);
-      let after = 100;
-      for (const [i, p] of columns.entries()) {
-        if (p.format === 'name' && p.name === 'Name') {
-          if (p !== nameColumn) names.set(kind.id, p);
-          if (p.priority) wide.add(kind.id);
-        } else if (p === ageColumn) {
-          aged.add(kind.id);
-          after = 910;
-        } else {
-          const spec = column({ kinds: [kind], header: p.name, order: after + i * 10, hidden: !!p.priority, value: p.value, display: p.display });
-          c.add('Column', `core.${kind.id}.${slug(p.name)}`, spec, fallback);
-        }
-      }
-    }
-    // Every kind's: its objects' names (a link to each), namespaces (where it has them), ages — as kubectl prints them.
-    const name = (k: KindInfo | undefined) => names.get(k?.id ?? '') ?? nameColumn;
-    const named = { header: T.columns.name, order: 0, hidden: (k: KindInfo) => wide.has(k.id), render: NameCell };
-    c.add('Column', 'core.name', column({ ...named, value: (o, x) => name(x.kind).value(o, x), display: (o, x) => name(x.kind).display(o, x) }), fallback);
-    c.add(
-      'Column',
-      'core.namespace',
-      column({ header: T.columns.namespace, order: 10, when: (k) => k.namespaced, value: (o) => o.metadata?.namespace, display: (o) => o.metadata?.namespace ?? '' }),
-      fallback,
-    );
-    const age = { header: T.columns.age, order: 900, width: 90, when: (k: KindInfo) => aged.has(k.id) || !printed.has(k.id) };
-    c.add('Column', 'core.age', column({ ...age, value: ageColumn.value, display: ageColumn.display }), fallback);
+    // The columns: every kind's (name, namespace, age), the usual kinds' own; a CRD's, as it says them (drawn by its tables).
+    addColumns(c);
     c.add('Fill', 'core.resource.view.yaml', section({ title: 'YAML', order: 1000, render: YamlSection }));
 
     for (const [i, [name, title]] of CATEGORIES.entries()) c.add('Category', name, { title, order: i * 10 }, fallback);
@@ -311,7 +269,8 @@ export default defineAddon({
       for (const id of cluster.discovery.kinds.value?.keys() ?? []) {
         if (viewed.has(id)) continue;
         viewed.add(id);
-        c.add('TableView', id, {}, fallback);
+        // Events, as kubectl lists them: the last seen first.
+        c.add('TableView', id, id === core.v1.Event.id ? { sort: { column: `core.${id}.last-seen`, descending: true } } : {}, fallback);
       }
     });
   },

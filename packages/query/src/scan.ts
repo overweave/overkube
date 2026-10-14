@@ -1,5 +1,22 @@
 import { canonical, fnv1a64 } from './hash.ts';
-import type { CountQuery, CountResult, Cursor, FieldError, FieldName, FieldSpec, FieldType, Group, Item, ListQuery, ListResult, QueryError, Sort, Value, Where } from './model.ts';
+import type {
+  CountQuery,
+  CountResult,
+  Cursor,
+  FieldError,
+  FieldName,
+  FieldSpec,
+  FieldType,
+  Group,
+  Item,
+  KindRef,
+  ListQuery,
+  ListResult,
+  QueryError,
+  Sort,
+  Value,
+  Where,
+} from './model.ts';
 import { compilePath, isPath, PathError, PathEvalError } from './path.ts';
 import { byCodePoint, wellFormed } from './text.ts';
 
@@ -17,6 +34,10 @@ import { byCodePoint, wellFormed } from './text.ts';
 
 /** The fields known, by name (a function's object: whatever its kinds' are). */
 export type Fields = ReadonlyMap<FieldName, FieldSpec<never>>;
+
+/** A kind's ref, as fields and queries name it: pods.v1, deployments.v1.apps. */
+export const kindRef = (kind: { readonly group: string; readonly version: string; readonly plural: string }): KindRef =>
+  `${kind.plural}.${kind.version}${kind.group ? `.${kind.group}` : ''}`;
 
 /** An object's key (namespace/name), and its uid. */
 export const keyOf = (object: unknown): string => {
@@ -325,14 +346,14 @@ export function matches(object: unknown, where: Where | undefined, fields: Field
 }
 
 /** Where a row sorts: what it sorts by (a many field: its least, its greatest descending), its key, its uid — each string with its natural key. */
-interface Place {
+export interface Place {
   key: string;
   uid: string;
   by: (Value | undefined)[];
   natural: (string | undefined)[];
 }
 
-interface Row<O> extends Place {
+export interface Row<O> extends Place {
   object: O;
 }
 
@@ -501,6 +522,51 @@ function errorsOf(catalog: Catalog, used: ReadonlySet<FieldName>) {
   };
 }
 
+/** What a window shows of its rows: their keys, uids, objects — or, fields selected, their values. */
+type Shown<O> = Pick<ListResult<O>, 'items'>['items'];
+
+/**
+ * Items as a window gives them: the same item for the same object (as the
+ * watch keeps it: a new object, a new version), the same fields selected,
+ * of the same fields — whoever draws them draws again only what changed.
+ */
+const shownBy = new WeakMap<Catalog, WeakMap<object, Map<string, Item<unknown>>>>();
+
+function itemsOf<O>(rows: readonly Row<O>[], query: ListQuery, fields: Fields, catalog: Catalog, errors: ReturnType<typeof errorsOf>): Shown<O> {
+  const select = query.select?.map((name) => ({ name, get: accessor(catalog, name), many: resolve(fields, name)?.many === true }));
+  const selected = query.select ? query.select.join('\n') : '';
+  let byObject = shownBy.get(catalog);
+  if (!byObject) {
+    byObject = new WeakMap();
+    shownBy.set(catalog, byObject);
+  }
+  return rows.map((r) => {
+    errors.note(r.object);
+    const o = r.object as unknown as object;
+    const kept = typeof o === 'object' && o !== null ? byObject.get(o) : undefined;
+    const had = kept?.get(selected);
+    if (had) return had as Item<O>;
+    const uid = uidOf(r.object);
+    let item: Item<O>;
+    if (!select) item = { key: r.key, uid, object: r.object };
+    else {
+      // Its own keys only (a field named __proto__ one of them).
+      const values: Record<FieldName, Value | readonly Value[] | null> = Object.create(null);
+      for (const s of select) {
+        const cell = s.get?.(r.object) ?? NONE;
+        values[s.name] = isMany(cell) ? (cell.length === 0 ? null : s.many ? cell : cell[0]) : s.many ? [cell] : cell;
+      }
+      item = { key: r.key, uid, values };
+    }
+    if (typeof o === 'object' && o !== null) {
+      const m = kept ?? new Map<string, Item<unknown>>();
+      m.set(selected, item as Item<unknown>);
+      if (!kept) byObject.set(o, m);
+    }
+    return item;
+  });
+}
+
 /** A list query's answer of these objects (checked: checkQuery): its window, how many in all, where the next starts. */
 export function scan<O>(objects: Iterable<O>, query: ListQuery, fields: Fields): Pick<ListResult<O>, 'items' | 'total' | 'next' | 'fieldErrors'> {
   const catalog = catalogOf(fields);
@@ -528,23 +594,67 @@ export function scan<O>(objects: Iterable<O>, query: ListQuery, fields: Fields):
   // A window past the end: nothing to order.
   rows = offset >= left ? [] : first(rows, offset + query.page.limit, (a, b) => order(a, b, sort)).slice(offset);
   const last = rows.at(-1);
-  const select = query.select?.map((name) => ({ name, get: accessor(catalog, name), many: resolve(fields, name)?.many === true }));
   return {
-    items: rows.map((r) => {
-      const uid = uidOf(r.object);
-      if (!select) return { key: r.key, uid, object: r.object };
-      // Its own keys only (a field named __proto__ one of them).
-      const values: Record<FieldName, Value | readonly Value[] | null> = Object.create(null);
-      for (const s of select) {
-        const cell = s.get?.(r.object) ?? NONE;
-        values[s.name] = isMany(cell) ? (cell.length === 0 ? null : s.many ? cell : cell[0]) : s.many ? [cell] : cell;
-      }
-      errors.note(r.object);
-      return { key: r.key, uid, values } satisfies Item<O>;
-    }),
+    items: itemsOf(rows, query, fields, catalog, errors),
     total: { count, exact: true },
     ...(last && offset + rows.length < left ? { next: cursorOf(last, tag) } : {}),
     ...errors.told(),
+  };
+}
+
+/** The objects a list query takes (its window aside), all of them in its order: worked out once, any window of it read after (windowOf). */
+export interface Ordered<O> {
+  readonly rows: readonly Row<O>[];
+  readonly tag: string;
+  /** Its where's and sort's fields that could not be worked out of some objects (a window's selected ones: its own). */
+  readonly fieldErrors?: Readonly<Record<FieldName, FieldError>>;
+}
+
+/** These objects as a list query takes and orders them (checked), every one: what windows of it are read of. */
+export function ordered<O>(objects: Iterable<O>, query: Omit<ListQuery, 'page' | 'select'>, fields: Fields): Ordered<O> {
+  const catalog = catalogOf(fields);
+  const sort = query.sort ?? [];
+  const holds = compile(query.where, catalog);
+  const make = rowMaker<O>(catalog, sort);
+  const errors = errorsOf(catalog, fieldsIn(query.where, new Set(sort.map((x) => x.field))));
+  const rows: Row<O>[] = [];
+  for (const o of objects) {
+    errors.note(o);
+    if (holds(o)) rows.push(make(o));
+  }
+  rows.sort((a, b) => order(a, b, sort));
+  return { rows, tag: cursorTag(query, fields), ...errors.told() };
+}
+
+/** A window of an ordered query (as scan answers it: the same window, the same items). */
+export function windowOf<O>(of: Ordered<O>, query: ListQuery, fields: Fields): Pick<ListResult<O>, 'items' | 'total' | 'next' | 'fieldErrors'> {
+  const catalog = catalogOf(fields);
+  const sort = query.sort ?? [];
+  let from = query.page.offset ?? 0;
+  if (query.page.after !== undefined) {
+    const after = fromCursor(query.page.after, of.tag, sort.length);
+    if (!after) throw new Error('not a cursor of this query (checkQuery says so)');
+    // The first past it (rows ordered: by halves).
+    let lo = 0;
+    let hi = of.rows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (order(of.rows[mid], after, sort) > 0) hi = mid;
+      else lo = mid + 1;
+    }
+    from = lo;
+  }
+  const rows = of.rows.slice(from, from + query.page.limit);
+  const errors = errorsOf(catalog, new Set(query.select ?? []));
+  const items = itemsOf(rows, query, fields, catalog, errors);
+  const own = errors.told().fieldErrors;
+  const told = of.fieldErrors || own ? { fieldErrors: { ...of.fieldErrors, ...own } } : {};
+  const last = rows.at(-1);
+  return {
+    items,
+    total: { count: of.rows.length, exact: true },
+    ...(last && from + rows.length < of.rows.length ? { next: cursorOf(last, of.tag) } : {}),
+    ...told,
   };
 }
 

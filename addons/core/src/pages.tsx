@@ -1,9 +1,8 @@
-import type { KindInfo, KubeObject } from '@overkube/kube-types';
-import { closeIn, openedIn, openIn, type PageProps, slots } from '@overkube/sdk';
-import { KindTable, useCluster, useCollection, usePage, useSay } from '@overkube/sdk/preact';
+import type { KindInfo } from '@overkube/kube-types';
+import { kindRef, openedIn, type PageProps, slots } from '@overkube/sdk';
+import { KindTable, useCluster, useCount, usePage, useSay } from '@overkube/sdk/preact';
 import { Button, Notice } from '@overkube/uikit';
 import { useSlotView } from '@overweave/ui/preact';
-import { useComputed } from '@preact/signals';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { type NavEntry, useNav } from './nav.ts';
 import { T } from './texts.ts';
@@ -57,8 +56,8 @@ const HOLD_MS = 200;
  * one's carried over.
  */
 function Held({ next, opening }: { next: KindInfo; opening: boolean }) {
-  // Held from now on (its objects asked for while the last kind is still shown).
-  const state = useCollection(next).state.value;
+  // Asked for from now on (while the last kind is still shown): how many there are, once there.
+  const state = useCount({ kind: kindRef(next) }).state;
   // This going to the next kind (a new one each time it changes: one gone to again waits anew), and whether it ran out.
   const going = useMemo(() => ({ to: next.id }), [next.id]);
   const [late, setLate] = useState<object | null>(null);
@@ -80,13 +79,6 @@ function Held({ next, opening }: { next: KindInfo; opening: boolean }) {
       <KindTable key={kind.id} kind={kind} />
     </Waited.Provider>
   );
-}
-
-/** An object's name, as a link opening it over the page it is on (drawn again when the page goes elsewhere, not as things open over it). */
-export function NameCell({ object, kind, display }: { object: KubeObject; kind: Parameters<typeof openIn>[1]; display: string }) {
-  const page = usePage();
-  const here = useComputed(() => closeIn(page.path.value)).value;
-  return <a href={page.href(openIn(here, kind, object))}>{display}</a>;
 }
 
 /** The start (core.page.overview): the first pinned kind's page — unless another's is on it too (the core's welcome among them): then it is a page of its own, and this nothing. */

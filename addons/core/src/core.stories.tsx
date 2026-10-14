@@ -1,5 +1,5 @@
 import { kinds } from '@overkube/kube-types';
-import { column, defineAddon, PENDING } from '@overkube/sdk';
+import { column, defineAddon } from '@overkube/sdk';
 import { KubeStory, make } from '@overkube/storybook/preact';
 import core from './index.tsx';
 
@@ -77,18 +77,16 @@ export const Light = () => <KubeStory addons={[core]} path="/k/pods.v1" cluster=
 /** The table while its rows are on their way: as it will be, its rows waiting. */
 export const Loading = () => <KubeStory addons={[core]} path="/k/pods.v1" cluster={(c) => c.state(Pod, 'loading')} />;
 
-/** An addon's column whose values come later (metrics): those not there yet wait in their cells. */
-const metrics = defineAddon({
-  id: 'metrics',
-  title: 'Metrics',
-  setup: ({ contributor }) =>
-    void contributor.add(
-      'Column',
-      'metrics.cpu',
-      column({ kinds: [Pod], header: 'CPU', order: 20, value: (p) => (p.metadata?.name === 'db-0' ? PENDING : 12), display: () => '12m' }),
-    ),
+/** An addon's own field and column: a pod's first image, its tag drawn as a badge. */
+const images = defineAddon({
+  id: 'images',
+  title: 'Images',
+  setup: ({ contributor }) => {
+    contributor.add('Field', 'images.image', { kinds: ['pods.v1'], type: 'string', value: '.spec.containers[0].image' });
+    contributor.add('Column', 'images.tag', column({ kinds: [Pod], header: 'Tag', order: 20, sort: 'images.image', format: ([image]) => String(image ?? '').split(':')[1] ?? '' }));
+  },
 });
-export const PendingCells = () => <KubeStory addons={[core, metrics]} path="/k/pods.v1" cluster={shop} />;
+export const AnAddonsColumn = () => <KubeStory addons={[core, images]} path="/k/pods.v1" cluster={shop} />;
 
 /** An addon's theme, chosen by the user: the same page in its colours. */
 const nord = defineAddon({

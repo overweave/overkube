@@ -5,12 +5,11 @@
  * actions, status, data, display, layout, forms, navigation, overlays.
  */
 export { Button } from './actions/Button';
-export { Age, age } from './data/Age';
 export { Chip, Chips, type ChipsLabels, type ChipsProps } from './data/Chips';
 export { Code } from './data/Code';
 export { KeyValue } from './data/KeyValue';
 export { type Related, type RelationGroup, Relations, type RelationsLabels } from './data/Relations';
-export { Table, type TableColumn, type TableProps, type TableSelection } from './data/Table';
+export { Table, type TableColumn, type TableProps, type TableSort } from './data/Table';
 export { Highlight } from './display/Highlight';
 export { ICONS, Icon, type IconData, registerIcons } from './display/Icon';
 export { Kbd, keyName, onMac } from './display/Kbd';

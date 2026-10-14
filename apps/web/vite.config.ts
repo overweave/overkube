@@ -18,11 +18,15 @@ export default defineConfig({
   optimizeDeps: {
     exclude: [
       '@overkube/addon-core',
-      '@overkube/client',
+      '@overkube/cel',
+      '@overkube/connector',
       '@overkube/gateway',
+      '@overkube/kube-fields',
       '@overkube/kube-types',
+      '@overkube/query',
       '@overkube/sdk',
       '@overkube/shell',
+      '@overkube/source',
       '@overkube/uikit',
       '@overweave/core',
       '@overweave/ui',

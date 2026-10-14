@@ -2,7 +2,7 @@
 const md = (name: string, extra: Record<string, unknown> = {}) => ({ name, namespace: 'default', uid: name, ...extra });
 const cs = (name: string, state: unknown, o: Record<string, unknown> = {}) => ({ name, image: 'x', imageID: '', ready: false, restartCount: 0, state, ...o });
 const run = { running: { startedAt: '2026-01-01T00:00:00Z' } };
-/** Pods of each kind of status kubectl prints (from the CEL research): kube-types' podSummary their reference. */
+/** Pods of each kind of status kubectl prints (from the CEL research): printPod's port their reference (pods.reference.test-helper.ts). */
 export const samples: ({ metadata: { name: string } } & Record<string, unknown>)[] = [
   {
     metadata: md('running'),

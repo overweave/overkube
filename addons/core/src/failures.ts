@@ -36,3 +36,14 @@ export function useFailures(): Failed {
     [page],
   );
 }
+
+/** A field (by name) as its failures are told by: one object a name, so each is told once while it is as it is. */
+const fields = new Map<string, object>();
+export const fieldOf = (name: string): object => {
+  let f = fields.get(name);
+  if (!f) {
+    f = { name };
+    fields.set(name, f);
+  }
+  return f;
+};

@@ -34,7 +34,7 @@ function setup(options: { safe?: boolean; log?: (message: string) => void } = {}
 }
 
 const named = (id: string, layer: Addon['layer'], setup: Addon['setup'], more: Partial<Addon> = {}) => defineAddon({ id, title: id, layer, setup, ...more });
-const col = (header: string) => column({ header, value: () => 1, display: () => '1' });
+const col = (header: string) => column({ header, sort: 'core.name' });
 
 describe('the host', () => {
   it('runs each addon as a contributor at its layer; what it said goes when it stops', () => {
@@ -136,7 +136,7 @@ describe('the host', () => {
     host.failed({ kind: 'Fill', name: 'broken.f' }, 'render', new Error('drawn wrong'));
     expect(host.status('broken')).toMatchObject({ state: 'degraded', errors: 1, error: 'drawn wrong' });
     expect(host.status('core')?.state).toBe('running');
-    expect(host.ownerOf('Column', 'core.name', 'value')).toBe('core');
+    expect(host.ownerOf('Column', 'core.name', 'sort')).toBe('core');
   });
 
   it('keeps what a callback of an addon throws its own; after it stops, only says so — the new run untouched', () => {

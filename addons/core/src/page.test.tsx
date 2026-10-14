@@ -1,26 +1,10 @@
 import { kinds } from '@overkube/kube-types';
-import {
-  action,
-  type ColumnRenderProps,
-  column,
-  defineAddon,
-  forKinds,
-  menuItem,
-  type NavTabProps,
-  type PageProps,
-  PENDING,
-  type ResourceProps,
-  section,
-  slots,
-  t,
-  wrap,
-} from '@overkube/sdk';
+import { action, type CellProps, column, defineAddon, forKinds, menuItem, type NavTabProps, type PageProps, type ResourceProps, section, slots, t, wrap } from '@overkube/sdk';
 import { KindTable, usePageProps } from '@overkube/sdk/preact';
 import { cleanup, kubeWorld, make } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { LEAVE_MS, PEEK_MS, TabButton } from '@overkube/uikit';
 import { fill, slotElement } from '@overweave/ui/preact';
-import { signal } from '@preact/signals';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import core from './index.tsx';
 
@@ -35,7 +19,6 @@ import core from './index.tsx';
 afterEach(cleanup);
 
 const { Pod, Namespace, Node } = kinds.core.v1;
-const { StorageClass } = kinds.storage.v1;
 const { Deployment } = kinds.apps.v1;
 
 /** A world with the core and some pods. */
@@ -61,9 +44,9 @@ describe('a kind’s table', () => {
         contributor.add(
           'Wrap',
           'more.web',
-          wrap<ColumnRenderProps>('core.name', {
+          wrap<CellProps>('core.name', {
             kinds: [Pod],
-            when: ({ object }) => object.metadata?.name === 'web',
+            when: ({ values }) => values[0] === 'web',
             render: ({ children }) => <>! {children}</>,
           }),
         );
@@ -135,8 +118,8 @@ describe('a kind’s table', () => {
           column({
             kinds: [Pod],
             header: 'C',
-            value: () => 1,
-            display: () => {
+            sort: 'core.name',
+            format: () => {
               drawn++;
               return 'c';
             },
@@ -152,14 +135,14 @@ describe('a kind’s table', () => {
     vi.useRealTimers();
   });
 
-  it('gives a column’s render, and a Wrap of its cell, its display — live as it is', () => {
+  it('gives a column’s format its values and now, and a Wrap of its cell its text — live as it is', () => {
     vi.useFakeTimers({ now: Date.parse('2026-01-01T00:01:00Z') });
     const w = world();
     w.cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop', creationTimestamp: '2026-01-01T00:00:00Z' }, status: { phase: 'Running' } }));
     w.addon(
       addon('looks', ({ contributor }) => {
-        contributor.patch('Column', 'core.age', { render: ({ display }: ColumnRenderProps) => <b>{display}</b> });
-        contributor.add('Wrap', 'looks.status', wrap<ColumnRenderProps>('core.v1/Pod.status', { order: 0, render: ({ display }) => <i>{display.toUpperCase()}</i> }));
+        contributor.patch('Column', 'core.age', { format: ([at], { now }) => <b>{`${Math.round((now - Number(at)) / 1000)}s`}</b> });
+        contributor.add('Wrap', 'looks.status', wrap<CellProps>('core.v1/Pod.status', { order: 0, render: ({ display }) => <i>{display.toUpperCase()}</i> }));
       }),
     );
     const page = renderPage(w, '/k/pods.v1');
@@ -169,7 +152,7 @@ describe('a kind’s table', () => {
     vi.useRealTimers();
   });
 
-  it('tells a live display’s failure once, not as each second works it out again — again once another is in its place and fails', async () => {
+  it('tells a live format’s failure once, not as each second works it out again — again once another is in its place and fails', async () => {
     vi.useFakeTimers({ now: Date.parse('2026-01-01T00:01:00Z'), toFake: ['setInterval', 'clearInterval', 'Date'] });
     const w = world('web');
     let tries = 0;
@@ -177,8 +160,8 @@ describe('a kind’s table', () => {
       column({
         kinds: [Pod],
         header: 'Late',
-        value: () => 1,
-        display: (_o, { now }) => {
+        sort: 'core.name',
+        format: (_values, { now }) => {
           tries++;
           if (now) throw new Error(message);
           return '';
@@ -199,50 +182,13 @@ describe('a kind’s table', () => {
     }
     await expect.poll(() => page.failures.length).toBe(1);
     // Worked out again each second, told once.
-    expect([tries - first, page.failures[0]]).toEqual([3, expect.objectContaining({ definition: expect.objectContaining({ name: 'late.c' }), field: 'display' })]);
+    expect([tries - first, page.failures[0]]).toEqual([3, expect.objectContaining({ definition: expect.objectContaining({ name: 'late.c' }), field: 'format' })]);
     // Fixed, then broken another way: told again.
-    page.act(() => fix({ display: () => 'ok' }));
-    page.act(() => fix({ display: late('second').display }));
+    page.act(() => fix({ format: () => 'ok' }));
+    page.act(() => fix({ format: late('second').format }));
     await expect.poll(() => page.failures.length).toBe(2);
     expect(String(page.failures[1].error)).toContain('second');
     vi.useRealTimers();
-  });
-
-  it('sorts by now as it is, with no cell following the clock (its ages hidden)', () => {
-    vi.useFakeTimers({ now: Date.parse('2030-06-01T00:00:00Z') });
-    const w = world();
-    w.cluster.add(Namespace, make(Namespace, { metadata: { name: 'shop' } }));
-    let seen = 0;
-    const when = column({
-      kinds: [Namespace],
-      header: 'When',
-      value: (_o, { now }) => {
-        seen = now;
-        return now;
-      },
-      display: () => 'when',
-    });
-    w.addon(
-      addon('when', ({ contributor }) => {
-        contributor.add('Column', 'when.c', when);
-        contributor.patch('TableView', Namespace.id, { sort: { column: 'when.c' }, hidden: { 'core.age': true } });
-      }),
-    );
-    renderPage(w, '/k/namespaces.v1');
-    expect(seen).toBe(Date.parse('2030-06-01T00:00:00Z'));
-    vi.useRealTimers();
-  });
-
-  it('marks the default storage class as kubectl does, of all those listed (not only those shown); the name a link either way', () => {
-    const w = world();
-    const marked = { 'storageclass.kubernetes.io/is-default-class': 'true' };
-    w.cluster.add(StorageClass, make(StorageClass, { metadata: { name: 'old', annotations: marked, creationTimestamp: '2026-01-01T00:00:00Z' }, provisioner: 'p' }));
-    w.cluster.add(StorageClass, make(StorageClass, { metadata: { name: 'new', annotations: marked, creationTimestamp: '2026-01-02T00:00:00Z' }, provisioner: 'p' }));
-    const page = renderPage(w, '/k/storageclasses.v1.storage.k8s.io');
-    expect(page.column('Name').sort()).toEqual(['new (default)', 'old']);
-    expect(page.container.querySelector('a[href*="open=storageclasses.v1.storage.k8s.io/new"]')?.textContent).toBe('new (default)');
-    w.addon(addon('only-old', ({ contributor }) => void contributor.patch('TableView', StorageClass.id, { filter: (o) => o.metadata?.name === 'old' })));
-    expect(renderPage(w, '/k/storageclasses.v1.storage.k8s.io').column('Name')).toEqual(['old']);
   });
 
   it('shows an Event’s name only when asked, as kubectl — whoever sets out its table; its columns as kubectl has them', () => {
@@ -255,29 +201,24 @@ describe('a kind’s table', () => {
     expect(page.headers()[0]).toBe('Name');
   });
 
-  it('shows an empty cell as "—", kubectl’s <none> too — its states (<pending>) as they are; a 0 as a 0', () => {
+  it('shows a cell with no value as "—" (its field’s or its format’s), a 0 as a 0', () => {
     const w = world('web');
-    const counted = (n: number | undefined) => column({ kinds: [Pod], header: `N${n}`, value: () => n, display: () => (n === undefined ? '' : String(n)) });
     w.addon(
       addon('n', ({ contributor }) => {
-        contributor.add('Column', 'n.zero', counted(0));
-        contributor.add('Column', 'n.none', counted(undefined));
+        contributor.add('Column', 'n.zero', column({ kinds: [Pod], header: 'Zero', sort: 'core.name', format: () => 0 }));
+        contributor.add('Column', 'n.none', column({ kinds: [Pod], header: 'None', sort: '.spec.nothing' }));
+        contributor.add('Column', 'n.empty', column({ kinds: [Pod], header: 'Empty', sort: 'core.name', format: () => '' }));
       }),
     );
     const page = renderPage(w, '/k/pods.v1');
-    expect([page.column('N0'), page.column('Nundefined')]).toEqual([['0'], ['—']]);
-    const services = world();
-    services.cluster.add(kinds.core.v1.Service, make(kinds.core.v1.Service, { metadata: { name: 'lb', namespace: 'shop' }, spec: { type: 'LoadBalancer' } }));
-    const table = renderPage(services, '/k/services.v1');
-    expect([table.column('External-IP'), table.column('Port(s)')]).toEqual([['<pending>'], ['—']]);
+    expect([page.column('Zero'), page.column('None'), page.column('Empty')]).toEqual([['0'], ['—'], ['—']]);
   });
-
   it('gives the core’s columns as defaults: another’s of the same name takes its place, and gives it back as it goes', () => {
     const w = world('web');
     let result: unknown;
     w.addon(
       addon('restarts', ({ contributor }) => {
-        result = contributor.add('Column', 'core.v1/Pod.restarts', column({ kinds: [Pod], header: 'Restarts!', order: 130, value: () => 0, display: () => 'none' }));
+        result = contributor.add('Column', 'core.v1/Pod.restarts', column({ kinds: [Pod], header: 'Restarts!', order: 130, sort: 'pods.v1.restarts', format: () => 'none' }));
       }),
     );
     const page = renderPage(w, '/k/pods.v1');
@@ -290,16 +231,8 @@ describe('a kind’s table', () => {
     const w = world('web');
     w.addon(
       addon('images', ({ contributor }) => {
-        contributor.add(
-          'Column',
-          'images.node',
-          column({ kinds: [Pod], header: 'Node', order: 20, value: (p) => p.spec?.nodeName ?? 'none', display: (p) => p.spec?.nodeName ?? 'none' }),
-        );
-        contributor.add(
-          'Column',
-          'images.replicas',
-          column({ kinds: [Deployment], header: 'Replicas', value: (d) => d.spec?.replicas, display: (d) => String(d.spec?.replicas ?? '') }),
-        );
+        contributor.add('Column', 'images.node', column({ kinds: [Pod], header: 'Node', order: 20, sort: 'pods.v1.node', format: ([node]) => String(node ?? 'none') }));
+        contributor.add('Column', 'images.replicas', column({ kinds: [Deployment], header: 'Replicas', sort: '.spec.replicas' }));
         contributor.patch('TableView', Pod.id, { columns: ['core.age'], hidden: { 'core.namespace': true } });
       }),
     );
@@ -308,7 +241,66 @@ describe('a kind’s table', () => {
     expect(page.column('Node')).toEqual(['none']);
   });
 
-  it('says what the collection is: loading (and why), failed (with a way to try again), stale (still shown)', () => {
+  it('gives a row’s menu the object whole, as the cluster has it — not only what its row shows', () => {
+    const w = world();
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop' }, spec: { nodeName: 'n1', containers: [] } }));
+    let seen: unknown;
+    const node = menuItem({
+      on: 'resource.context',
+      title: 'Node',
+      when: ({ object }) => {
+        seen = object;
+        return true;
+      },
+      run: () => {},
+    });
+    w.addon(addon('drain', ({ contributor }) => void contributor.add('MenuItem', 'drain.node', node)));
+    const page = renderPage(w, '/k/pods.v1');
+    const row = page.container.querySelector('[role="rowgroup"] [role="row"]') as HTMLElement;
+    page.act(() => void row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })));
+    expect(seen).toMatchObject({ metadata: { name: 'web' }, spec: { nodeName: 'n1' } });
+  });
+
+  it('draws what a format draws apart: one that throws, its column’s failure — the table drawn', async () => {
+    const w = world('web');
+    const Broken = () => {
+      throw new Error('drawn wrong');
+    };
+    w.addon(addon('broken', ({ contributor }) => void contributor.add('Column', 'broken.c', column({ kinds: [Pod], header: 'B', sort: 'core.name', format: () => <Broken /> }))));
+    const page = renderPage(w, '/k/pods.v1');
+    expect(page.column('Name')).toEqual(['web']);
+    await expect.poll(() => page.failures.map((f) => `${f.definition.kind}/${f.definition.name}`)).toContain('Column/broken.c');
+  });
+
+  it('tells a field that cannot be worked out of some objects as that field’s, its cells empty', async () => {
+    const w = world('web');
+    w.addon(
+      addon('odd', ({ contributor }) => {
+        contributor.add('Field', 'odd.n', { kinds: ['pods.v1'], type: 'number', value: { cel: '1 / 0' } });
+        contributor.add('Column', 'odd.c', column({ kinds: [Pod], header: 'Odd', sort: 'odd.n' }));
+      }),
+    );
+    const page = renderPage(w, '/k/pods.v1');
+    expect(page.column('Odd')).toEqual(['—']);
+    await expect.poll(() => page.failures.map((f) => `${f.definition.kind}/${f.definition.name}`)).toContain('Field/odd.n');
+  });
+
+  it('shows when an Event was last seen, a CronJob last ran (their times as ages); Events the last seen first', () => {
+    vi.useFakeTimers({ now: Date.parse('2026-01-01T01:00:00Z') });
+    const w = world();
+    const { Event } = kinds.core.v1;
+    w.cluster.add(Event, make(Event, { metadata: { name: 'a', namespace: 'shop' }, involvedObject: {}, lastTimestamp: '2026-01-01T00:00:00Z' } as never));
+    w.cluster.add(Event, make(Event, { metadata: { name: 'b', namespace: 'shop' }, involvedObject: {}, lastTimestamp: '2026-01-01T00:59:00Z' } as never));
+    w.cluster.add(
+      kinds.batch.v1.CronJob,
+      make(kinds.batch.v1.CronJob, { metadata: { name: 'c', namespace: 'shop' }, status: { lastScheduleTime: '2026-01-01T00:30:00Z' } } as never),
+    );
+    expect(renderPage(w, '/k/events.v1').column('Last Seen')).toEqual(['60s', '60m']);
+    expect(renderPage(w, '/k/cronjobs.v1.batch').column('Last Schedule')).toEqual(['30m']);
+    vi.useRealTimers();
+  });
+
+  it('says what its answer is: loading (and why), refused, stale (still shown)', () => {
     const w = world('web');
     w.cluster.state(Pod, 'loading', { status: 0, code: 'network', message: 'waiting for room on a watch stream' });
     const page = renderPage(w, '/k/pods.v1');
@@ -322,40 +314,11 @@ describe('a kind’s table', () => {
 
   it('tells a column’s failure as its own, once a drawing however many cells, and draws the rest', async () => {
     const w = world('a', 'b', 'c');
-    w.addon(
-      addon('big', ({ contributor }) => void contributor.add('Column', 'big.n', column({ header: 'Big', value: () => ({ n: 1n }), display: () => JSON.stringify({ n: 1n }) }))),
-    );
+    w.addon(addon('big', ({ contributor }) => void contributor.add('Column', 'big.n', column({ header: 'Big', sort: 'core.name', format: () => JSON.stringify({ n: 1n }) }))));
     const page = renderPage(w, '/k/pods.v1');
     expect(page.column('Name').sort()).toEqual(['a', 'b', 'c']);
     await expect.poll(() => page.failures.length).toBe(1);
-    expect(page.failures[0]).toMatchObject({ definition: { kind: 'Column', name: 'big.n' }, field: 'display' });
-  });
-
-  it('draws a render that failed again once its object changes', () => {
-    const w = world('web');
-    w.addon(
-      addon('image', ({ contributor }) => {
-        contributor.add(
-          'Column',
-          'image.c',
-          column({
-            kinds: [Pod],
-            header: 'Image',
-            value: (p) => p.spec?.containers?.[0]?.image,
-            display: (p) => p.spec?.containers?.[0]?.image ?? '',
-            render: ({ value }) => {
-              if (!value) throw new Error('no image yet');
-              return <b>{String(value)}</b>;
-            },
-          }),
-        );
-      }),
-    );
-    const page = renderPage(w, '/k/pods.v1');
-    expect(page.column('Image')).toEqual(['']);
-    const pod = w.cluster.get(Pod, 'web', 'shop');
-    page.act(() => w.cluster.change(Pod, { ...(pod as object), spec: { containers: [{ name: 'a', image: 'nginx' }] } } as never));
-    expect(page.column('Image')).toEqual(['nginx']);
+    expect(page.failures[0]).toMatchObject({ definition: { kind: 'Column', name: 'big.n' }, field: 'format' });
   });
 
   it('says a kind the cluster does not serve, and what discovery cannot have', () => {
@@ -374,10 +337,7 @@ describe('waiting', () => {
     vi.useFakeTimers();
     const w = world();
     w.addon(
-      addon(
-        'images',
-        ({ contributor }) => void contributor.add('Column', 'images.image', column({ kinds: [Pod], header: 'Image', order: 20, value: () => 'nginx', display: () => 'nginx' })),
-      ),
+      addon('images', ({ contributor }) => void contributor.add('Column', 'images.image', column({ kinds: [Pod], header: 'Image', order: 20, sort: '.spec.containers[0].image' }))),
     );
     w.cluster.state(Pod, 'loading');
     const page = renderPage(w, '/k/pods.v1');
@@ -416,30 +376,6 @@ describe('waiting', () => {
     });
     page.act(() => vi.advanceTimersByTime(1000));
     expect([page.column('Name'), page.container.querySelectorAll('[data-skeleton]').length]).toEqual([['web'], 0]);
-  });
-
-  it('shows a cell whose value is not there yet waiting, sorts it last either way, and sorts it again once it comes', () => {
-    const w = world('a', 'b', 'c');
-    const cpu = signal<Record<string, number>>({ a: 30, c: 10 });
-    w.addon(
-      addon('metrics', ({ contributor }) => {
-        contributor.add(
-          'Column',
-          'metrics.cpu',
-          column({ kinds: [Pod], header: 'CPU', value: (p) => cpu.value[p.metadata?.name ?? ''] ?? PENDING, display: (p) => String(cpu.value[p.metadata?.name ?? ''] ?? '') }),
-        );
-        contributor.patch('TableView', Pod.id, { sort: { column: 'metrics.cpu' } });
-      }),
-    );
-    const page = renderPage(w, '/k/pods.v1');
-    expect([page.column('Name'), page.column('CPU')]).toEqual([
-      ['c', 'a', 'b'],
-      ['10', '30', 'Loading'],
-    ]);
-    page.act(() => {
-      cpu.value = { ...cpu.value, b: 1 };
-    });
-    expect(page.column('Name')).toEqual(['b', 'c', 'a']);
   });
 });
 
@@ -517,18 +453,16 @@ describe('putting one’s own in the core’s place', () => {
     expect(deployments.container.querySelector('main')?.textContent?.endsWith('a note')).toBe(true);
   });
 
-  it('shows the objects a KindTable’s own filter throws on, told once as that table’s filter', async () => {
-    const w = world('web', 'db');
-    const odd = (o: { metadata?: { name?: string } }) => {
-      if (o.metadata?.name === 'db') throw new Error('no');
-      return true;
-    };
-    w.addon(addon('pods', ({ contributor }) => void contributor.add('Wrap', 'pods.page', { wraps: 'core.page.kind.table', render: () => <KindTable kind={Pod} filter={odd} /> })));
-    const page = renderPage(w, '/k/pods.v1');
-    expect(page.column('Name').sort()).toEqual(['db', 'web']);
-    await vi.waitFor(() => expect(page.failures.map((f) => `${f.definition.kind}/${f.definition.name}:${f.field}`)).toEqual(['KindTable/v1/Pod:filter']));
+  it('shows the objects a KindTable’s own where takes, the TableView’s with it', () => {
+    const w = world('web', 'db', 'api');
+    w.addon(
+      addon('pods', ({ contributor }) => {
+        contributor.add('Wrap', 'pods.page', { wraps: 'core.page.kind.table', render: () => <KindTable kind={Pod} where={{ field: 'core.name', op: 'ne', value: 'db' }} /> });
+        contributor.patch('TableView', Pod.id, { where: { field: 'core.name', op: 'ne', value: 'api' } });
+      }),
+    );
+    expect(renderPage(w, '/k/pods.v1').column('Name')).toEqual(['web']);
   });
-
   it('lets the user put first what they want in a slot the core declared', () => {
     const w = world();
     w.addon(
@@ -565,8 +499,8 @@ describe('putting one’s own in the core’s place', () => {
     const w = world('web', 'db', 'cache');
     const Two = () => (
       <>
-        <KindTable kind={Pod} title="Web" filter={(o) => o.metadata?.name === 'web'} />
-        <KindTable kind={Pod} title="Others" filter={(o) => o.metadata?.name !== 'web'} />
+        <KindTable kind={Pod} title="Web" where={{ field: 'core.name', op: 'eq', value: 'web' }} />
+        <KindTable kind={Pod} title="Others" where={{ field: 'core.name', op: 'ne', value: 'web' }} />
       </>
     );
     w.addon(addon('pods', ({ contributor }) => void contributor.add('Wrap', 'pods.page', { wraps: 'core.page.kind.table', render: Two })));
@@ -664,14 +598,14 @@ describe('an object', () => {
     w.addon(
       addon(
         'looks',
-        ({ contributor }) => void contributor.add('Wrap', 'looks.node', wrap<ColumnRenderProps>('core.v1/Pod.node', { order: 0, render: ({ display }) => <i>{display}!</i> })),
+        ({ contributor }) => void contributor.add('Wrap', 'looks.node', wrap<CellProps>('core.v1/Pod.node', { order: 0, render: ({ display }) => <i>{display}!</i> })),
       ),
     );
     renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     const summary = document.querySelector('.uk-modal .uk-fields') as HTMLElement;
     const pairs = [...summary.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
-    expect(pairs.map(([k]) => k)).toEqual(['Namespace', 'Ready', 'Status', 'Restarts', 'Age', 'IP', 'Node', 'Nominated Node', 'Readiness Gates']);
-    // kubectl's <none> as nothing ("—").
+    expect(pairs.map(([k]) => k)).toEqual(['Namespace', 'Ready', 'Status', 'Restarts', 'IP', 'Node', 'Age']);
+    // None: nothing ("—").
     expect(Object.fromEntries(pairs)).toMatchObject({ Namespace: 'shop', Status: 'Terminating', Node: 'n1!', IP: '—' });
     expect(document.querySelector('.uk-modal .uk-notice')?.textContent).toBe('Being deleted since 5m ago — waiting for example.com/hold');
   });

@@ -4,7 +4,7 @@
  * - podSummary(self): a pod as kubectl prints it — its reason (its STATUS:
  *   Init:N/M, CrashLoopBackOff, Terminating, Completed…), how many of its
  *   containers are ready of how many (sidecars counted), its restarts — as
- *   kube-types' podSummary works it out (its reference, in the tests).
+ *   kubectl's printPod works it out (its port, the tests' reference: pods.reference.test-helper.ts).
  * A field that calls it is of its version (its tree; those it calls).
  */
 export const LIBRARY: Readonly<Record<string, string>> = {
