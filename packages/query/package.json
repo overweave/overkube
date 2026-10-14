@@ -1,0 +1,22 @@
+{
+  "name": "@overkube/query",
+  "version": "0.1.0",
+  "description": "What overkube asks of a cluster's data, as data: fields, queries, their results \u2014 and kubectl's JSONPath; pure, so the page and a server answer them alike",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "stress": "node --expose-gc --max-old-space-size=7000 stress/scan.stress.ts"
+  }
+}

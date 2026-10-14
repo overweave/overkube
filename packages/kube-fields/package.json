@@ -1,0 +1,28 @@
+{
+  "name": "@overkube/kube-fields",
+  "version": "0.1.0",
+  "description": "The fields every Kubernetes object has to ask by, as data: paths and CEL of the built-in kinds, and those a CRD declares \u2014 the same for the page and a server",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overkube/cel": "0.1.0",
+    "@overkube/query": "0.1.0"
+  },
+  "devDependencies": {
+    "@overkube/kube-types": "0.1.0"
+  }
+}
