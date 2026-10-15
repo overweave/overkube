@@ -298,6 +298,18 @@ describe('Table: column widths', () => {
     expect(resized.at(-1)).toEqual(['name', undefined]);
     expect(template()).toBe('minmax(0, 1fr) 100px minmax(0, 1fr)');
   });
+
+  it('takes widths given anew over those dragged (the user’s, kept and given back — or taken back)', async () => {
+    const { user, getAllByRole, template, rerender } = mount();
+    getAllByRole('separator')[0].focus();
+    await user.keyboard('{ArrowRight}');
+    expect(template().startsWith('116px ')).toBe(true);
+    const given = (width: string | undefined) => COLUMNS.map((c) => (c.id === 'name' ? { ...c, width } : c));
+    rerender(<Table rows={FEW} columns={given('200px')} rowKey={(r) => r.name} />);
+    expect(template()).toBe('200px 100px minmax(0, 1fr)');
+    rerender(<Table rows={FEW} columns={given(undefined)} rowKey={(r) => r.name} />);
+    expect(template()).toBe('minmax(0, 1fr) 100px minmax(0, 1fr)');
+  });
 });
 
 describe('Table: column order', () => {

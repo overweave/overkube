@@ -7,6 +7,7 @@ import { matchPage, matchPath } from './match.ts';
 import { notifications } from './notifications.ts';
 import { hashRouter, memoryRouter, pathOf } from './router.ts';
 import { Shell } from './Shell.tsx';
+import { memoryStore, UserService } from './user.ts';
 
 /*
  * The shell: a path read and gone to (a hash's, one in memory), the Page
@@ -154,6 +155,7 @@ describe('the frame', () => {
       <Shell
         registry={registry}
         cluster={{} as never}
+        user={new UserService({ registry, store: memoryStore() })}
         router={memoryRouter('/items/7')}
         notifications={notifications()}
         onFailure={(d, field) => failures.push(`${d.name}:${field}`)}
@@ -176,7 +178,9 @@ describe('the frame', () => {
     app.add('Page', 'b', { path: '/b' });
     app.add('Fill', 'b', { slot: slots.page('b').name, render: () => <p>at b</p> });
     const router = memoryRouter('/a');
-    const view = render(<Shell registry={registry} cluster={{} as never} router={router} notifications={notifications()} />);
+    const view = render(
+      <Shell registry={registry} cluster={{} as never} user={new UserService({ registry, store: memoryStore() })} router={router} notifications={notifications()} />,
+    );
     // A new tab's click (a modifier): the browser's, not the router's.
     const link = view.container.querySelector('a[href="#/b"]') as HTMLAnchorElement;
     const meta = new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true });
@@ -188,7 +192,9 @@ describe('the frame', () => {
 
   it('says so when no page takes the path, and when no addon draws any page', () => {
     const registry = createRegistry({ kinds: kubeKinds });
-    const view = render(<Shell registry={registry} cluster={{} as never} router={memoryRouter('/x')} notifications={notifications()} />);
+    const view = render(
+      <Shell registry={registry} cluster={{} as never} user={new UserService({ registry, store: memoryStore() })} router={memoryRouter('/x')} notifications={notifications()} />,
+    );
     expect(view.container.textContent).toContain('No addon draws a page');
     act(() => void registry.contributor('app', { priority: 0, rights: ['behaviour'] }).add('Page', 'home', { path: '/' }));
     expect(view.container.textContent).toContain('No page at /x');

@@ -6,7 +6,7 @@ import { slotElement } from '@overweave/ui/preact';
 import { Fragment } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import { builtIn } from './kinds.ts';
-import type { TabsState } from './Nav.tsx';
+import { type TabsState, useTabs } from './Nav.tsx';
 import { type NavEntry, type NavGroup, useNav } from './nav.ts';
 import { T } from './texts.ts';
 
@@ -91,8 +91,7 @@ export function Picker({ close, tabs }: NavPickerProps & { tabs: TabsState }) {
   const [section, setSection] = useState(PINNED);
   // Typed: every section's matches, unless one is chosen among them (typed again: every section's).
   const [narrow, setNarrow] = useState<string | null>(null);
-  const kept = tabs.kept.value;
-  const lists = { pinned: kept.pinned ?? nav.pinned.map((e) => e.key), open: kept.open };
+  const { lists, keep } = useTabs(tabs);
   const typed = query.trim() !== '';
   const sections = useMemo(() => sectionsOf(nav.groups, lists.pinned, query, say.locale, say), [nav.groups, lists.pinned.join('\n'), query, say]);
   const props: NavPickerPartProps = {
@@ -107,7 +106,7 @@ export function Picker({ close, tabs }: NavPickerProps & { tabs: TabsState }) {
     choose: (key) => (typed ? setNarrow(key) : key !== null && setSection(key)),
     pinned: (key) => lists.pinned.includes(key),
     pin: (key, on) => {
-      tabs.kept.value = pinTab(lists, key, on, nav.current?.key);
+      keep(pinTab(lists, key, on, nav.current?.key));
     },
   };
   return (

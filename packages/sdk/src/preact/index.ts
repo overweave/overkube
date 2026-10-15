@@ -4,7 +4,8 @@
  * useGet, useFields), the page
  * (where it is, going elsewhere, telling the user: usePage, usePageProps,
  * useNotify; the resource opened over it: useOpened), a kind's table wherever it is wanted
- * (KindTable: the kind.table slot's), and
+ * (KindTable: the kind.table slot's), the user's changes (UserProvider,
+ * useUser: kept by the page), and
  * fill() typed by the dashboard's slots (overweave's, re-exported with
  * <Slot> and <Wrapped>).
  */
@@ -28,3 +29,4 @@ export {
 } from './page.ts';
 export { useSay } from './say.ts';
 export { KindTable } from './table.ts';
+export { UserProvider, useUser } from './user.ts';

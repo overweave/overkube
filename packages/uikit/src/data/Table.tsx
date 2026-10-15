@@ -304,6 +304,9 @@ export function Table<T>({
     return () => clearTimeout(t);
   }, [leaving.length, leaving[0]?.until]);
 
+  // Widths given anew (the user's, kept and given back; taken back): what was dragged gives way to them.
+  const givenWidths = given.map((c) => `${c.id}:${c.width ?? ''}`).join('\n');
+  useEffect(() => setSized({}), [givenWidths]);
   // Columns as wide as the user dragged them, else as they are given.
   const track = (c: TableColumn<T>) => (sized[c.id] !== undefined ? `${sized[c.id]}px` : (c.width ?? 'minmax(0, 1fr)'));
   const template = columns.map(track).join(' ');

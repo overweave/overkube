@@ -435,15 +435,21 @@ export const MenuItem = defineKind<MenuItemSpec>()('MenuItem', {
   },
 });
 
-/** How the page's navigation is drawn: as tabs across the top, or down the side — there collapsed (marks only) or pinned (wide) at first. One, named 'default'. */
+/** How the page's navigation is drawn: as tabs across the top, or down the side — there collapsed (marks only) or pinned (wide); the tabs pinned, in order (none said: as the KindViews and Pages say). One, named 'default'. */
 export interface NavViewSpec {
   mode?: 'tabs' | 'side';
   side?: 'collapsed' | 'pinned';
+  /** The pinned tabs' keys, in order (a kind's id, a page's path). */
+  pinned?: string[];
 }
 
 export const NavView = defineKind<NavViewSpec>()('NavView', {
-  validate: fields({ mode: [(v) => v === 'tabs' || v === 'side', 'notAMode'], side: [(v) => v === 'collapsed' || v === 'pinned', 'notASide'] }),
-  patchRights: { mode: configure, side: configure },
+  validate: fields({
+    mode: [(v) => v === 'tabs' || v === 'side', 'notAMode'],
+    side: [(v) => v === 'collapsed' || v === 'pinned', 'notASide'],
+    pinned: [texts, 'notKeys'],
+  }),
+  patchRights: { mode: configure, side: configure, pinned: configure },
 });
 
 /**

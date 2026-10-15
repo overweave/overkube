@@ -1,7 +1,7 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import type { Item, ListResult, Where } from '@overkube/query';
 import { type CellValue, type KindTableProps, KindView, kindRef, type ListState, slots, TableView } from '@overkube/sdk';
-import { useCluster, useCount, useList, useMenu, useSay } from '@overkube/sdk/preact';
+import { useCluster, useCount, useList, useMenu, useSay, useUser } from '@overkube/sdk/preact';
 import { EmptyState, Nothing, Notice, Table, type TableColumn, type TableSort } from '@overkube/uikit';
 import { slotElement, useDefinition } from '@overweave/ui/preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -63,8 +63,15 @@ export function CoreTable({ chosen, ...table }: KindTableProps & { chosen: Chose
   const placed = useMemo(() => (one ? columned.placed.filter((c) => c.definition.name !== 'core.namespace') : columned.placed), [columned.placed, one]);
 
   const [range, setRange] = useState({ first: 0, last: FIRST });
+  // The kind's own table (its page's): what the user does to it — a sort, a column's width or place — theirs, kept (its TableView's, patched).
+  // Another's frame's (plain: a workload's pods): for the while it is drawn only — the kind's table not changed from there.
+  const user = useUser();
+  const own = !table.plain;
   const [asked, setAsked] = useState<TableSort>();
-  // A sort by a column there is, that sorts (one by another: none); the user's, else its TableView's, else by name.
+  const setSort = (s: TableSort) => (own ? user.patch('TableView', kind.id, { sort: { column: s.id, descending: s.desc ?? false } }) : setAsked(s));
+  const setWidth = (id: string, width: string | undefined) => user.patch('TableView', kind.id, { widths: { [id]: width === undefined ? undefined : Number.parseFloat(width) } });
+  const setOrder = (ids: string[]) => user.patch('TableView', kind.id, { columns: ids });
+  // A sort by a column there is, that sorts (one by another: none); asked here, else its TableView's (the user's among it), else by name.
   const sorting = (s: TableSort | undefined) => (s && placed.some((c) => c.definition.name === s.id && c.definition.spec.sort) ? s : undefined);
   const sort = sorting(asked) ?? sorting(view.sort && { id: view.sort.column, desc: view.sort.descending }) ?? sorting({ id: 'core.name' });
   const sortBy = placed.find((c) => c.definition.name === sort?.id)?.definition.spec.sort;
@@ -187,7 +194,8 @@ export function CoreTable({ chosen, ...table }: KindTableProps & { chosen: Chose
         {...(count === undefined ? {} : { total: count })}
         onRange={(first, last) => setRange((r) => (r.first === first && r.last === last ? r : { first, last }))}
         sort={sort}
-        onSort={setAsked}
+        onSort={setSort}
+        {...(own ? { onResize: setWidth, onReorder: setOrder } : {})}
         columns={columns}
         rowKey={(item) => item.key}
         plain={table.plain}

@@ -117,3 +117,4 @@ export {
 } from './slots.ts';
 export { forKinds, kindMatcher, takes } from './target.ts';
 export { canonicalLocale, isLabel, isPhrase, type Label, type LabelRef, type Phrase, type PluralForms, t } from './text.ts';
+export type { UserChanges } from './user.ts';

@@ -1,7 +1,7 @@
 import type { KindInfo } from '@overkube/kube-types';
-import { type Addon, type KubeContributor, kindMatcher, kubeOwnKinds, PRIORITY, standingOf, ui } from '@overkube/sdk';
-import { KubeProvider, usePage } from '@overkube/sdk/preact';
-import { Frame, memoryRouter, ShellProvider } from '@overkube/shell';
+import { type Addon, kindMatcher, kubeOwnKinds, PRIORITY, type UserChanges, ui } from '@overkube/sdk';
+import { KubeProvider, UserProvider, usePage } from '@overkube/sdk/preact';
+import { Frame, memoryRouter, memoryStore, ShellProvider, UserService } from '@overkube/shell';
 import { type AddonEnv, addonEnv, addonRun, type FakeCluster, fakeCluster } from '@overkube/testkit';
 import { css } from '@overkube/uikit';
 import { WorldStory } from '@overweave/storybook/preact';
@@ -29,8 +29,8 @@ export interface KubeStoryProps {
   served?: readonly string[];
   /** Kinds the kinds table does not know (a CRD's), served beside. */
   kinds?: readonly KindInfo[];
-  /** The user's own changes, over every addon's: (user) => user.patch('TableView', Pod.id, { hidden: { … } }). */
-  user?: (user: KubeContributor) => void;
+  /** The user's own changes, over every addon's, as the page keeps them: (user) => user.patch('TableView', Pod.id, { hidden: { … } }). */
+  user?: (user: UserChanges) => void;
   /** Dark or light (none: as the Appearance says — the system's, by default). */
   theme?: 'dark' | 'light';
   /** The page's language (none: as the Language says — the browser's, by default): 'pl'. */
@@ -87,6 +87,12 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
     if (router.path.peek() !== path) router.navigate(path);
   }, [path]);
   useEffect(() => () => env.notifications.close(), []);
+  // The user's changes (in memory), made once the world is: what the page below is given asks them of it.
+  const kept = useRef<UserService>();
+  const [changes] = useState<UserChanges>(() => ({
+    patch: (kind, name, change) => (kept.current as UserService).patch(kind, name, change),
+    reset: (...at) => kept.current?.reset(...at),
+  }));
   // Each addon run as the same run (the panel's world is made again only when the addons are others).
   const runs = useRef(new WeakMap<Addon, AddonRun>());
   const run = (a: Addon) => {
@@ -113,7 +119,9 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
         given={(w) => {
           // The fields its addons define, asked by as the page asks by them.
           env.cluster.follow(w.registry as never);
-          if (user) user(w.as('user', standingOf('user')) as unknown as KubeContributor);
+          kept.current = new UserService({ registry: w.registry as never, store: memoryStore() });
+          void kept.current.start();
+          user?.(kept.current);
           // Its look and language, as the story says: over the user's (a contributor of its own: not one patch replacing another).
           const story = theme || locale ? w.as('story', { priority: PRIORITY.user + 1, rights: ['configure'] }) : undefined;
           if (theme) story?.patch('Appearance', 'default', { mode: theme });
@@ -121,10 +129,12 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
         }}
       >
         <KubeProvider cluster={env.cluster}>
-          <ShellProvider router={router} notifications={env.notifications} onFailure={onFailure}>
-            <PathBar />
-            <Frame />
-          </ShellProvider>
+          <UserProvider user={changes}>
+            <ShellProvider router={router} notifications={env.notifications} onFailure={onFailure}>
+              <PathBar />
+              <Frame />
+            </ShellProvider>
+          </UserProvider>
         </KubeProvider>
       </WorldStory>
       {failures.length > 0 && (

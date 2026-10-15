@@ -1,3 +1,4 @@
+import type { UserChanges } from '@overkube/sdk';
 import { hashRouter, notifications, Shell } from '@overkube/shell';
 import { css, Notice } from '@overkube/uikit';
 import type { Registry } from '@overweave/core';
@@ -12,6 +13,8 @@ export interface Page {
   registry: Registry<any>;
   host: AddonHost;
   cluster: ClusterAccess;
+  /** Where the user's changes are made. */
+  user: UserChanges;
   /** The slots over the page (where each is, the empty ones): its overlay open, ctrl+shift+s to close it. */
   debug?: boolean;
 }
@@ -60,6 +63,7 @@ export function mount(element: HTMLElement, page: Page, told = notifications()):
       <Shell
         registry={page.registry}
         cluster={page.cluster.components()}
+        user={page.user}
         router={router}
         notifications={told}
         trace={trace}

@@ -2,6 +2,7 @@ import core from '@overkube/addon-core';
 import { Discovery, Http } from '@overkube/connector';
 import type { KubeObject } from '@overkube/kube-types';
 import { defineAddon, kubeKinds } from '@overkube/sdk';
+import { memoryStore, UserService } from '@overkube/shell';
 import { memorySource } from '@overkube/source';
 import { createRegistry } from '@overweave/core';
 import { signal } from '@preact/signals';
@@ -57,7 +58,7 @@ function page(addons = [core]) {
   for (const a of addons) host.register(a);
   const element = document.createElement('div');
   document.body.append(element);
-  const unmount = mount(element, { registry, host, cluster });
+  const unmount = mount(element, { registry, host, cluster, user: new UserService({ registry, store: memoryStore() }) });
   closing.push(() => {
     unmount();
     host.close();

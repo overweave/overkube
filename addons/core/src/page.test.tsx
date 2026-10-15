@@ -99,6 +99,33 @@ describe('a kind’s table', () => {
     expect(page.container.querySelector('a[href="#/k/pods.v1?open=pods.v1/shop/web"]')?.textContent).toBe('web');
   });
 
+  it('keeps what the user does to it as theirs (its TableView, patched): a sort, a column’s width (back to its own) — a table in another’s frame changing nothing', () => {
+    const w = world();
+    for (const name of ['web-1', 'web-2']) w.cluster.add(Pod, make(Pod, { metadata: { name, namespace: 'shop', labels: { app: 'web' } } }));
+    w.cluster.add(
+      Deployment,
+      make(Deployment, { metadata: { name: 'web', namespace: 'shop' }, spec: { selector: { matchLabels: { app: 'web' } }, template: { metadata: { labels: { app: 'web' } } } } }),
+    );
+    const page = renderPage(w, '/k/pods.v1');
+    const header = (label: string, within: ParentNode = page.container) => within.querySelector(`[role="columnheader"][aria-label="${label}"]`) as HTMLElement;
+    const view = () => w.user.saved().patches.find((p) => p.kind === 'TableView' && p.name === Pod.id)?.fields;
+    page.act(() => (header('Restarts').querySelector('button') as HTMLButtonElement).click());
+    expect([view(), header('Restarts').getAttribute('aria-sort')]).toEqual([{ sort: { column: 'core.v1/Pod.restarts', descending: false } }, 'ascending']);
+    page.act(() => (header('Restarts').querySelector('button') as HTMLButtonElement).click());
+    expect(view()?.sort).toEqual({ column: 'core.v1/Pod.restarts', descending: true });
+    // A column made wider by the keyboard (as a drag), then given back its own width.
+    const edge = header('Name').querySelector('.uk-table-resize') as HTMLElement;
+    page.act(() => void edge.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })));
+    expect(view()?.widths).toEqual({ 'core.name': 48 });
+    page.act(() => void edge.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+    expect(view()?.widths).toBeUndefined();
+    // A deployment's pods (its view's table): sorted there, for the while it is drawn — the pods' table as the user left it.
+    page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
+    const pods = document.querySelector('.uk-modal [data-part="pods"]') as HTMLElement;
+    page.act(() => (header('Name', pods).querySelector('button') as HTMLButtonElement).click());
+    expect([header('Name', pods).getAttribute('aria-sort'), view()?.sort]).toEqual(['ascending', { column: 'core.v1/Pod.restarts', descending: true }]);
+  });
+
   it('sorts by name when its TableView says nothing (Name shown sorted, ascending) — not as they came', () => {
     const w = world('web', 'api');
     w.cluster.add(Pod, make(Pod, { metadata: { name: 'db', namespace: 'base' } }));
@@ -200,7 +227,7 @@ describe('a kind’s table', () => {
     expect(page.headers()).toEqual(['Namespace', 'Last Seen', 'Type', 'Reason', 'Object', 'Message']);
     page.act(() => void w.addon(addon('wide', ({ contributor }) => void contributor.add('TableView', kinds.core.v1.Event.id, { widths: { 'core.v1/Event.message': 400 } }))));
     expect(page.headers()).toEqual(['Namespace', 'Last Seen', 'Type', 'Reason', 'Object', 'Message']);
-    page.act(() => void w.as('user', { priority: 1000, rights: ['configure'] }).patch('TableView', kinds.core.v1.Event.id, { hidden: { 'core.name': false } }));
+    page.act(() => void w.user.patch('TableView', kinds.core.v1.Event.id, { hidden: { 'core.name': false } }));
     expect(page.headers()[0]).toBe('Name');
   });
 
@@ -516,7 +543,7 @@ describe('putting one’s own in the core’s place', () => {
     );
     const labels = (page: ReturnType<typeof renderPage>) => [...page.container.querySelectorAll('nav button[aria-label]')].map((b) => b.getAttribute('aria-label'));
     expect(labels(renderPage(w, '/k/pods.v1'))).toEqual(['All kinds', 'Find']);
-    w.as('user', { priority: 1000, rights: ['configure'] }).patch('Slot', slots.nav.tabs.actions.name, { arrangement: ['more.find'] });
+    w.user.patch('Slot', slots.nav.tabs.actions.name, { arrangement: ['more.find'] });
     expect(labels(renderPage(w, '/k/pods.v1'))).toEqual(['Find', 'All kinds']);
   });
 
@@ -537,7 +564,7 @@ describe('putting one’s own in the core’s place', () => {
 
   it('lets the user hide what the core puts in its slots (they are declared: the arrangement is the user’s)', () => {
     const w = world('web');
-    w.as('user', { priority: 1000, rights: ['configure'] }).patch('Slot', slots.nav.tabs.actions.name, { hidden: { 'core.nav.tabs.picker': true } });
+    w.user.patch('Slot', slots.nav.tabs.actions.name, { hidden: { 'core.nav.tabs.picker': true } });
     expect(renderPage(w, '/k/pods.v1').container.querySelector('button[aria-label="All kinds"]')).toBeNull();
   });
 
@@ -576,7 +603,7 @@ describe('putting one’s own in the core’s place', () => {
         result = contributor.add('TableView', Pod.id, { columns: ['core.age'] });
       }),
     );
-    w.as('user', { priority: 1000, rights: ['configure'] }).patch('TableView', Pod.id, { hidden: { 'core.namespace': true } });
+    w.user.patch('TableView', Pod.id, { hidden: { 'core.namespace': true } });
     expect(result).toMatchObject({ status: 'included' });
     expect(renderPage(w, '/k/pods.v1').headers()).toEqual(['Age', 'Name', 'Ready', 'Status', 'Restarts']);
   });
@@ -748,9 +775,7 @@ describe('an object', () => {
     const summary = [...(document.querySelector('.uk-modal .uk-fields') as HTMLElement).querySelectorAll('dt')].map((dt) => dt.textContent);
     expect([summary[0], summary.includes('IP')]).toEqual(['Status', false]);
     // One of the core's fields hidden as any slot's fill is: the user's patch of the Slot, by its name.
-    page.act(
-      () => void w.as('user', { priority: 1000, rights: ['configure'] }).patch('Slot', slots.resource.view.metadata.name, { hidden: { 'core.resource.view.metadata.uid': true } }),
-    );
+    page.act(() => void w.user.patch('Slot', slots.resource.view.metadata.name, { hidden: { 'core.resource.view.metadata.uid': true } }));
     expect(fields()).toEqual(['Created', 'Team']);
   });
 
@@ -889,10 +914,10 @@ describe('an object’s view', () => {
 
   it('draws no tabs when there is one (the user hid the rest), and none when there are none', () => {
     const w = world('web');
-    for (const tab of ['core.events', 'core.yaml']) w.as('user', { priority: 1000, rights: ['configure'] }).patch('ResourceTab', tab, { hidden: true });
+    for (const tab of ['core.events', 'core.yaml']) w.user.patch('ResourceTab', tab, { hidden: true });
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     expect([tabs().length, shown()]).toEqual([0, 'core.overview']);
-    page.act(() => void w.as('user', { priority: 1000, rights: ['configure'] }).patch('ResourceTab', 'core.overview', { hidden: true }));
+    page.act(() => void w.user.patch('ResourceTab', 'core.overview', { hidden: true }));
     expect([tabs().length, shown()]).toEqual([0, undefined]);
   });
 
@@ -1024,7 +1049,7 @@ describe('the navigation', () => {
 
   /** The start's welcome hidden by the user (what else is on it, as it was). */
   const unwelcome = (w: ReturnType<typeof world>, hidden: Record<string, boolean> = {}) =>
-    w.as('user', { priority: 1000, rights: ['configure'] }).patch('Slot', slots.page('overview').name, { hidden: { 'core.page.overview.welcome': true, ...hidden } });
+    w.user.patch('Slot', slots.page('overview').name, { hidden: { 'core.page.overview.welcome': true, ...hidden } });
 
   it('goes from the start to the first pinned kind once nothing else is on it', () => {
     const w = world();
@@ -1056,7 +1081,7 @@ describe('the navigation', () => {
       }),
     );
     expect(renderPage(w, '/k/pods.v1').links('Kinds')).toContain('Certificates');
-    const user = w.as('user', { priority: 1000, rights: ['configure'] });
+    const user = w.user;
     user.patch('Page', 'cert-manager.certs', { hidden: true });
     user.patch('Page', 'cert-manager.issuers', { hidden: false, pinned: true });
     const links = renderPage(w, '/k/pods.v1').links('Kinds');
@@ -1084,8 +1109,9 @@ describe('the navigation', () => {
     expect(page.links('Kinds').at(-1)).toBe('Events');
   });
 
-  it('has a tab’s menu (a right click, Shift+F10): pin, unpin, close — as the tab is; Shift and a right click: the browser’s', async () => {
-    const page = renderPage(world(), '/k/events.v1');
+  it('has a tab’s menu (a right click, Shift+F10): pin, unpin, close — as the tab is; Shift and a right click: the browser’s; pinned, the user’s (the NavView’s, patched)', async () => {
+    const w = world();
+    const page = renderPage(w, '/k/events.v1');
     const tab = (id: string) => page.container.querySelector(`nav [data-tab="${id}"]`) as HTMLElement;
     const items = () => [...document.querySelectorAll('.uk-menu [role="menuitem"] .uk-menu-label')].map((i) => i.textContent);
     const menu = (id: string, init: MouseEventInit = {}) => {
@@ -1098,6 +1124,7 @@ describe('the navigation', () => {
     expect([document.querySelector('.uk-menu-title')?.textContent, items()]).toEqual(['Events', ['Pin', 'Close']]);
     page.act(() => (document.querySelector('.uk-menu [role="menuitem"]') as HTMLElement).click());
     await vi.waitFor(() => expect(tab('v1/Event').hasAttribute('data-transient')).toBe(false));
+    expect(w.user.saved().patches).toEqual([{ kind: 'NavView', name: 'default', fields: { pinned: expect.arrayContaining(['v1/Pod', 'v1/Event']) } }]);
     page.act(() => void tab('v1/Pod').dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true })));
     expect(items()).toEqual(['Unpin']);
   });
@@ -1332,7 +1359,7 @@ describe('the navigation', () => {
         );
       }),
     );
-    const user = w.as('user', { priority: 1000, rights: ['configure'] });
+    const user = w.user;
     user.patch('NavView', 'default', { mode: 'side' });
     const page = renderPage(w, '/k/nodes.v1');
     const rail = page.container.querySelector('aside.uk-rail') as HTMLElement;
@@ -1343,14 +1370,16 @@ describe('the navigation', () => {
     expect([current.querySelector('.uk-tab-label')?.textContent, current.title, seen.at(-1)]).toEqual(['Nodes', 'Nodes · v1/Node', 'side true']);
     page.act(() => (rail.querySelector('.uk-rail-pin') as HTMLButtonElement).click());
     expect([rail.dataset.state, seen.at(-1)]).toEqual(['pinned', 'side false']);
+    // Pinned by its toggle: the user's (the NavView's side, patched), kept.
+    expect(user.saved().patches).toEqual([{ kind: 'NavView', name: 'default', fields: { mode: 'side', side: 'pinned' } }]);
     const pinned = world();
-    pinned.as('user', { priority: 1000, rights: ['configure'] }).patch('NavView', 'default', { mode: 'side', side: 'pinned' });
+    pinned.user.patch('NavView', 'default', { mode: 'side', side: 'pinned' });
     expect(renderPage(pinned, '/k/nodes.v1').container.querySelector('aside.uk-rail')?.getAttribute('data-state')).toBe('pinned');
   });
 
   it('opens the picker from the side beside the rail (its flyout, its whole height), the rail wide with it; closed by Escape, focus back on the +', () => {
     const w = world();
-    w.as('user', { priority: 1000, rights: ['configure'] }).patch('NavView', 'default', { mode: 'side' });
+    w.user.patch('NavView', 'default', { mode: 'side' });
     const page = renderPage(w, '/k/pods.v1');
     const rail = page.container.querySelector('aside.uk-rail') as HTMLElement;
     const add = rail.querySelector('button[aria-label="All kinds"]') as HTMLButtonElement;
@@ -1370,7 +1399,7 @@ describe('the navigation', () => {
   it('keeps the side rail open while a tab’s menu is, collapsing once it closes', async () => {
     vi.useFakeTimers();
     const w = world();
-    w.as('user', { priority: 1000, rights: ['configure'] }).patch('NavView', 'default', { mode: 'side' });
+    w.user.patch('NavView', 'default', { mode: 'side' });
     const page = renderPage(w, '/k/pods.v1');
     const rail = page.container.querySelector('aside.uk-rail') as HTMLElement;
     const panel = rail.querySelector('.uk-rail-panel') as HTMLElement;
@@ -1395,7 +1424,7 @@ describe('the navigation', () => {
         contributor.add('Fill', 'certs.page', { slot: slots.page('certs').name, render: Certs });
       }),
     );
-    w.as('user', { priority: 1000, rights: ['configure'] }).patch('NavView', 'default', { mode: 'side' });
+    w.user.patch('NavView', 'default', { mode: 'side' });
     const page = renderPage(w, '/certs/expiring');
     expect(page.text()).toContain('certs at /expiring');
     expect(page.container.querySelector('a[href="#/certs"] .uk-tab-label')?.textContent).toBe('Certificates');
@@ -1489,7 +1518,7 @@ describe('how it looks', () => {
   it('takes the theme the user chooses — an addon’s — in the variant asked for; the kit’s own under it', () => {
     const w = world();
     w.addon(addon('nord', ({ contributor }) => void contributor.add('Theme', 'nord', { title: 'Nord', dark: { accent: '#88c0d0' }, light: { accent: '#5e81ac', bg: '#eceff4' } })));
-    const user = w.as('user', { priority: 1000, rights: ['configure'] });
+    const user = w.user;
     const page = renderPage(w, '/k/pods.v1');
     // The kit's own theme: no tokens of its own set (the defaults are the kit's CSS).
     expect(root(page).style.getPropertyValue('--uk-accent')).toBe('');
@@ -1501,14 +1530,13 @@ describe('how it looks', () => {
 
   it('lets the user change one colour of a theme, the others kept', () => {
     const w = world();
-    const user = w.as('user', { priority: 1000, rights: ['configure'] });
+    const user = w.user;
     user.patch('Appearance', 'default', { mode: 'dark' });
     user.patch('Theme', 'default', { dark: { accent: 'rebeccapurple' } });
     const page = renderPage(w, '/k/pods.v1');
     expect(root(page).style.getPropertyValue('--uk-accent')).toBe('rebeccapurple');
-    // A theme is behaviour to add: the user changes one, makes none.
-    // @ts-expect-error adding a Theme is behaviour
-    expect(user.add('Theme', 'mine', { title: 'Mine' }).status).toBe('rejected');
+    // A theme is behaviour to add: the user changes one, makes none — the user's changes are patches only.
+    expect((user as unknown as { add?: unknown }).add).toBeUndefined();
   });
 });
 
@@ -1518,7 +1546,7 @@ describe('a theme, further', () => {
   it('keeps a theme’s corners and fonts in both variants; a patch of one variant keeps the other’s colours', () => {
     const w = world();
     w.addon(addon('square', ({ contributor }) => void contributor.add('Theme', 'square', { title: 'Square', dark: { radius: '0', accent: 'red' } })));
-    const user = w.as('user', { priority: 1000, rights: ['configure'] });
+    const user = w.user;
     user.patch('Appearance', 'default', { theme: 'square', mode: 'light' });
     user.patch('Theme', 'square', { light: { accent: 'blue' } });
     const page = renderPage(w, '/k/pods.v1');
@@ -1566,11 +1594,11 @@ describe('in another language', () => {
     expect(page.headers()[0]).toBe('Name');
     page.act(() => void w.addon(addon('lang-pt', ({ contributor }) => void contributor.add('Messages', 'pt:core', { messages: { 'core.column.name': 'Nome' } }))));
     expect(page.headers()[0]).toBe('Nome');
-    page.act(() => void w.as('user', { priority: 1000, rights: ['configure'] }).patch('Messages', 'pt:core', { messages: { 'core.column.name': 'Nominho' } }));
+    page.act(() => void w.user.patch('Messages', 'pt:core', { messages: { 'core.column.name': 'Nominho' } }));
     expect(page.headers()[0]).toBe('Nominho');
     page.act(() => {
       w.language('en');
-      w.as('user', { priority: 1000, rights: ['configure'] }).patch('Messages', 'en:core', { messages: { 'core.column.age': 'Created' } });
+      w.user.patch('Messages', 'en:core', { messages: { 'core.column.age': 'Created' } });
     });
     expect(page.headers()).toEqual(['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Created']);
   });
@@ -1631,7 +1659,7 @@ describe('in another language', () => {
       }),
     );
     expect(results.map((r) => (r as { status: string }).status)).toEqual(['rejected', 'rejected', 'rejected']);
-    expect(w.as('user', { priority: 1000, rights: ['configure'] }).patch('Language', 'default', { locale: 'en_US' }).status).toBe('rejected');
+    expect(w.user.patch('Language', 'default', { locale: 'en_US' }).status).toBe('rejected');
     expect(() => t('Tag', 'Tag')).toThrow(/label key/);
   });
 });

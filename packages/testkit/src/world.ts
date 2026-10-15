@@ -1,6 +1,6 @@
 import { runAddon } from '@overkube/runtime';
 import { type Addon, type Cluster, type KubeContributor, kubeOwnKinds, standingOf, ui } from '@overkube/sdk';
-import { type Notifications, notifications } from '@overkube/shell';
+import { memoryStore, type Notifications, notifications, UserService } from '@overkube/shell';
 import { type AddonRun, type Run, uiWorld } from '@overweave/testkit';
 import { type Signal, signal } from '@preact/signals';
 import { type FakeCluster, fakeCluster } from './cluster.ts';
@@ -34,6 +34,8 @@ export interface KubeWorld extends KubeWorldBase {
   failures(id: string): readonly unknown[];
   /** A service, while its provider runs. */
   service<T = unknown>(name: string): T | null;
+  /** The user's changes, as the page keeps them (in memory): w.user.patch('TableView', 'v1/Pod', { widths: { 'core.name': 240 } }). */
+  readonly user: UserService;
   /** The page's language, as its user would set it (Language): w.language('pl'). */
   language(locale: string): void;
 }
@@ -124,6 +126,9 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
   const w = uiWorld(ui, ...kubeOwnKinds);
   // The fields its addons define, asked by.
   cluster.follow(w.registry);
+  // The user's changes, kept in memory: nothing kept to read back, so made at once.
+  const user = new UserService({ registry: w.registry as never, store: memoryStore() });
+  void user.start();
   const runs = new Map<string, Run<KubeContributor>>();
   const started = new Map<string, Promise<void>>();
 
@@ -156,8 +161,9 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
     },
     failures: (id: string) => env.failures(id),
     service: <T>(name: string) => (services.peek().get(name)?.value as T | undefined) ?? null,
+    user,
     language(locale: string) {
-      w.as('user', standingOf('user')).patch('Language', 'default', { locale } as never);
+      user.patch('Language', 'default', { locale });
     },
   }) as unknown as KubeWorld;
 }

@@ -1,5 +1,5 @@
 import { type NavTabContext, type NavTabProps, type NavTabsProps, NavView, slots } from '@overkube/sdk';
-import { useMenu, usePage, useSay } from '@overkube/sdk/preact';
+import { useMenu, usePage, useSay, useUser } from '@overkube/sdk/preact';
 import {
   closeFocused,
   closeTab,
@@ -40,20 +40,27 @@ function useView(): { mode: 'tabs' | 'side'; side: 'collapsed' | 'pinned' } {
   return { mode: spec?.mode ?? 'tabs', side: spec?.side ?? 'collapsed' };
 }
 
-/**
- * The tabs the user made: the pinned in their order (none yet: as the
- * KindViews say), those open. Kept while the page runs; the user's layer's
- * (KindView pinned, order), once there is one.
- */
-export interface TabsKept {
-  pinned?: string[];
-  open: string[];
+/** The tabs open (this visit's: as the user opened and closed them), kept while the page runs. */
+export interface TabsState {
+  open: Signal<string[]>;
 }
 
-/** The tabs while the page runs: as the user made them; the side rail pinned or collapsed (none yet: as the NavView says). */
-export interface TabsState {
-  kept: Signal<TabsKept>;
-  side: Signal<'collapsed' | 'pinned' | undefined>;
+/**
+ * The tabs: those pinned as the user pinned them, in their order — the
+ * user's (NavView pinned: kept between visits; none said, as the KindViews
+ * and Pages say) — and those open (this visit's). Kept as they change: the
+ * pinned the user's changes, the open the page's.
+ */
+export function useTabs(state: TabsState): { lists: TabLists; keep(next: TabLists): void } {
+  const nav = useNav();
+  const user = useUser();
+  const said = useDefinition(NavView, 'default')?.spec.pinned;
+  const lists: TabLists = { pinned: said ? [...said] : nav.pinned.map((e) => e.key), open: state.open.value };
+  const keep = (next: TabLists) => {
+    if (next.pinned.join('\n') !== lists.pinned.join('\n')) user.patch('NavView', 'default', { pinned: next.pinned });
+    if (next.open.join('\n') !== state.open.peek().join('\n')) state.open.value = next.open;
+  };
+  return { lists, keep };
 }
 
 /**
@@ -63,7 +70,7 @@ export interface TabsState {
  * there: each tab told so) — drawn where the NavView's mode says.
  */
 export function NavTabs({ tabs: state, placement = 'top', collapsed = false }: { tabs: TabsState; placement?: 'top' | 'side'; collapsed?: boolean }) {
-  const tabs = state.kept;
+  const { lists: made, keep } = useTabs(state);
   const menu = useMenu('nav.tabs.tab.context');
   const nav = useNav();
   const page = usePage();
@@ -71,20 +78,15 @@ export function NavTabs({ tabs: state, placement = 'top', collapsed = false }: {
   const shown = useView().mode === (placement === 'side' ? 'side' : 'tabs');
   // Where they are: the same object while it is (the actions' slot not drawn again for nothing).
   const where = useMemo<NavTabsProps>(() => ({ placement, collapsed }), [placement, collapsed]);
-  const kept = tabs.value;
-  const made: TabLists = { pinned: kept.pinned ?? nav.pinned.map((e) => e.key), open: kept.open };
   // The one the page is at: a tab (open, last, if it is none yet) — kept so once drawn (not while the menu is shown instead).
   const lists = nav.current && shown ? openTab(made, nav.current.key) : made;
   useEffect(() => {
-    if (lists !== made) tabs.value = { ...tabs.peek(), open: lists.open };
+    if (lists !== made) state.open.value = lists.open;
   }, [lists.open.join('\n')]);
   if (!shown) return null;
   // Drawn: those the navigation knows now (one it knows not yet, or no longer — a kind not served — kept, not drawn).
   const entries = new Map(nav.groups.flatMap((g) => g.entries.map((e) => [e.key, e] as const)));
   const known = (keys: readonly string[]) => keys.filter((k) => entries.has(k));
-  const keep = (next: TabLists) => {
-    tabs.value = { pinned: next.pinned, open: next.open };
-  };
   const link =
     (pinned: boolean) =>
     (key: string): TabLink => {
@@ -245,14 +247,15 @@ export function NavSide({ tabs }: { tabs: TabsState }) {
   };
   const sidePicking = useMemo<SidePicking>(() => ({ picking, toggle: () => (picking ? close() : setPicking(true)), anchor }), [picking]);
   if (view.mode !== 'side') return null;
-  const pinned = (tabs.side.value ?? view.side) === 'pinned';
+  const user = useUser();
+  const pinned = view.side === 'pinned';
   return (
     <SidePicker.Provider value={sidePicking}>
       <SideRail
         label={say(T.nav.side.label)}
         pinned={pinned}
         onPin={(on) => {
-          tabs.side.value = on ? 'pinned' : 'collapsed';
+          user.patch('NavView', 'default', { side: on ? 'pinned' : 'collapsed' });
         }}
         labels={{ pin: say(T.nav.side.pin) }}
         hold={held}

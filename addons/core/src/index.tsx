@@ -64,7 +64,7 @@ import { addStorage } from './kinds/storage.tsx';
 import { addWorkloads } from './kinds/workloads.tsx';
 import { titleOf } from './kinds.ts';
 import { Menu } from './Menu.tsx';
-import { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, type TabsKept, type TabsState } from './Nav.tsx';
+import { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, type TabsState } from './Nav.tsx';
 import { type Chosen, KindNamespaces, NamespacePicker } from './namespaces.tsx';
 import { KindMissing, Overview, PageTable, Welcome } from './pages.tsx';
 import { Picker, PickerContent, PickerEmpty, PickerItem, PickerItemTitle, PickerSearch, PickerSection, PickerSectionTitle, PickerSide } from './picker.tsx';
@@ -304,8 +304,8 @@ export default defineAddon({
 
     // The navigation: tabs, or the menu — as the NavView says (one setting, the user's to patch).
     c.add('NavView', 'default', { mode: 'tabs' }, fallback);
-    // The tabs as the user made them (pinned, moved, opened, closed): while the page runs — the user's layer's, once there is one.
-    const tabs: TabsState = { kept: signal<TabsKept>({ open: [] }), side: signal<'collapsed' | 'pinned' | undefined>(undefined) };
+    // The tabs open (opened, closed, moved: this visit's), while the page runs; those pinned, the side rail pinned: the user's (the NavView, patched).
+    const tabs: TabsState = { open: signal<string[]>([]) };
     c.add('Fill', 'core.nav.tabs', { slot: slots.nav.tabs.name, render: () => <NavTabs tabs={tabs} /> });
     // A tab: the core's the last (another's for some kinds draws it whole); in it, its title — others before or after it.
     c.add('Fill', 'core.nav.tabs.tab', fill(slots.nav.tabs.tab, { order: 1000, render: NavTab }));
@@ -382,6 +382,6 @@ export default defineAddon({
 });
 
 export { Menu } from './Menu.tsx';
-export { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, PickerPopover, type TabsKept, type TabsState } from './Nav.tsx';
+export { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, PickerPopover, type TabsState, useTabs } from './Nav.tsx';
 export { currentOf, type Nav, type NavEntry, type NavGroup, navOf, useNav } from './nav.ts';
 export { Picker, PickerContent, PickerEmpty, PickerItem, PickerItemTitle, PickerSearch, PickerSection, PickerSectionTitle, PickerSide } from './picker.tsx';
