@@ -1293,16 +1293,19 @@ describe('an object’s view', () => {
 describe('the navigation', () => {
   it('starts at the start, a tab of its own; shows the pinned as tabs, the one the page is at beside them', () => {
     const page = renderPage(world(), '/');
-    expect([page.path, page.container.querySelector('main')?.textContent]).toEqual(['/', 'Welcome to overkube.']);
+    expect([page.path, [...(page.container.querySelector('main')?.querySelectorAll('.uk-panel-title h2') ?? [])].map((h) => h.textContent)]).toEqual([
+      '/',
+      ['Unhealthy', 'Events', 'Cluster', 'Capacity', 'Nodes', 'Namespaces'],
+    ]);
     expect(page.links('Kinds')).toEqual(['Overview', 'Pods', 'Deployments', 'Services', 'ConfigMaps', 'Nodes', 'Namespaces']);
     page.navigate('/k/events.v1');
     expect(page.links('Kinds').at(-1)).toBe('Events');
     expect(page.container.querySelector('.uk-rail')).toBeNull();
   });
 
-  /** The start's welcome hidden by the user (what else is on it, as it was). */
-  const unwelcome = (w: ReturnType<typeof world>, hidden: Record<string, boolean> = {}) =>
-    w.user.patch('Slot', slots.page('overview').name, { hidden: { 'core.page.overview.welcome': true, ...hidden } });
+  /** The start's dashboard hidden by the user (what else is on it, as it was). */
+  const undashboard = (w: ReturnType<typeof world>, hidden: Record<string, boolean> = {}) =>
+    w.user.patch('Slot', slots.page('overview').name, { hidden: { 'core.page.overview.dashboard': true, ...hidden } });
 
   it('pins as the user said — in their order, then those pinned by default they did not say (one an addon pins later too), not those they unpinned', () => {
     expect([
@@ -1319,17 +1322,17 @@ describe('the navigation', () => {
 
   it('goes from the start to the first pinned kind once nothing else is on it — as the user pinned them, if they did', () => {
     const w = world();
-    unwelcome(w);
+    undashboard(w);
     expect(renderPage(w, '/').path).toBe('/k/pods.v1');
     const mine = world();
-    unwelcome(mine);
+    undashboard(mine);
     mine.user.patch('NavView', 'default', { pinned: ['v1/Node'] });
     expect(renderPage(mine, '/').path).toBe('/k/nodes.v1');
   });
 
   it('stays at the start once another puts something on it: a page of its own', () => {
     const w = world();
-    unwelcome(w);
+    undashboard(w);
     w.addon(addon('overview', ({ contributor }) => void contributor.add('Fill', 'overview.welcome', { slot: slots.page('overview').name, render: () => <p>welcome</p> })));
     const page = renderPage(w, '/');
     expect([page.path, page.container.querySelector('main')?.textContent]).toEqual(['/', 'welcome']);
@@ -1337,7 +1340,7 @@ describe('the navigation', () => {
 
   it('says a page nothing is on is empty: the start, its redirect hidden by the user', () => {
     const w = world();
-    unwelcome(w, { 'core.page.overview': true });
+    undashboard(w, { 'core.page.overview': true });
     const page = renderPage(w, '/');
     expect([page.path, page.container.querySelector('main')?.textContent]).toEqual(['/', 'Nothing is on this page.']);
   });

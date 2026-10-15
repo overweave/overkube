@@ -81,7 +81,8 @@ describe('mount', () => {
   it('starts at the start: its page, staying there', async () => {
     window.location.hash = '';
     const { element } = page();
-    await expect.poll(() => element.querySelector('main')?.textContent).toBe('Welcome to overkube.');
+    // The dashboard: its panels' heads there.
+    await expect.poll(() => element.querySelector('main .uk-panel-title h2')?.textContent).toBe('Unhealthy');
     expect(window.location.hash).toBe('');
   });
 

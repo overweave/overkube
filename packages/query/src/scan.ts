@@ -658,51 +658,149 @@ export function windowOf<O>(of: Ordered<O>, query: ListQuery, fields: Fields): P
   };
 }
 
-/** A count query's answer of these objects (checked): how many in all; by the groupBy field's values, the most first (ties in the model's order, none last), past top the rest. */
-export function scanCount(objects: Iterable<unknown>, query: CountQuery, fields: Fields): Pick<CountResult, 'total' | 'groups' | 'rest' | 'fieldErrors'> {
+/**
+ * Sums of some fields, each a running sum and what it lost (Neumaier's):
+ * the same however the objects come, small values not lost beside big ones.
+ */
+type Sums = Float64Array;
+const sumsOf = (n: number): Sums => new Float64Array(n * 2);
+function addTo(sums: Sums, i: number, v: number): void {
+  const s = sums[2 * i];
+  const t = s + v;
+  sums[2 * i + 1] += Math.abs(s) >= Math.abs(v) ? s - t + v : v - t + s;
+  sums[2 * i] = t;
+}
+const sumAt = (sums: Sums, i: number) => sums[2 * i] + sums[2 * i + 1];
+
+/**
+ * A count query's answer of these objects (checked): how many in all, its
+ * sum fields summed; by the groupBy field's values, the most first (ties in
+ * the model's order, none last), each its sums; past top the rest, theirs
+ * summed. A sum past a double: not said, its field's error told (overflow).
+ * Fields that could not be worked out: of those counted, every field it
+ * asks by; of those not, the where's only (what the where read of them).
+ */
+export function scanCount(objects: Iterable<unknown>, query: CountQuery, fields: Fields): Pick<CountResult, 'total' | 'sums' | 'groups' | 'rest' | 'restSums' | 'fieldErrors'> {
   const catalog = catalogOf(fields);
   const holds = compile(query.where, catalog);
   const get = query.groupBy === undefined ? undefined : (accessor(catalog, query.groupBy) ?? (() => NONE));
+  const names = query.sum ?? [];
+  const reads = names.map((name) => accessor(catalog, name) ?? (() => NONE));
+  const summing = names.length > 0;
+  // An object's own sums, made once and used again for each (none kept of it).
+  const own = new Float64Array(names.length);
+  const total = summing ? sumsOf(names.length) : undefined;
+  // By value (1 and "1" apart), and those with none: how many, their sums (summing only).
+  const groups = new Map<Value, { count: number; sums?: Sums }>();
+  const none: { count: number; sums?: Sums } = { count: 0, ...(summing ? { sums: sumsOf(names.length) } : {}) };
+  const counted = errorsOf(catalog, fieldsIn(query.where, new Set([...(query.groupBy === undefined ? [] : [query.groupBy]), ...names])));
+  const left = errorsOf(catalog, fieldsIn(query.where, new Set()));
+  const addOwn = (sums: Sums | undefined) => {
+    if (sums) for (let i = 0; i < own.length; i++) addTo(sums, i, own[i]);
+  };
+  const into = (value: Value) => {
+    let g = groups.get(value);
+    if (!g) {
+      g = { count: 0, ...(summing ? { sums: sumsOf(names.length) } : {}) };
+      groups.set(value, g);
+    }
+    g.count++;
+    addOwn(g.sums);
+  };
   let count = 0;
-  // By value (1 and "1" apart), and those with none.
-  const groups = new Map<Value, number>();
-  let none = 0;
-  const errors = errorsOf(catalog, fieldsIn(query.where, new Set(query.groupBy === undefined ? [] : [query.groupBy])));
   for (const o of objects) {
     if (!holds(o)) {
-      errors.note(o);
+      left.note(o);
       continue;
     }
     count++;
-    if (!get) {
-      errors.note(o);
-      continue;
+    if (summing) {
+      // Each field's values (a many field's all of them; declared numbers only, checked).
+      for (let i = 0; i < reads.length; i++) {
+        const cell = reads[i](o);
+        let n = 0;
+        if (isMany(cell)) {
+          for (const v of cell) if (typeof v === 'number') n += v;
+        } else if (typeof cell === 'number') n = cell;
+        own[i] = n;
+      }
+      addOwn(total);
     }
+    counted.note(o);
+    if (!get) continue;
     const cell = get(o);
-    errors.note(o);
-    if (!isMany(cell)) groups.set(cell, (groups.get(cell) ?? 0) + 1);
-    else if (!cell.length) none++;
-    else for (const v of new Set(cell)) groups.set(v, (groups.get(v) ?? 0) + 1);
+    if (!isMany(cell)) into(cell);
+    else if (!cell.length) {
+      none.count++;
+      addOwn(none.sums);
+    } else for (const v of new Set(cell)) into(v);
   }
-  const total = { count, exact: true };
-  if (!get) return { total, ...errors.told() };
-  const all: Group[] = [...groups].map(([value, count]) => ({ value, count }));
-  if (none) all.push({ value: null, count: none });
-  all.sort((a, b) => b.count - a.count || (a.value === null ? 1 : b.value === null ? -1 : compare(a.value, b.value)));
-  if (query.top === undefined || all.length <= query.top) return { total, groups: all, ...errors.told() };
-  return { total, groups: all.slice(0, query.top), rest: all.slice(query.top).reduce((n, g) => n + g.count, 0), ...errors.told() };
+  const overflown = new Set<FieldName>();
+  /** Sums as said: each field's, past a double none (its overflow told). */
+  const said = (sums: Sums | undefined) => {
+    if (!sums) return undefined;
+    const out: Record<FieldName, number> = {};
+    names.forEach((name, i) => {
+      const v = sumAt(sums, i);
+      if (Number.isFinite(v)) out[name] = v;
+      else overflown.add(name);
+    });
+    return out;
+  };
+  const sums = said(total);
+  const group = (value: Value | null, g: { count: number; sums?: Sums }): Group => ({ value, count: g.count, ...(g.sums ? { sums: said(g.sums) } : {}) });
+  let shown: Group[] | undefined;
+  let rest: number | undefined;
+  let restSums: Record<FieldName, number> | undefined;
+  if (get) {
+    const all: [Value | null, { count: number; sums?: Sums }][] = [...groups];
+    if (none.count) all.push([null, none]);
+    all.sort(([va, a], [vb, b]) => b.count - a.count || (va === null ? 1 : vb === null ? -1 : compare(va, vb)));
+    const top = query.top === undefined ? all : all.slice(0, query.top);
+    shown = top.map(([v, g]) => group(v, g));
+    if (top.length < all.length) {
+      const others = all.slice(top.length);
+      rest = others.reduce((n, [, g]) => n + g.count, 0);
+      if (summing) {
+        const r = sumsOf(names.length);
+        for (const [, g] of others) for (let i = 0; i < names.length; i++) addTo(r, i, sumAt(g.sums as Sums, i));
+        restSums = said(r);
+      }
+    }
+  }
+  const errors = merged(counted.told().fieldErrors, left.told().fieldErrors, overflown, count);
+  return {
+    total: { count, exact: true },
+    ...(sums ? { sums } : {}),
+    ...(shown ? { groups: shown } : {}),
+    ...(rest !== undefined ? { rest } : {}),
+    ...(restSums ? { restSums } : {}),
+    ...(errors ? { fieldErrors: errors } : {}),
+  };
+}
+
+/** Fields' errors of those counted and those not, as one (a field's counts added, its first error kept); a sum past a double, its field's (overflow: of all those summed). */
+function merged(a: Record<FieldName, FieldError> | undefined, b: Record<FieldName, FieldError> | undefined, overflown: ReadonlySet<FieldName>, count: number) {
+  const out: Record<FieldName, FieldError> = { ...a };
+  for (const [name, e] of Object.entries(b ?? {})) out[name] = out[name] ? { ...out[name], count: out[name].count + e.count } : e;
+  for (const name of overflown) out[name] ??= { count, code: 'overflow', message: `the sum of ${name} is past a double` };
+  return Object.keys(out).length ? out : undefined;
 }
 
 /**
  * The most a query may ask: a where nested, its parts, in's values in all of
- * it; a window; the fields sorted by, selected; the namespaces of a scope;
+ * it; a window; the fields sorted by, selected, summed; the namespaces of a scope;
  * a name, a path, a string literal (its length).
  */
-export const LIMITS = { depth: 32, nodes: 1000, values: 1000, page: 10_000, sort: 16, select: 64, namespaces: 1000, text: 1024 } as const;
+export const LIMITS = { depth: 32, nodes: 1000, values: 1000, page: 10_000, sort: 16, select: 64, sum: 16, namespaces: 1000, text: 1024 } as const;
 
 const TESTS = new Set(['eq', 'ne', 'in', 'range', 'exists', 'contains']);
 const BOUNDS = ['gt', 'gte', 'lt', 'lte'] as const;
-const PARTS = { get: ['kind', 'namespace', 'name'], list: ['kind', 'scope', 'where', 'sort', 'page', 'select'], count: ['kind', 'scope', 'where', 'groupBy', 'top'] } as const;
+const PARTS = {
+  get: ['kind', 'namespace', 'name'],
+  list: ['kind', 'scope', 'where', 'sort', 'page', 'select'],
+  count: ['kind', 'scope', 'where', 'groupBy', 'top', 'sum'],
+} as const;
 
 /**
  * Why a query of this kind (get, list, count) cannot be answered — not one
@@ -802,6 +900,16 @@ export function checkQuery(query: unknown, fields: Fields, as: 'get' | 'list' | 
 
   if (as === 'count') {
     if (q.top !== undefined && !(Number.isInteger(q.top) && (q.top as number) > 0)) return bad('bad_top', 'top is 1 or more');
+    if (q.sum !== undefined) {
+      if (!Array.isArray(q.sum) || !q.sum.length) return bad('bad_sum', 'a sum is [field, ...]');
+      if (q.sum.length > LIMITS.sum) return bad('too_big', `a sum is of at most ${LIMITS.sum} fields`);
+      for (const name of q.sum) {
+        const no = field(name);
+        if (no) return no;
+        // A number field declared: a path's values are of no one type.
+        if (fields.get(name)?.type !== 'number') return bad('bad_sum', `${name} is not a number field`);
+      }
+    }
     return q.groupBy === undefined ? undefined : field(q.groupBy);
   }
   if (q.sort !== undefined) {

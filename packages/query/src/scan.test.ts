@@ -29,6 +29,7 @@ const fields: Fields = new Map([
     },
   ],
   ['pod.phase', { kinds: ['pods.v1'], type: 'string', value: '.status.phase' }],
+  ['pods.v1.n', { kinds: ['pods.v1'], type: 'number', value: '.status.restarts' }],
   ['.status.phase', { kinds: ['pods.v1'], type: 'string', value: '.status.phase' }],
   ['__proto__', { type: 'string', many: true, value: '.metadata.labels.app' }],
 ] as const);
@@ -142,6 +143,68 @@ describe('a scan', () => {
       rest: 4,
     });
     expect(scanCount(pods, { kind: 'pods.v1' }, fields)).toEqual({ total: { count: 5, exact: true } });
+  });
+
+  it('sums number fields of those counted: in all, in each group (a many field’s object in each of its groups), none of a value: nothing', () => {
+    // web-1 has no restarts: counted, nothing summed of it.
+    expect(scanCount(pods, { kind: 'pods.v1', sum: ['core.restarts'] }, fields)).toEqual({ total: { count: 5, exact: true }, sums: { 'core.restarts': 14 } });
+    expect(scanCount(pods, { kind: 'pods.v1', where: eq('pod.phase', 'Running'), groupBy: 'core.owner.uid', sum: ['core.restarts'] }, fields)).toEqual({
+      total: { count: 2, exact: true },
+      sums: { 'core.restarts': 4 },
+      groups: [{ value: 'rs1', count: 2, sums: { 'core.restarts': 4 } }],
+    });
+    // db-0 is owned twice: its restarts in both its groups; those with no owner apart (by how many, as any group), theirs summed too.
+    expect(scanCount(pods, { kind: 'pods.v1', groupBy: 'core.owner.uid', sum: ['core.restarts'] }, fields).groups).toEqual([
+      { value: 'rs1', count: 2, sums: { 'core.restarts': 4 } },
+      { value: null, count: 2, sums: { 'core.restarts': 9 } },
+      { value: 'ss1', count: 1, sums: { 'core.restarts': 1 } },
+      { value: 'x', count: 1, sums: { 'core.restarts': 1 } },
+    ]);
+  });
+
+  it('sums past top too (the rest’s); the same whatever order the objects come in; past a double, none — its overflow told', () => {
+    expect(scanCount(pods, { kind: 'pods.v1', groupBy: 'core.owner.uid', top: 1, sum: ['core.restarts'] }, fields)).toMatchObject({
+      groups: [{ value: 'rs1', count: 2, sums: { 'core.restarts': 4 } }],
+      rest: 4,
+      restSums: { 'core.restarts': 11 },
+    });
+    const n = new Map([['n', { type: 'number' as const, value: '.n' }]]) as Fields;
+    const of = (...values: number[]) => values.map((v, i) => ({ metadata: { name: `o${i}` }, n: v }));
+    const sum = (objects: unknown[]) => scanCount(objects, { kind: 'x', sum: ['n'] }, n);
+    expect([sum(of(1e16, 1, -1e16)).sums, sum(of(1, 1e16, -1e16)).sums]).toEqual([{ n: 1 }, { n: 1 }]);
+    expect(sum(of(1e308, 1e308))).toEqual({
+      total: { count: 2, exact: true },
+      sums: {},
+      fieldErrors: { n: { count: 2, code: 'overflow', message: 'the sum of n is past a double' } },
+    });
+  });
+
+  it('tells a sum field it could not work out of those counted; of those not, the where’s only — whatever was asked before', () => {
+    const f = new Map([
+      ['ok', { type: 'boolean' as const, value: '.ok' }],
+      [
+        'n',
+        {
+          type: 'number' as const,
+          value: (o: { n: unknown }) => {
+            if (o.n === 'bad') throw new Error('no n');
+            return o.n;
+          },
+        },
+      ],
+    ]) as Fields;
+    const objects = [
+      { metadata: { name: 'a' }, ok: true, n: 3 },
+      { metadata: { name: 'b' }, ok: false, n: 'bad' },
+    ];
+    const some = () => scanCount(objects, { kind: 'x', where: { field: 'ok', op: 'eq', value: true }, sum: ['n'] }, f);
+    const first = some();
+    // Every one summed (b's n worked out, and failed), then the same as before.
+    expect(scanCount(objects, { kind: 'x', sum: ['n'] }, f).fieldErrors).toEqual({ n: { count: 1, code: 'error', message: 'no n' } });
+    expect([first, some()]).toEqual([
+      { total: { count: 1, exact: true }, sums: { n: 3 } },
+      { total: { count: 1, exact: true }, sums: { n: 3 } },
+    ]);
   });
 
   it('works a field out anew when its map is changed: one defined again, one added', () => {
@@ -279,6 +342,17 @@ describe('a query checked', () => {
       'list',
       'too_big',
       `a scope holds at most ${LIMITS.namespaces} namespaces`,
+    ],
+    ['a sum of a string field', { kind: 'pods.v1', sum: ['pod.phase'] }, 'count', 'bad_sum', 'pod.phase is not a number field'],
+    ['a sum of a path', { kind: 'pods.v1', sum: ['.status.restarts'] }, 'count', 'bad_sum', '.status.restarts is not a number field'],
+    ['a sum of nothing', { kind: 'pods.v1', sum: [] }, 'count', 'bad_sum', 'a sum is [field, ...]'],
+    ['a sum of a field of other kinds', { kind: 'nodes.v1', sum: ['pods.v1.n'] }, 'count', 'not_for_kind', 'pods.v1.n is not a field of nodes.v1'],
+    [
+      'a sum of too many fields',
+      { kind: 'pods.v1', sum: Array.from({ length: LIMITS.sum + 1 }, () => 'core.restarts') },
+      'count',
+      'too_big',
+      `a sum is of at most ${LIMITS.sum} fields`,
     ],
     ['a field of other kinds', { kind: 'nodes.v1', groupBy: 'pod.phase' }, 'count', 'not_for_kind', 'pod.phase is not a field of nodes.v1'],
     ['a field of other kinds, named as a path', { kind: 'nodes.v1', groupBy: '.status.phase' }, 'count', 'not_for_kind', '.status.phase is not a field of nodes.v1'],

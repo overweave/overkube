@@ -10,7 +10,10 @@ import { define } from './define.ts';
  * flexVolume, iscsi, rbd, scaleIO, storageos), of every container's env (init and ephemeral ones too),
  * its image pull secrets; its claims (CEL); each container's state (its
  * init containers' first, its ephemeral ones' last) as name|state — Running (ready), NotReady, else its waiting or terminated
- * reason (CrashLoopBackOff, Completed).
+ * reason (CrashLoopBackOff, Completed); its CPU and memory requested and
+ * limited (CEL: the library's podResources — as kubectl describe node
+ * adds them up; summed of a node's pods not done — phase neither Succeeded
+ * nor Failed, as kubectl takes them — what is taken of it).
  */
 const kinds = ['pods.v1'];
 
@@ -51,6 +54,10 @@ export const PODS = define({
     },
   },
   'pods.v1.restarts': { kinds, type: 'number', value: { cel: 'podSummary(self).restarts' } },
+  'pods.v1.cpu-requests': { kinds, type: 'number', unit: 'cores', value: { cel: 'podResources(self).cpuRequests' } },
+  'pods.v1.cpu-limits': { kinds, type: 'number', unit: 'cores', value: { cel: 'podResources(self).cpuLimits' } },
+  'pods.v1.memory-requests': { kinds, type: 'number', unit: 'bytes', value: { cel: 'podResources(self).memoryRequests' } },
+  'pods.v1.memory-limits': { kinds, type: 'number', unit: 'bytes', value: { cel: 'podResources(self).memoryLimits' } },
   'pods.v1.secrets': {
     kinds,
     type: 'string',

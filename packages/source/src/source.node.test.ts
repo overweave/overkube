@@ -173,6 +173,31 @@ describe('what a query is told', () => {
     expect(Object.keys(pods.value.rejected ?? {})).toEqual(['acme.bad']);
   });
 
+  it('counts with fields summed — scanned, not as many as there are: in all and by a field', async () => {
+    const { source, read } = await setup(spread(6));
+    const restarts = read(source.count({ kind: 'pods.v1', groupBy: 'core.namespace', sum: ['pods.v1.restarts'] }));
+    await until(() => restarts.value.state === 'live');
+    const { total, sums, groups } = restarts.value;
+    expect([total?.count, sums, groups?.map((g) => [g.value, g.count, g.sums?.['pods.v1.restarts']])]).toEqual([
+      6,
+      { 'pods.v1.restarts': 10 },
+      [
+        ['a', 2, 3],
+        ['b', 2, 5],
+        ['c', 2, 2],
+      ],
+    ]);
+    const all = read(source.count({ kind: 'pods.v1', sum: ['pods.v1.restarts'] }));
+    await until(() => all.value.state === 'live');
+    expect(all.value.sums).toEqual({ 'pods.v1.restarts': 10 });
+  });
+
+  it('is the same answer for the same query, its parts in any order', async () => {
+    const { source, read } = await setup(spread(3));
+    const one = read(source.count({ kind: 'pods.v1', groupBy: 'core.namespace', top: 2 }));
+    expect(source.count({ top: 2, groupBy: 'core.namespace', kind: 'pods.v1' })).toBe(one);
+  });
+
   it('closing the connector while queries are read throws nothing', async () => {
     const { connector, source, read } = await setup(spread(3));
     const all = read(source.count({ kind: 'pods.v1' }));

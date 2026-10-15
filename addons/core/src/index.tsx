@@ -67,7 +67,8 @@ import { titleOf } from './kinds.ts';
 import { Menu } from './Menu.tsx';
 import { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, type TabsState } from './Nav.tsx';
 import { type Chosen, KindNamespaces, NamespacePicker } from './namespaces.tsx';
-import { KindMissing, Overview, PageTable, Welcome } from './pages.tsx';
+import { addOverview } from './overview.tsx';
+import { KindMissing, Overview, PageTable } from './pages.tsx';
 import { Picker, PickerContent, PickerEmpty, PickerItem, PickerItemTitle, PickerSearch, PickerSection, PickerSectionTitle, PickerSide } from './picker.tsx';
 import { Actions, type Layout, LayoutSwitch, ResourceMissing, ResourceOverview, ResourceTitle, ResourceView, Yaml } from './ResourceView.tsx';
 import { addStatusLooks } from './statuses.tsx';
@@ -79,7 +80,7 @@ import { addTips } from './tips.tsx';
  * The core: everything the page shows that is not another addon's, each a
  * definition another may patch, hide or put its own in place of —
  *
- *   pages      the start (/: page.overview — a word of welcome; that hidden and nothing else there, to the first pinned kind),
+ *   pages      the start (/: page.overview — the dashboard, overview.tsx; that hidden and nothing else there, to the first pinned kind),
  *              a kind's page (/k/<kind>: page.kind) — its table among what is on it; a resource opened over any page (resource.view, the last in its slot: another's for a kind
  *              takes its place)
  *   headers    the page's (its mark and name at header.start); a kind's over its table (kind.header: the last in its
@@ -154,8 +155,6 @@ export default defineAddon({
     // Its pages: the start, a kind's — each empty but for what fills it: the core's, others' before or after it (a Wrap of it in its place).
     c.add('Page', 'overview', { path: '/', title: T.page.overview.title, icon: 'home', pinned: true, order: 0 });
     c.add('Fill', 'core.page.overview', fill(slots.page('overview'), { render: Overview }));
-    // What is on it for now: a word of welcome (hidden by the user: to the first pinned kind, as before).
-    c.add('Fill', 'core.page.overview.welcome', fill(slots.page('overview'), { render: Welcome }));
     c.add('Page', 'kind', { path: KIND_PAGE });
     c.add('Fill', 'core.page.kind.table', fill(slots.page('kind'), { render: PageTable }));
     // Its kind not found (not served, not known yet): why, in the table's place.
@@ -165,6 +164,7 @@ export default defineAddon({
     // The namespaces the tables show (none chosen: all), chosen at its end — kept while the page runs (the user's layer's, once there is one).
     const namespaces: Chosen = signal<readonly string[]>([]);
     c.add('Fill', 'core.header.namespaces', fill(slots.header.end, { render: () => <NamespacePicker chosen={namespaces} /> }));
+    addOverview(c, namespaces);
     // A kind's header over its table: the last in its slot (another's for a kind in its place); its title, its group and version, how many, its columns.
     const header = slots.kind.header;
     c.add('Fill', 'core.kind.header', fill(header, { order: 1000, render: KindHeader }));

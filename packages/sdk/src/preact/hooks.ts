@@ -1,4 +1,15 @@
-import type { CountQuery, CountResult, FieldsResult, GetQuery, GetResult, KindRef, ListQuery, ListResult, Live } from '@overkube/query';
+import {
+  type CountQuery,
+  type CountResult,
+  canonical,
+  type FieldsResult,
+  type GetQuery,
+  type GetResult,
+  type KindRef,
+  type ListQuery,
+  type ListResult,
+  type Live,
+} from '@overkube/query';
 import { type ComponentChildren, createContext, h } from 'preact';
 import { useContext, useMemo } from 'preact/hooks';
 import type { Cluster } from '../cluster.ts';
@@ -27,10 +38,11 @@ export function useCluster(): Cluster {
   return cluster;
 }
 
-/** A query's live answer, read now (the component drawn again as it changes); the same query (as data), the same answer. */
+/** A query's live answer, read now (the component drawn again as it changes); the same query (as data, its parts in any order), the same answer. */
 function useAnswer<Q, T>(query: Q, ask: (cluster: Cluster, query: Q) => Live<T>): T {
   const cluster = useCluster();
-  const key = JSON.stringify(query);
+  // Its parts in any order: the same query.
+  const key = canonical(query);
   const live = useMemo(() => ask(cluster, query), [cluster, key]);
   return live.value;
 }

@@ -235,7 +235,7 @@ export const Field = defineKind<FieldSpec>()('Field', {
   patchRights: { kinds: behaviour, type: behaviour, many: behaviour, unit: behaviour, value: behaviour },
 });
 
-/** How a kind's table is set out. Named by the kind's id. */
+/** How a table is set out: a kind's (named by the kind's id), or one of no one kind (named for itself: core.overview.unhealthy). */
 export interface TableViewSpec {
   /** Columns first in this order (by name); the others after, in theirs. */
   columns?: string[];

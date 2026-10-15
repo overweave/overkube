@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as appearance from './appearance.stories.tsx';
 import * as byKind from './kinds.stories.tsx';
 import * as navigation from './navigation.stories.tsx';
+import * as overview from './overview.stories.tsx';
 import * as page from './page.stories.tsx';
 import * as statuses from './statuses.stories.tsx';
 import * as view from './view.stories.tsx';
@@ -27,6 +28,7 @@ const SAID: [module: Record<string, unknown>, where: string, said: Record<string
     },
   ],
   [navigation, 'body', { Tabs: 'Deployments', SideMenu: 'Deployments' }],
+  [overview, 'body', { InTrouble: 'CrashLoopBackOff', Healthy: 'Every Node is Ready, every workload Available.', WithAddons: 'Flux · in sync' }],
   [statuses, 'body', { Looks: 'CrashLoopBackOff' }],
   [appearance, 'body', { Light: 'web-2', ATheme: 'web-1', InPolish: 'Przestrzeń nazw' }],
   [

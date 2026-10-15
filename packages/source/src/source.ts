@@ -5,6 +5,7 @@ import { type KindInfo, type KubeObject, kinds as known } from '@overkube/kube-t
 import {
   type CountQuery,
   type CountResult,
+  canonical,
   checkQuery,
   type FieldsResult,
   type GetQuery,
@@ -135,8 +136,8 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
 
   /** A query held while read: planned (its feeds held) from when it is first read till it is no longer. */
   function live<T>(ask: Ask, answer: (plan: Plan) => T): Live<T> {
-    // The same query asked again while one is read: that one (one plan, one answer worked out, however many read it).
-    const key = JSON.stringify(ask);
+    // The same query asked again while one is read (its parts in any order): that one (one plan, one answer worked out, however many read it).
+    const key = canonical(ask);
     const had = lives.get(key);
     if (had) return had as Live<T>;
     const plan = signal<Plan>(LOADING);
@@ -294,9 +295,9 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
    */
   function listOf(plan: Plan & { parts: readonly Part[] }, query: ListQuery) {
     const { page, select, ...base } = query;
-    const key = `${idOf(plan.fields)}|${plan.parts.map((p) => `${idOf(p.feed)}${p.only ? `:${[...p.only].join(',')}` : ''}`).join(';')}|${JSON.stringify(base)}`;
+    const key = `${idOf(plan.fields)}|${plan.parts.map((p) => `${idOf(p.feed)}${p.only ? `:${[...p.only].join(',')}` : ''}`).join(';')}|${canonical(base)}`;
     const stamp = plan.parts.map((p) => (p.only ? [...p.only].map((ns) => p.feed.revisionIn(ns).value).join(':') : p.feed.revision.value)).join('.');
-    const asked = JSON.stringify(page);
+    const asked = canonical(page);
     const was = orderings.get(key);
     if (was && was.stamp === stamp) {
       if (!was.ordered && was.page !== asked) was.ordered = ordered(objectsOf(plan.parts), base, plan.fields.fields);
@@ -340,7 +341,7 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
         const status = statusOf(plan);
         if (!plan.parts) return status;
         // How many of all of them: as many as there are (no scan).
-        if (!query.where && query.groupBy === undefined) return { ...status, total: { count: sizeOf(plan.parts), exact: true } };
+        if (!query.where && query.groupBy === undefined && query.sum === undefined) return { ...status, total: { count: sizeOf(plan.parts), exact: true } };
         return { ...status, ...scanCount(objectsOf(plan.parts), query, plan.fields.fields) };
       });
     },

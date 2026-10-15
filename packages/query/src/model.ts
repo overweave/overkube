@@ -163,13 +163,19 @@ export interface ListQuery {
   select?: readonly FieldName[];
 }
 
-/** How many of them, in all and by a field's values (the most first: top of them, the rest in one). */
+/**
+ * How many of them, in all and by a field's values (the most first: top of
+ * them, the rest in one) — and, of them, number fields summed (sum: in all,
+ * and in each group; a many field's values all of them; none, nothing).
+ */
 export interface CountQuery {
   kind: KindRef;
   scope?: Scope;
   where?: Where;
   groupBy?: FieldName;
   top?: number;
+  /** Number fields declared (not paths), summed of those counted. */
+  sum?: readonly FieldName[];
 }
 
 export type Query = GetQuery | ListQuery | CountQuery;
@@ -231,17 +237,21 @@ export interface ListResult<O = unknown> extends Result {
   next?: Cursor;
 }
 
-/** A value of a field and how many have it (null: those with none). */
+/** A value of a field and how many have it (null: those with none); the fields summed of them. */
 export interface Group {
   readonly value: Value | null;
   readonly count: number;
+  readonly sums?: Readonly<Record<FieldName, number>>;
 }
 
 export interface CountResult extends Result {
   total?: Total;
-  /** The most first (a many field: an object in each of its values' groups); past top, the rest: their counts summed (a many field's object there as often as its values are). */
+  /** The fields summed (sum) of all of them counted (one past a double: not here — its overflow in fieldErrors). */
+  sums?: Readonly<Record<FieldName, number>>;
+  /** The most first (a many field: an object in each of its values' groups, its sums in each); past top, the rest: their counts summed, and their sums (a many field's object there as often as its values are). */
   groups?: readonly Group[];
   rest?: number;
+  restSums?: Readonly<Record<FieldName, number>>;
 }
 
 /** A result as it is now, and as it changes: read while wanted (a signal is one). */

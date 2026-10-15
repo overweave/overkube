@@ -5,8 +5,42 @@
  *   Init:N/M, CrashLoopBackOff, Terminating, Completed…), how many of its
  *   containers are ready of how many (sidecars counted), its restarts — as
  *   kubectl's printPod works it out (its port, the tests' reference: pods.reference.test-helper.ts).
+ * - podResources(self): a pod's CPU (cores) and memory (bytes) requested and
+ *   limited, as kubectl describe node adds them up (component-helpers'
+ *   PodRequests, PodLimits): its containers' and its sidecars' (init
+ *   containers that keep running) summed; an init container (not a sidecar)
+ *   with the sidecars before it, the most of them — the more of the two; the
+ *   pod's own (spec.resources) in their place where it says them; its
+ *   overhead added (to a limit only where there is one). Not said: 0. One
+ *   amount that is no quantity (none the API server takes): all four of
+ *   the pod's not worked out (one function of them all).
  * A field that calls it is of its version (its tree; those it calls).
  */
+
+/** A container's (c's) amount of one resource, requested or limited (none: 0.0). */
+const amount = (c: string, of: 'requests' | 'limits', resource: 'cpu' | 'memory') =>
+  `cel.bind(q, ${c}.?resources.?${of}[?"${resource}"], q.hasValue() ? quantity(string(q.value())).asApproximateFloat() : 0.0)`;
+
+/**
+ * A pod's total of one resource, requested or limited, as kubectl adds it
+ * up. Each amount worked out once (each init container's; a sidecar's again,
+ * as one); an init container's place by its name (names are one each in a
+ * pod: an object the API server took — not one made up with two alike).
+ */
+const total = (of: 'requests' | 'limits', resource: 'cpu' | 'memory') => `
+cel.bind(inits, self.?spec.?initContainers.orValue([]),
+cel.bind(names, inits.map(c, c.?name.orValue("")),
+cel.bind(amounts, inits.map(c, ${amount('c', of, resource)}),
+cel.bind(sidecars, inits.map(c, c.?restartPolicy.orValue("") == "Always" ? ${amount('c', of, resource)} : 0.0),
+cel.bind(app, ([0.0] + self.?spec.?containers.orValue([]).map(c, ${amount('c', of, resource)})).sum() + ([0.0] + sidecars).sum(),
+cel.bind(init, inits.filter(c, c.?restartPolicy.orValue("") != "Always").map(c,
+    cel.bind(i, names.indexOf(c.?name.orValue("")), amounts[i] + ([0.0] + sidecars.slice(0, i)).sum())),
+cel.bind(most, (init + [app]).sort()[size(init)],
+cel.bind(own, self.?spec.?resources.?${of}[?"${resource}"],
+cel.bind(chosen, own.hasValue() ? quantity(string(own.value())).asApproximateFloat() : most,
+cel.bind(o, self.?spec.?overhead[?"${resource}"],
+cel.bind(over, o.hasValue() ? quantity(string(o.value())).asApproximateFloat() : 0.0,
+${of === 'limits' ? 'chosen > 0.0 ? chosen + over : chosen' : 'chosen + over'})))))))))))`;
 export const LIBRARY: Readonly<Record<string, string>> = {
   podSummary: `
 cel.bind(st, self.?status.orValue({}),
@@ -70,4 +104,10 @@ cel.bind(deleting, has(self.metadata.deletionTimestamp),
 }
 ))))))))))))))))))))
 `,
+  podResources: `{
+  "cpuRequests": ${total('requests', 'cpu')},
+  "cpuLimits": ${total('limits', 'cpu')},
+  "memoryRequests": ${total('requests', 'memory')},
+  "memoryLimits": ${total('limits', 'memory')}
+}`,
 };

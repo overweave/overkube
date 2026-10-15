@@ -100,8 +100,11 @@ export function quantity(q: string | number | undefined): number {
   return m && scale !== undefined ? Number(m[1]) * scale : Number.NaN;
 }
 
-/** Cores as the API writes them: whole ones as they are, the rest in millicores (250m). */
-export const cores = (n: number): string => (Number.isInteger(n) ? String(n) : `${Math.round(n * 1000)}m`);
+/** Cores as the API writes them, to a millicore (a sum's float dust gone: 1.05000000003, 1050m): whole ones as they are, the rest in millicores (250m). */
+export function cores(n: number): string {
+  const m = Math.round(n * 1000);
+  return m % 1000 === 0 ? String(m / 1000) : `${m}m`;
+}
 
 /** One value as its field's type says it. */
 function one(v: Value, def: Pick<FieldDef, 'type' | 'unit'> | undefined, now: number): string {

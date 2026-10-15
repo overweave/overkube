@@ -595,7 +595,15 @@ export function Table<T>({
                     data-clickable={onRowClick ? '' : undefined}
                     style={{ gridTemplateColumns: template, minHeight: `${rowHeight}px` }}
                     tabIndex={onRowClick ? 0 : undefined}
-                    onClick={onRowClick && (() => onRowClick(row))}
+                    onClick={
+                      onRowClick &&
+                      ((e) => {
+                        // A link, a button in it: theirs (a link opened its own way: in a new tab too), not the row's.
+                        const at = (e.target as Element).closest?.('a, button, input, select, textarea, [role="button"]');
+                        if (at && at !== e.currentTarget && e.currentTarget.contains(at)) return;
+                        onRowClick(row);
+                      })
+                    }
                     onContextMenu={onRowMenu && ((e) => onRowMenu(row, e))}
                     onKeyDown={(e) => {
                       onRowMenu?.(row, e);

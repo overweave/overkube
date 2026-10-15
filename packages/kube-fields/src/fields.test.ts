@@ -68,6 +68,55 @@ describe("a pod's own", () => {
   });
 });
 
+describe("a pod's CPU and memory requested and limited, as kubectl describe node adds them up", () => {
+  const r = (requests?: Record<string, string>, limits?: Record<string, string>) => ({ ...(requests ? { requests } : {}), ...(limits ? { limits } : {}) });
+  const of = (spec: object) => ['cpu-requests', 'cpu-limits', 'memory-requests', 'memory-limits'].map((f) => valuesOf({ spec }, `pods.v1.${f}`, paths(PODS))[0]);
+  const Mi = 2 ** 20;
+
+  it('sums its containers and sidecars; an init container with the sidecars before it, if more; a limit only where one is said', () => {
+    const spec = {
+      initContainers: [
+        { name: 'mesh', restartPolicy: 'Always', resources: r({ cpu: '50m', memory: '64Mi' }) },
+        // After the sidecar: 1 + 0.05, more than all the containers (0.35).
+        { name: 'migrate', resources: r({ cpu: '1', memory: '32Mi' }, { cpu: '2' }) },
+        // A sidecar after it: not with it.
+        { name: 'late', restartPolicy: 'Always', resources: r({ cpu: '100m' }) },
+      ],
+      containers: [
+        { name: 'app', resources: r({ cpu: '100m', memory: '128Mi' }, { memory: '256Mi' }) },
+        { name: 'side', resources: r({ cpu: '100m' }) },
+      ],
+    };
+    const [cpu, cpuLimit, memory, memoryLimit] = of(spec);
+    // CPU: max(0.1 + 0.1 + 0.05 + 0.1, 1 + 0.05). Its limit: max(0, 2 + 0). Memory: max(128 + 64, 32 + 64) Mi; its limit: 256Mi.
+    expect([Number((cpu as number).toFixed(3)), cpuLimit, memory, memoryLimit]).toEqual([1.05, 2, 192 * Mi, 256 * Mi]);
+  });
+
+  it('takes the pod’s own where it says them; adds its overhead (to a limit only where there is one); nothing said: 0', () => {
+    const own = { resources: r({ cpu: '500m' }), containers: [{ name: 'a', resources: r({ cpu: '2', memory: '1Gi' }) }], overhead: { cpu: '250m' } };
+    expect(of(own)).toEqual([0.75, 0, 1024 * Mi, 0]);
+    expect(of({ containers: [{ name: 'a' }] })).toEqual([0, 0, 0, 0]);
+    // The pod's own limit with its overhead; its own limit of 0: no overhead on it.
+    expect(of({ resources: r(undefined, { cpu: '1' }), containers: [{ name: 'a' }], overhead: { cpu: '250m' } })[1]).toBe(1.25);
+    expect(of({ resources: r(undefined, { cpu: '0' }), containers: [{ name: 'a', resources: r(undefined, { cpu: '2' }) }], overhead: { cpu: '250m' } })[1]).toBe(0);
+  });
+
+  it('takes amounts said as numbers; an init container that restarts on failure is no sidecar; one with no quantity: none of the four', () => {
+    expect(of({ containers: [{ name: 'a', resources: { requests: { cpu: 1, memory: 1e3 } } }] })).toEqual([1, 0, 1000, 0]);
+    const once = { initContainers: [{ name: 'i', restartPolicy: 'OnFailure', resources: r({ cpu: '3' }) }], containers: [{ name: 'a', resources: r({ cpu: '1' }) }] };
+    expect(of(once)[0]).toBe(3);
+    expect(of({ containers: [{ name: 'a', resources: r({ cpu: '1' }, { memory: 'abc' }) }] })).toEqual([undefined, undefined, undefined, undefined]);
+  });
+
+  it('works out a pod of many init containers in time (each amount once)', () => {
+    const inits = Array.from({ length: 300 }, (_, i) => ({ name: `i${i}`, ...(i % 2 ? { restartPolicy: 'Always' } : {}), resources: r({ cpu: '10m', memory: '1Mi' }) }));
+    const at = performance.now();
+    // 150 sidecars of 10m; the last init container (no sidecar) with the 149 before it: 1.5 either way.
+    const [cpu] = of({ initContainers: inits, containers: [{ name: 'a' }] });
+    expect([Number((cpu as number).toFixed(2)), performance.now() - at < 500]).toEqual([1.5, true]);
+  });
+});
+
 describe('when a job ran and a workload rolled out', () => {
   const t = (iso: string) => [Date.parse(iso)];
   it.each([

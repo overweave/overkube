@@ -85,15 +85,10 @@ function Held({ next, opening }: { next: KindInfo; opening: boolean }) {
   );
 }
 
-/** The start (core.page.overview): the first pinned kind's page — unless another's is on it too (the core's welcome among them): then it is a page of its own, and this nothing. */
+/** The start (core.page.overview): the first pinned kind's page — unless another's is on it too (the core's dashboard among them): then it is a page of its own, and this nothing. */
 export function Overview(props: PageProps) {
   const alone = useSlotView(slots.page('overview'), props).selected.every((f) => f.name === 'core.page.overview');
   return alone ? <ToFirst /> : null;
-}
-
-/** A word of welcome on the start (core.page.overview.welcome). */
-export function Welcome() {
-  return <p>{useSay()(T.page.overview.welcome)}</p>;
 }
 
 /** To the first pinned kind's page, the start aside (none yet: on its way). */

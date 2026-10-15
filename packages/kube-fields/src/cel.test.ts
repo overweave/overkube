@@ -116,20 +116,17 @@ describe('the fields of CEL', () => {
     ]);
   });
 
-  it("a node's CPU and memory as numbers (cores, bytes: 1.5Gi too); its roles as kubectl tells them; taints", () => {
+  it("a node's CPU and memory as numbers (cores, bytes: 1.5Gi too), the pods it takes; its roles as kubectl tells them; taints", () => {
     const node = {
       metadata: { name: 'n', labels: { 'node-role.kubernetes.io/control-plane': '', 'node-role.kubernetes.io/': '', 'kubernetes.io/role': 'master', other: 'x' } },
       spec: { taints: [{ key: 'gpu', effect: 'NoSchedule' }] },
-      status: { capacity: { cpu: '4', memory: '1.5Gi' }, allocatable: { cpu: '3500m', memory: '15Gi' } },
+      status: { capacity: { cpu: '4', memory: '1.5Gi' }, allocatable: { cpu: '3500m', memory: '15Gi', pods: '110' } },
     };
-    expect(['nodes.v1.cpu', 'nodes.v1.cpu-allocatable', 'nodes.v1.memory', 'nodes.v1.roles', 'nodes.v1.taints', 'nodes.v1.unschedulable'].map((n) => value(node, n))).toEqual([
-      [4],
-      [3.5],
-      [1610612736],
-      ['control-plane', 'master'],
-      ['gpu:NoSchedule'],
-      [false],
-    ]);
+    expect(
+      ['nodes.v1.cpu', 'nodes.v1.cpu-allocatable', 'nodes.v1.memory', 'nodes.v1.pods-allocatable', 'nodes.v1.roles', 'nodes.v1.taints', 'nodes.v1.unschedulable'].map((n) =>
+        value(node, n),
+      ),
+    ).toEqual([[4], [3.5], [1610612736], [110], ['control-plane', 'master'], ['gpu:NoSchedule'], [false]]);
   });
 
   it.each(['deployments.v1.apps', 'statefulsets.v1.apps', 'replicasets.v1.apps'])("a %s's replicas as kubectl shows them, a status or none yet", (kind) => {

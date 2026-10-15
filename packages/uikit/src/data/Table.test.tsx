@@ -217,7 +217,7 @@ describe('Table: rows', () => {
     expect(mount({ rows: [] }).container.querySelector('.uk-table-empty')?.textContent).toBe('');
   });
 
-  it('passes a click or Enter on a row on, not Enter on something in it', async () => {
+  it('passes a click or Enter on a row on, not a click or Enter on something in it', async () => {
     const clicked: string[] = [];
     const columns: TableColumn<Row>[] = [...COLUMNS, { id: 'go', header: 'Go', cell: (r) => <button type="button">{`open ${r.name}`}</button> }];
     const { user, getByText, rows, button } = mount({ columns, onRowClick: (r) => clicked.push(r.name) });
@@ -227,6 +227,9 @@ describe('Table: rows', () => {
     expect(clicked).toEqual(['a', 'b']);
     // Enter on a button in it is the button's.
     fireEvent.keyDown(button('open a'), { key: 'Enter' });
+    expect(clicked).toEqual(['a', 'b']);
+    // A click on a button (a link) in it is its own: not the row's too.
+    await user.click(button('open b'));
     expect(clicked).toEqual(['a', 'b']);
     expect(rows()[1].getAttribute('tabindex')).toBe('0');
   });

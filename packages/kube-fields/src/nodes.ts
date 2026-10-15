@@ -5,7 +5,8 @@ import { define } from './define.ts';
  * tells them: node-role.kubernetes.io/<role>, kubernetes.io/role; once
  * each, in order), taints;
  * its CPU and memory, capacity and allocatable, as numbers (cores, bytes:
- * a quantity's approximate float — its int64 is none of 1.5Gi, as Go has it).
+ * a quantity's approximate float — its int64 is none of 1.5Gi, as Go has it);
+ * how many pods it takes (allocatable).
  */
 const kinds = ['nodes.v1'];
 const PREFIX = 'node-role.kubernetes.io/';
@@ -29,4 +30,5 @@ export const NODES = define({
   'nodes.v1.cpu-allocatable': { kinds, type: 'number', unit: 'cores', value: quantity('allocatable.cpu') },
   'nodes.v1.memory': { kinds, type: 'number', unit: 'bytes', value: quantity('capacity.memory') },
   'nodes.v1.memory-allocatable': { kinds, type: 'number', unit: 'bytes', value: quantity('allocatable.memory') },
+  'nodes.v1.pods-allocatable': { kinds, type: 'number', value: quantity('allocatable.pods') },
 });
