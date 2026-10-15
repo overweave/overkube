@@ -1,4 +1,4 @@
-import { cleanup, render } from '@testing-library/preact';
+import { cleanup, fireEvent, render } from '@testing-library/preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Dot } from './Dot';
 
@@ -24,7 +24,9 @@ describe('Dot', () => {
   it('is an image a reader says, named, the name under the pointer too', () => {
     const { getByRole } = render(<Dot level="error" title="Failing" />);
     const d = getByRole('img', { name: 'Failing' });
-    expect(d.getAttribute('title')).toBe('Failing');
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.focusIn(d);
+    expect(document.querySelector('.uk-tip')?.textContent).toBe('Failing');
     expect(d.hasAttribute('aria-hidden')).toBe(false);
   });
 });

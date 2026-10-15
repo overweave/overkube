@@ -24,6 +24,7 @@ export { PageHeader } from './display/PageHeader';
 export { Ref } from './display/Ref';
 export { Skeleton, type SkeletonProps } from './display/Skeleton';
 export { Stat } from './display/Stat';
+export { CHECKLIST_LABELS, Checklist, type ChecklistGroup, type ChecklistItem, type ChecklistLabels } from './forms/Checklist';
 export { MultiSelect, type MultiSelectProps, type Option } from './forms/MultiSelect';
 export { Select } from './forms/Select';
 export { type FormSetting, SettingsForm } from './forms/SettingsForm';
@@ -64,6 +65,7 @@ export { ContextMenu, type ContextMenuGroup, type ContextMenuItem, type ContextM
 export { Modal, type ModalPlacement, type ModalProps } from './overlays/Modal';
 export { Popover } from './overlays/Popover';
 export { Spotlight, type SpotlightItem, type SpotlightProps } from './overlays/Spotlight';
+export { TIP_MS, Tip, TipCard, TipField, type TipOn, type TipProps, tipped, useTip } from './overlays/Tip';
 export { Badge } from './status/Badge';
 export { Dot } from './status/Dot';
 export { Notice } from './status/Notice';

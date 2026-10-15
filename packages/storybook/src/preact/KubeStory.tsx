@@ -90,8 +90,8 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
   // The user's changes (in memory), made once the world is: what the page below is given asks them of it.
   const kept = useRef<UserService>();
   const [changes] = useState<UserChanges>(() => ({
-    patch: (kind, name, change) => (kept.current as UserService).patch(kind, name, change),
-    reset: (...at) => kept.current?.reset(...at),
+    patch: (kind, name, change) => kept.current?.patch(kind, name, change) ?? { status: 'rejected', errors: [{ code: 'disposed' }] },
+    reset: (kind, name, ...path) => kept.current?.reset(kind, name, ...path),
   }));
   // Each addon run as the same run (the panel's world is made again only when the addons are others).
   const runs = useRef(new WeakMap<Addon, AddonRun>());
@@ -119,6 +119,8 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
         given={(w) => {
           // The fields its addons define, asked by as the page asks by them.
           env.cluster.follow(w.registry as never);
+          // The world made anew: the last one's user gone with it.
+          void kept.current?.close();
           kept.current = new UserService({ registry: w.registry as never, store: memoryStore() });
           void kept.current.start();
           user?.(kept.current);

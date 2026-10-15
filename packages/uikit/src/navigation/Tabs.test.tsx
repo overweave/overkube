@@ -1,7 +1,18 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type TabSection, Tabs, type TabsProps } from './Tabs';
+
+/** Its tip's words: the pointer over it a while. */
+function tipOf(el: Element | null | undefined) {
+  vi.useFakeTimers();
+  fireEvent.pointerEnter(el as Element, { pointerType: 'mouse' });
+  act(() => void vi.advanceTimersByTime(400));
+  vi.useRealTimers();
+  const said = document.querySelector('.uk-tip')?.textContent;
+  fireEvent.keyDown(document, { key: 'Escape' });
+  return said;
+}
 
 /*
  * The strip as a user has it (user-event): one tab stop, the arrows, the
@@ -119,7 +130,7 @@ describe('Tabs: the strip', () => {
 
   it('gives the tabs its words for their tools', () => {
     const { container } = mount({ labels: { close: (t) => `shut ${t}` } });
-    expect(container.querySelector('[data-tab="nodes"] .uk-tab-close')?.getAttribute('title')).toBe('shut nodes');
+    expect(tipOf(container.querySelector('[data-tab="nodes"] .uk-tab-close')?.closest('.uk-tip-at'))).toBe('shut nodes');
   });
 });
 

@@ -29,4 +29,5 @@ export {
 } from './page.ts';
 export { useSay } from './say.ts';
 export { KindTable } from './table.ts';
+export { tipField } from './tips.ts';
 export { UserProvider, useUser } from './user.ts';

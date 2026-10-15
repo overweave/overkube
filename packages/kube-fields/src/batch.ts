@@ -10,7 +10,14 @@ export const BATCH = define({
   'jobs.v1.batch.succeeded': { kinds: ['jobs.v1.batch'], type: 'number', value: { cel: 'self.?status.?succeeded.orValue(0)' } },
   'jobs.v1.batch.completions': { kinds: ['jobs.v1.batch'], type: 'number', value: { cel: 'self.?spec.?completions.orValue(1)' } },
   'jobs.v1.batch.started': { kinds: ['jobs.v1.batch'], type: 'time', value: '.status.startTime' },
-  'jobs.v1.batch.finished': { kinds: ['jobs.v1.batch'], type: 'time', value: '.status.completionTime' },
+  // When it ended: done, its completion; failed (it has none), as its Failed condition says.
+  'jobs.v1.batch.finished': {
+    kinds: ['jobs.v1.batch'],
+    type: 'time',
+    value: {
+      cel: "cel.bind(f, self.?status.?conditions.orValue([]).filter(c, c.type == 'Failed' && c.status == 'True'), self.?status.?completionTime.orValue(size(f) > 0 ? f[0].?lastTransitionTime.orValue('') : ''))",
+    },
+  },
   'cronjobs.v1.batch.lastSchedule': { kinds: ['cronjobs.v1.batch'], type: 'time', value: '.status.lastScheduleTime' },
   'cronjobs.v1.batch.lastSuccess': { kinds: ['cronjobs.v1.batch'], type: 'time', value: '.status.lastSuccessfulTime' },
   'horizontalpodautoscalers.v2.autoscaling.lastScale': { kinds: ['horizontalpodautoscalers.v2.autoscaling'], type: 'time', value: '.status.lastScaleTime' },

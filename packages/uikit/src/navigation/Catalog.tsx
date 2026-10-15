@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../display/Icon';
 import { Kbd } from '../display/Kbd';
+import { Tip } from '../overlays/Tip';
 
 /*
  * Many things to pick one of, in two panes: a filter on top; down the side
@@ -149,9 +150,11 @@ export function CatalogRow({
       </a>
       {extra !== undefined && <span class="uk-catalog-count">{extra}</span>}
       {pin && (
-        <button type="button" class="uk-catalog-pin" aria-pressed={pin.on} aria-label={pin.label} title={pin.label} onClick={() => pin.onToggle(!pin.on)}>
-          <Icon name={pin.on ? 'pin-filled' : 'pin'} />
-        </button>
+        <Tip content={() => pin.label}>
+          <button type="button" class="uk-catalog-pin" aria-pressed={pin.on} aria-label={pin.label} onClick={() => pin.onToggle(!pin.on)}>
+            <Icon name={pin.on ? 'pin-filled' : 'pin'} />
+          </button>
+        </Tip>
       )}
     </div>
   );

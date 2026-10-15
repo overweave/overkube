@@ -59,9 +59,10 @@ function keys(e: KeyboardEvent) {
   top.dismiss();
 }
 
-/** A press outside the top layers: each it is outside closes, down to one it is in (or a modal one: what is under it is not to be pressed). */
+/** A press outside the top layers: each it is outside closes, down to one it is in (or a modal one: what is under it is not to be pressed). One in a tip (a card's action) is in what the tip is over: nothing closes. */
 function press(e: PointerEvent) {
   const path = e.composedPath();
+  if (path.some((n) => n instanceof Element && n.classList.contains('uk-tip'))) return;
   for (let i = stack.length - 1; i >= 0; i--) {
     const layer = stack[i];
     if (path.includes(layer.el) || (layer.anchor?.current && path.includes(layer.anchor.current)) || layer.modal) return;
@@ -229,6 +230,10 @@ export interface Placing {
   matchWidth?: boolean;
   /** How far from it, and from the window's edges. */
   gap?: number;
+  /** The window's room, not what shows the anchor (a tip: over everything, a scrolling table's body no edge of it). */
+  inWindow?: boolean;
+  /** Beside it (at its right; its left where it does not fit there), level with its top — not under or over it (a side's items, a list's). */
+  beside?: boolean;
 }
 
 const EDGE = 8;
@@ -241,27 +246,55 @@ const EDGE = 8;
  * the box's size does. Given the box as it is there (attach: a layer's
  * onLayer), placed at once — before it is seen, before focus goes into it.
  */
-export function usePlacedBy(anchor: RefObject<HTMLElement>, { align = 'start', matchWidth = false, gap = 6 }: Placing = {}): (el: HTMLElement) => void {
+export function usePlacedBy(
+  anchor: RefObject<HTMLElement>,
+  { align = 'start', matchWidth = false, gap = 6, inWindow = false, beside = false }: Placing = {},
+): (el: HTMLElement) => void {
   const stop = useRef<() => void>();
   useEffect(() => () => stop.current?.(), []);
   return (el) => {
     stop.current?.();
+    // Its side, chosen once its height is there to measure (it fits under, or there is more room over): placed again, it stays there —
+    // never measured anew (what is in it would lose its scroll) — unless that side's room gets too small and the other's is more.
+    let side: 'top' | 'bottom' | undefined;
     const place = () => {
       const a = anchor.current?.getBoundingClientRect();
       const host = el.offsetParent?.getBoundingClientRect() ?? { top: 0, left: 0 };
       if (!a) return;
       if (matchWidth) el.style.minWidth = `${a.width}px`;
-      const { offsetWidth: w, offsetHeight: h } = el;
+      if (beside) {
+        el.style.setProperty('--uk-placed-room', `${Math.max(0, window.innerHeight - 2 * EDGE)}px`);
+        const [w, h] = [el.offsetWidth, el.offsetHeight];
+        const right = a.right + gap + w + EDGE <= window.innerWidth;
+        el.style.left = `${(right ? a.right + gap : Math.max(EDGE, a.left - gap - w)) - host.left}px`;
+        el.style.top = `${Math.max(EDGE, Math.min(a.top, window.innerHeight - h - EDGE)) - host.top}px`;
+        el.dataset.side = right ? 'right' : 'left';
+        el.style.visibility = 'visible';
+        return;
+      }
+      // The room under it and over it, to the edge of what shows it (a modal's body over its foot, the page, the window), a margin kept.
+      const room = inWindow ? { top: 0, bottom: window.innerHeight } : shownIn(anchor.current as HTMLElement);
+      const below = room.bottom - a.bottom - gap - MARGIN;
+      const above = a.top - room.top - gap - MARGIN;
+      if (!side && el.offsetHeight > 0) side = el.offsetHeight > below && above > below ? 'top' : 'bottom';
+      const there = side ?? (below < ROOM_AT_LEAST && above > below ? 'top' : 'bottom');
+      // Its side's room too small (and it does not fit there), the other's more: the other side.
+      const mine = there === 'top' ? above : below;
+      if (side && mine < ROOM_AT_LEAST && el.offsetHeight > mine && (there === 'top' ? below : above) > mine) side = there === 'top' ? 'bottom' : 'top';
+      const up = (side ?? there) === 'top';
+      const w = el.offsetWidth;
+      // At most the room on its side: what is in it scrolls inside, nothing around it does.
+      el.style.setProperty('--uk-placed-room', `${Math.max(0, Math.floor(up ? above : below))}px`);
+      const h = el.offsetHeight;
       const left = Math.max(EDGE, Math.min(align === 'end' ? a.right - w : a.left, window.innerWidth - w - EDGE));
-      const up = a.bottom + gap + h + EDGE > window.innerHeight && a.top - gap - h - EDGE > 0;
       el.style.left = `${left - host.left}px`;
       el.style.top = `${(up ? a.top - gap - h : a.bottom + gap) - host.top}px`;
       el.dataset.side = up ? 'top' : 'bottom';
       el.style.visibility = 'visible';
     };
     place();
-    // What holds it scrolled (not the page: it moves with it), the window resized, the box resized (its content came).
-    const scrolled = (e: Event) => e.target !== document && place();
+    // What holds it scrolled (not the page: it moves with it; not what is in it: it stays), the window resized, the box resized (its content came).
+    const scrolled = (e: Event) => e.target !== document && !el.contains(e.target as Node) && place();
     const sized = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : undefined;
     sized?.observe(el);
     window.addEventListener('resize', place);
@@ -272,6 +305,25 @@ export function usePlacedBy(anchor: RefObject<HTMLElement>, { align = 'start', m
       window.removeEventListener('scroll', scrolled, true);
     };
   };
+}
+
+/** Kept between a placed box and the edge of what shows it. */
+const MARGIN = 5;
+/** Room on a side too small to be of use: the other side taken, where it has more. */
+const ROOM_AT_LEAST = 120;
+
+/** What shows an element, in the window's coordinates: the window, cut by each of its ancestors that scrolls what is in it (a modal's body, ending over its foot; not a box that only cuts its text short). */
+function shownIn(el: HTMLElement): { top: number; bottom: number } {
+  let top = 0;
+  let bottom = window.innerHeight;
+  for (let at = el.parentElement; at; at = at.parentElement) {
+    const y = getComputedStyle(at).overflowY;
+    if (y !== 'auto' && y !== 'scroll') continue;
+    const r = at.getBoundingClientRect();
+    top = Math.max(top, r.top);
+    bottom = Math.min(bottom, r.bottom);
+  }
+  return { top, bottom };
 }
 
 /** A box placed at a point (the window's coordinates), in the page: to its left, or above it (above: from there), where it does not fit. */

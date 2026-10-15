@@ -2,7 +2,7 @@ import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import type { Item, ListResult, Where } from '@overkube/query';
 import { type CellValue, type KindTableProps, KindView, kindRef, type ListState, slots, TableView } from '@overkube/sdk';
 import { useCluster, useCount, useList, useMenu, useSay, useUser } from '@overkube/sdk/preact';
-import { EmptyState, Nothing, Notice, Table, type TableColumn, type TableSort } from '@overkube/uikit';
+import { EmptyState, Nothing, Notice, Table, type TableColumn, type TableSort, Tip } from '@overkube/uikit';
 import { slotElement, useDefinition } from '@overweave/ui/preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Cell } from './cell.tsx';
@@ -45,6 +45,12 @@ const objectOf = (kind: KindInfo, key: string, uid: string | undefined): KubeObj
   return { apiVersion: kind.group ? `${kind.group}/${kind.version}` : kind.version, kind: kind.kind, metadata };
 };
 
+/** Every column there is in a new order of those shown (moved among them): those not shown (a wide one, the namespace in one) kept in their places. */
+export function orderOf(all: readonly string[], shown: readonly string[]): string[] {
+  let next = 0;
+  return all.map((name) => (shown.includes(name) ? (shown[next++] as string) : name));
+}
+
 export function CoreTable({ chosen, ...table }: KindTableProps & { chosen: Chosen }) {
   const { kind, title } = table;
   // Its own scope, else the namespaces chosen in the page's header.
@@ -55,7 +61,11 @@ export function CoreTable({ chosen, ...table }: KindTableProps & { chosen: Chose
   const say = useSay();
   const menu = useMenu('resource.context');
   const failed = useFailures();
-  const view = useDefinition(TableView, kind.id)?.spec ?? {};
+  // The kind's own table (its page's): its TableView whole. Another's frame's (plain: a workload's pods): which columns are shown and which
+  // objects (hidden, where) — not the widths, order or sort made for the kind's own page.
+  const own = !table.plain;
+  const given = useDefinition(TableView, kind.id)?.spec ?? {};
+  const view = own ? given : { ...(given.hidden ? { hidden: given.hidden } : {}), ...(given.where ? { where: given.where } : {}) };
   const columned = useColumns(kind, view, failed);
   const { catalog } = columned;
   // In one namespace only: its namespace not said on every row.
@@ -66,11 +76,16 @@ export function CoreTable({ chosen, ...table }: KindTableProps & { chosen: Chose
   // The kind's own table (its page's): what the user does to it — a sort, a column's width or place — theirs, kept (its TableView's, patched).
   // Another's frame's (plain: a workload's pods): for the while it is drawn only — the kind's table not changed from there.
   const user = useUser();
-  const own = !table.plain;
   const [asked, setAsked] = useState<TableSort>();
   const setSort = (s: TableSort) => (own ? user.patch('TableView', kind.id, { sort: { column: s.id, descending: s.desc ?? false } }) : setAsked(s));
   const setWidth = (id: string, width: string | undefined) => user.patch('TableView', kind.id, { widths: { [id]: width === undefined ? undefined : Number.parseFloat(width) } });
-  const setOrder = (ids: string[]) => user.patch('TableView', kind.id, { columns: ids });
+  const setOrder = (ids: string[]) =>
+    user.patch('TableView', kind.id, {
+      columns: orderOf(
+        columned.offered.map((o) => o.definition.name),
+        ids,
+      ),
+    });
   // A sort by a column there is, that sorts (one by another: none); asked here, else its TableView's (the user's among it), else by name.
   const sorting = (s: TableSort | undefined) => (s && placed.some((c) => c.definition.name === s.id && c.definition.spec.sort) ? s : undefined);
   const sort = sorting(asked) ?? sorting(view.sort && { id: view.sort.column, desc: view.sort.descending }) ?? sorting({ id: 'core.name' });
@@ -158,7 +173,7 @@ export function CoreTable({ chosen, ...table }: KindTableProps & { chosen: Chose
   if (state === 'error' || state === 'denied')
     return (
       <Notice level="error" icon="warning">
-        <span title={error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
+        <Tip content={() => error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</Tip>
       </Notice>
     );
 
@@ -170,12 +185,12 @@ export function CoreTable({ chosen, ...table }: KindTableProps & { chosen: Chose
     <div class="uk-region">
       {loading && error && (
         <Notice level="warn" icon="refresh">
-          <span title={error.message}>{say(T.kind.table.waiting, { reason: error.message })}</span>
+          <Tip content={() => error.message}>{say(T.kind.table.waiting, { reason: error.message })}</Tip>
         </Notice>
       )}
       {state === 'stale' && (
         <Notice level="warn" icon="refresh">
-          <span title={error?.message}>{say(T.kind.table.stale)}</span>
+          <Tip content={() => error?.message}>{say(T.kind.table.stale)}</Tip>
         </Notice>
       )}
       {state === 'partial' && (

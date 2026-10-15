@@ -1,6 +1,7 @@
 import { kinds } from '@overkube/kube-types';
 import { cleanup, fakeCluster, kubeWorld, make } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
+import { fireEvent } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CSR_PEM, EC_PEM, RSA_PEM } from '../certs.fixture.ts';
 import core from '../index.tsx';
@@ -188,7 +189,9 @@ describe('an ingress and a network policy', () => {
       ['*', '/ (Exact)', 'web', '80'],
       ['*', '/admin (Prefix)', 'Service admin not found', '80'],
     ]);
-    expect(part('rules')?.querySelector('.uk-status')?.getAttribute('title')).toBe('Service shop/admin not found: requests to this path return 503');
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.focusIn(part('rules')?.querySelector('.uk-status') as HTMLElement);
+    expect(document.querySelector('.uk-tip')?.textContent).toBe('Service shop/admin not found: requests to this path return 503');
     expect([pairs(part('tls')), related()]).toEqual([[['shop.example.com', 'Secrettls']], [['Default backend', 'fallback']]]);
   });
 

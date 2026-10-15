@@ -416,7 +416,22 @@ function others(c: Cluster) {
   const job = (name: string, done: boolean, minutes: number) =>
     make(Job, {
       metadata: { name, namespace: 'shop', uid: `job-${name}`, ownerReferences: [{ ...backup, controller: true }], creationTimestamp: ago(minutes) },
-      spec: { completions: 1, backoffLimit: 6, template: { spec: { restartPolicy: 'Never', containers: [{ name: 'backup', image: 'restic/restic:0.17' }] } } },
+      spec: {
+        completions: 1,
+        backoffLimit: 6,
+        // The failed one's: a bad exit fails it at once, a disruption is not counted.
+        ...(done
+          ? {}
+          : {
+              podFailurePolicy: {
+                rules: [
+                  { action: 'FailJob', onExitCodes: { containerName: 'backup', operator: 'In', values: [42] } },
+                  { action: 'Ignore', onPodConditions: [{ type: 'DisruptionTarget', status: 'True' }] },
+                ],
+              },
+            }),
+        template: { spec: { restartPolicy: 'Never', containers: [{ name: 'backup', image: 'restic/restic:0.17' }] } },
+      },
       status: done
         ? { succeeded: 1, startTime: ago(minutes), completionTime: ago(minutes - 1), conditions: [{ type: 'Complete', status: 'True', lastTransitionTime: ago(minutes - 1) }] }
         : {
@@ -1136,7 +1151,7 @@ NodeCordoned.storyName = 'Node - cordoned';
 export const JobComplete = () => <KubeStory addons={[core]} path={open('jobs.v1.batch', 'shop/backup-29012340')} cluster={cluster} />;
 JobComplete.storyName = 'Job';
 
-/** A job failed: past its backoff limit, why in its conditions. */
+/** A job failed: past its backoff limit, why in its conditions; its pod failure policy. */
 export const JobFailed = () => <KubeStory addons={[core]} path={open('jobs.v1.batch', 'shop/backup-29010900')} cluster={cluster} />;
 JobFailed.storyName = 'Job - failed';
 

@@ -129,6 +129,12 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
   // The user's changes, kept in memory: nothing kept to read back, so made at once.
   const user = new UserService({ registry: w.registry as never, store: memoryStore() });
   void user.start();
+  // Gone with the world: nothing it waits to save outlives it.
+  const dispose = w.dispose.bind(w);
+  w.dispose = () => {
+    void user.close();
+    dispose();
+  };
   const runs = new Map<string, Run<KubeContributor>>();
   const started = new Map<string, Promise<void>>();
 

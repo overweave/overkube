@@ -1,9 +1,10 @@
 import type { KindInfo } from '@overkube/kube-types';
 import { kindRef, openedIn, type PageProps, slots } from '@overkube/sdk';
 import { KindTable, useCluster, useCount, usePage, useSay } from '@overkube/sdk/preact';
-import { Button, Notice, Panel } from '@overkube/uikit';
+import { Button, Notice, Panel, Tip } from '@overkube/uikit';
 import { slotElement, useSlotView } from '@overweave/ui/preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import { usePinned } from './Nav.tsx';
 import { type NavEntry, useNav } from './nav.ts';
 import { T } from './texts.ts';
 import { Waiting } from './Waiting.tsx';
@@ -37,7 +38,7 @@ export function KindMissing({ params }: PageProps) {
           </Button>
         }
       >
-        <span title={error.message}>{say(T.page.kind.missing.refused, { code: error.code })}</span>
+        <Tip content={() => error.message}>{say(T.page.kind.missing.refused, { code: error.code })}</Tip>
       </Notice>
     );
   if (!discovery.kinds.value) return <Waiting label={say(T.page.kind.missing.asking)} />;
@@ -101,7 +102,10 @@ function ToFirst() {
   const page = usePage();
   const say = useSay();
   const away = (e: NavEntry) => e.path !== '/';
-  const first = nav.pinned.find(away) ?? nav.groups.flatMap((g) => g.entries).find(away);
+  // The pinned as the tabs have them (the user's, in their order): the first of them there is (one not served: passed over).
+  const entries = new Map(nav.groups.flatMap((g) => g.entries.map((e) => [e.key, e] as const)));
+  const pinned = usePinned().flatMap((key) => entries.get(key) ?? []);
+  const first = pinned.find(away) ?? nav.groups.flatMap((g) => g.entries).find(away);
   useEffect(() => {
     if (first) page.navigate(first.path, { replace: true });
   }, [first?.path]);

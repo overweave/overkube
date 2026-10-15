@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from '@testing-library/preact';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/preact';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Chip, Chips } from './Chips';
@@ -59,7 +59,9 @@ describe('Chips: what they say', () => {
 
   it('give each in full under the pointer, and name it by what a click does', () => {
     const chip = mount({ items: LABELS }).getByRole('button', { name: 'Copy tier=frontend' });
-    expect(chip.getAttribute('title')).toBe('tier=frontend');
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.focusIn(chip);
+    expect(document.querySelector('.uk-tip')?.textContent).toBe('tier=frontend');
     cleanup();
     expect(
       mount({ items: { a: 'b' }, labels: { more: (n) => `${n} more`, less: 'fewer', copy: (t) => `copy ${t}`, copied: 'ok' } }).getByRole('button', { name: 'copy a=b' }),
@@ -80,6 +82,18 @@ describe('Chips: so many at first', () => {
 
   it('show as many as they are told', () => {
     expect(mount({ items: many(5), max: 3 }).chips()).toHaveLength(3);
+  });
+
+  it('compact (one line): show every one, no +N, each prefix and a long value cut in the middle (in full under the pointer)', () => {
+    const { chips, keys, container } = mount({ items: { ...many(9), ...LABELS }, compact: true });
+    expect([chips().length, container.querySelector('.uk-chip-more')]).toEqual([12, null]);
+    expect([keys()[0], keys()[10]]).toEqual(['app…io/name', 'nod…io/control-plane']);
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.focusIn(chips()[0]);
+    expect(document.querySelector('.uk-tip')?.textContent).toBe('app.kubernetes.io/name=web');
+    cleanup();
+    const uid = mount({ items: { 'batch.kubernetes.io/controller-uid': '9b8ee5cb-2482-41bf-ab03-0d30bbd6fee4' }, compact: true });
+    expect(uid.chips()[0].textContent).toBe('bat…io/controller-uid9b8ee5cb…bbd6fee4');
   });
 
   it('show all, with nothing to show more or less, as many as at most', () => {

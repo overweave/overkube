@@ -13,7 +13,19 @@ import * as view from './view.stories.tsx';
 afterEach(cleanup);
 
 const SAID: [module: Record<string, unknown>, where: string, said: Record<string, string>][] = [
-  [page, 'body', { Pods: 'web-1', Loading: 'Loading pods', Arriving: 'Loading pods', Forbidden: 'pods cannot be had: Forbidden', AnAddonsColumn: '1.27' }],
+  [
+    page,
+    'body',
+    {
+      Pods: 'web-1',
+      Loading: 'Loading pods',
+      Arriving: 'Loading pods',
+      Forbidden: 'pods cannot be had: Forbidden',
+      AnAddonsColumn: '1.27',
+      ColumnsSettings: 'ReplicaSet/web-7d4b9',
+      ConditionTips: 'api-0',
+    },
+  ],
   [navigation, 'body', { Tabs: 'Deployments', SideMenu: 'Deployments' }],
   [statuses, 'body', { Looks: 'CrashLoopBackOff' }],
   [appearance, 'body', { Light: 'web-2', ATheme: 'web-1', InPolish: 'Przestrzeń nazw' }],

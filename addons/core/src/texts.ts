@@ -25,6 +25,28 @@ export const T = {
     every: t('core.column.every', 'every {period}'),
     inTime: t('core.column.in-time', 'in {time}'),
     controllerZone: t('core.column.controller-zone', "kube-controller-manager's time zone (computed as UTC)"),
+    labels: t('core.column.labels', 'Labels'),
+    controlledBy: t('core.column.controlled-by', 'Controlled By'),
+    conditions: t('core.column.conditions', 'Conditions'),
+  },
+  tip: {
+    condition: {
+      title: t('core.tip.condition.title', '{type} · {kind} {name}'),
+      status: t('core.tip.condition.status', 'Status'),
+      reason: t('core.tip.condition.reason', 'Reason'),
+      lastTransition: t('core.tip.condition.last-transition', 'Last Transition'),
+    },
+    taints: {
+      title: t('core.tip.taints.title', 'Taints · Node {name}'),
+    },
+    container: {
+      title: t('core.tip.container.title', '{container} · Pod {name}'),
+      state: t('core.tip.container.state', 'State'),
+      exitCode: t('core.tip.container.exit-code', 'Exit Code'),
+      restarts: t('core.tip.container.restarts', 'Restarts'),
+      started: t('core.tip.container.started', 'Started'),
+      image: t('core.tip.container.image', 'Image'),
+    },
   },
   nav: {
     kinds: t('core.nav.kinds', 'Kinds'),
@@ -96,6 +118,19 @@ export const T = {
     /** Its header: how many there are (its name is beside it). */
     header: {
       count: t('core.kind.header.count', '{count} total'),
+    },
+    /** Its columns' settings: each turned on or off, grouped by where it comes from. */
+    columns: {
+      button: t('core.kind.columns.button', 'Columns'),
+      filter: t('core.kind.columns.filter', 'Filter columns'),
+      general: t('core.kind.columns.general', 'General'),
+      wide: t('core.kind.columns.wide', 'Wide'),
+      more: t('core.kind.columns.more', 'More'),
+      addon: t('core.kind.columns.addon', 'addon'),
+      shown: t('core.kind.columns.shown', '{on} of {all} shown'),
+      reset: t('core.kind.columns.reset', 'Reset to defaults'),
+      locked: t('core.kind.columns.locked', 'Always shown'),
+      none: t('core.kind.columns.none', 'No columns match'),
     },
     notServed: t('core.kind.not-served', 'The cluster does not serve {kind}.'),
     refused: t('core.kind.refused', '{kind} cannot be had: {code}'),

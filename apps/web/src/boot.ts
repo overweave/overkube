@@ -27,13 +27,15 @@ export interface BootOptions {
 }
 
 export async function boot({ element, asked }: BootOptions) {
-  const connector = createConnector({ http: { base: '/kube' } });
+  const gateway = '/kube';
+  const connector = createConnector({ http: { base: gateway } });
   const registry = createRegistry({ kinds: kubeKinds });
   const source = createSource(connector, { layers: fieldLayers(registry) });
   const cluster = clusterAccess(connector, source);
   const told = notifications();
 
-  const user = new UserService({ registry, store: localStore() });
+  // The user's changes of this cluster (its gateway: the page's, at this origin).
+  const user = new UserService({ registry, store: localStore(`${window.location.host}${gateway}`) });
   await user.start();
   // Going (closed, reloaded, sent to the background): what is waiting saved now.
   window.addEventListener('pagehide', () => void user.flush());

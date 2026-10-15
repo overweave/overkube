@@ -3,7 +3,7 @@ import { define } from './define.ts';
 /*
  * What every object has to ask by, whatever its kind (a CRD's too): its
  * name, namespace, uid, when it was made and when it began to go; its
- * owners (and the one that controls it), finalizers; its labels and
+ * owners (and the one that controls it, as Kind/name too), finalizers; its labels and
  * conditions as key=value, Type=Status (one field each, for groupBy and
  * selectors), its labels' keys (a selector's Exists); whether it is Ready.
  */
@@ -15,6 +15,10 @@ export const COMMON = define({
   'core.deleting': { type: 'time', value: '.metadata.deletionTimestamp' },
   'core.owner.uid': { type: 'string', many: true, value: '.metadata.ownerReferences[*].uid' },
   'core.controller.uid': { type: 'string', value: '.metadata.ownerReferences[?(@.controller==true)].uid' },
+  'core.controller': {
+    type: 'string',
+    value: { cel: "self.?metadata.?ownerReferences.orValue([]).filter(o, o.?controller.orValue(false)).map(o, o.kind + '/' + o.name).join(',')" },
+  },
   'core.finalizers': { type: 'string', many: true, value: '.metadata.finalizers[*]' },
   'core.ready': { type: 'string', value: '.status.conditions[?(@.type=="Ready")].status' },
   'core.labels': { type: 'string', many: true, value: { cel: 'cel.bind(l, self.?metadata.?labels.orValue({}), l.map(k, k + "=" + l[k]))' } },

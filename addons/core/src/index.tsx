@@ -16,6 +16,7 @@ import {
 import { copyText, toYaml } from '@overkube/uikit';
 import { fill } from '@overweave/ui/preact';
 import { signal } from '@preact/signals';
+import { ColumnsButton } from './ColumnsMenu.tsx';
 import { CoreTable, TableEmpty } from './CoreTable.tsx';
 import { addColumns } from './columns.tsx';
 import {
@@ -72,6 +73,7 @@ import { Actions, type Layout, LayoutSwitch, ResourceMissing, ResourceOverview, 
 import { addStatusLooks } from './statuses.tsx';
 import { Toasts } from './Toasts.tsx';
 import { T } from './texts.ts';
+import { addTips } from './tips.tsx';
 
 /*
  * The core: everything the page shows that is not another addon's, each a
@@ -170,6 +172,8 @@ export default defineAddon({
     c.add('Fill', 'core.kind.header.api', fill(header.sub, { order: 100, render: KindApi }));
     c.add('Fill', 'core.kind.header.namespaces', fill(header.sub, { order: 150, render: (p) => <KindNamespaces {...p} chosen={namespaces} /> }));
     c.add('Fill', 'core.kind.header.count', fill(header.sub, { order: 200, render: (p) => <KindCount {...p} chosen={namespaces} /> }));
+    // Its columns' settings, over its table: the user's to turn on and off.
+    c.add('Fill', 'core.kind.header.columns', fill(header.actions, { order: 1000, render: ColumnsButton }));
     // At its end, last: its columns, to show or hide.
     // A kind's table, wherever drawn: the last in its slot (order 1000) — another's for a kind is drawn in its place.
     c.add('Fill', 'core.kind.table', { slot: slots.kind.table.name, order: 1000, render: (p: KindTableProps) => <CoreTable {...p} chosen={namespaces} /> });
@@ -276,6 +280,7 @@ export default defineAddon({
     const fallback = { fallback: true };
     // The columns: every kind's (name, namespace, age), the usual kinds' own; a CRD's, as it says them (drawn by its tables).
     addColumns(c);
+    addTips(c);
     // How states look (a pod's, a node's, any object's): defaults another's of a name takes the place of.
     addStatusLooks(c);
 

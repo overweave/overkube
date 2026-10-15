@@ -2,7 +2,7 @@ import { type KindInfo, kinds } from '@overkube/kube-types';
 import type { FieldCatalog, Value } from '@overkube/query';
 import { type CellValue, Column, type ColumnSpec, closeIn, column, type KubeContributor, kindRef, openIn, takes } from '@overkube/sdk';
 import { useFields, usePage, useSay } from '@overkube/sdk/preact';
-import { Ratio } from '@overkube/uikit';
+import { Chips, Ratio, Status, Tip } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { useDefinitions } from '@overweave/ui/preact';
@@ -10,11 +10,12 @@ import { useComputed } from '@preact/signals';
 import { useMemo, useRef } from 'preact/hooks';
 import { type Cron, nextRun, parseCron } from './cron.ts';
 import { type Failed, fieldOf } from './failures.ts';
-import { EMPTY, humanDuration } from './format.ts';
+import { EMPTY, humanDuration, msOf } from './format.ts';
 import { builtIn } from './kinds.ts';
 import { clock, useLive } from './live.ts';
-import { statusFormat } from './statuses.tsx';
+import { StatusOf, statusFormat } from './statuses.tsx';
 import { T } from './texts.ts';
+import { ConditionTip, ContainerTip, TaintsTip } from './tips.tsx';
 
 /*
  * The core's columns — data only: each a field (or a path) it sorts by and
@@ -22,7 +23,11 @@ import { T } from './texts.ts';
  * Every kind's: its objects' names (a link to each), namespaces, ages; the
  * usual kinds' own, as kubectl shows them; a CRD's, as it says them (its
  * columns, its fields) — each a default another's column of its name takes
- * the place of. And the columns a kind's table (or a resource's summary)
+ * the place of. And more than kubectl says, not shown till asked (the More
+ * of the columns' settings): any object's labels, its controller, its
+ * conditions; a pod's containers' states; a node's taints, whether
+ * cordoned. (What needs a query of each row's — an object's Warning
+ * events, a node's pods — waits for counts of related objects.) And the columns a kind's table (or a resource's summary)
  * has: those the definitions and its CRD give, as its TableView sets them
  * out.
  */
@@ -64,6 +69,26 @@ const serviceFormat = ([namespace, name]: readonly CellValue[]) => (one(name) ? 
 /** A cron job's history limits, its finished jobs kept (successful / failed; none said: 3 / 1, the API's). */
 const historyFormat = ([ok, failed]: readonly CellValue[]) => `${one(ok) ?? 3} / ${one(failed) ?? 1}`;
 
+/** A workload's pod template's columns, as kubectl's -o wide has them: its containers, images, selector (those asked for). */
+const templated = (kind: KindInfo, which: readonly ('containers' | 'images' | 'selector')[]): [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] =>
+  which.map((w) => [kind, w === 'containers' ? 'Containers' : w === 'images' ? 'Images' : 'Selector', { sort: `${kindRef(kind)}.${w}`, wide: true }]);
+
+/** How long a job ran: from its start to its end (done, or failed: when it failed), or (still running) to now, live; not started, "—". */
+function Duration({ from, to }: { from: number; to: number }) {
+  return <>{useLive(() => humanDuration((Number.isNaN(to) ? clock.value : to) - from), [from, to])}</>;
+}
+const durationFormat = ([started, finished]: readonly CellValue[]) => {
+  const from = msOf(one(started) as Value);
+  return Number.isNaN(from) ? EMPTY : <Duration from={from} to={msOf(one(finished) as Value)} />;
+};
+/** Seconds, as a duration (86400: 24h). */
+const secondsFormat = ([seconds]: readonly CellValue[]) => (typeof one(seconds) === 'number' ? humanDuration((one(seconds) as number) * 1000) : EMPTY);
+/** An autoscaler's targets as kubectl shows them: two, and how many more. */
+const targetsFormat = ([targets]: readonly CellValue[]) => {
+  const said = all([targets]);
+  return said.length ? `${said.slice(0, 2).join(', ')}${said.length > 2 ? ` + ${said.length - 2} more...` : ''}` : EMPTY;
+};
+
 /** When a cron job runs next (its schedule, in its time zone), how long till then, live — worked out again only once it is past; suspended, not at all; @every, its period; not a schedule, "—". No time zone: the controller's own, taken as UTC (said under the pointer). */
 function NextRun({ schedule, zone }: { schedule: string; zone: string }) {
   const say = useSay();
@@ -78,7 +103,7 @@ function NextRun({ schedule, zone }: { schedule: string; zone: string }) {
     const at = next.current.at;
     return at === undefined ? EMPTY : say(T.columns.inTime, { time: humanDuration(at - now) });
   }, [cron, zone]);
-  return <span title={zone || say(T.columns.controllerZone)}>{text}</span>;
+  return <Tip content={() => zone || say(T.columns.controllerZone)}>{text}</Tip>;
 }
 const nextFormat = ([schedule, zone, suspended]: readonly CellValue[]) =>
   one(suspended) === true || one(suspended) === 'true' ? EMPTY : <NextRun schedule={String(one(schedule) ?? '')} zone={String(one(zone) ?? '')} />;
@@ -99,6 +124,8 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   [core.v1.Pod, 'Node', { sort: 'pods.v1.node', wide: true }],
   [core.v1.Pod, 'QoS', { sort: 'pods.v1.qos', wide: true }],
   [core.v1.Pod, 'Started', { sort: 'pods.v1.started', wide: true }],
+  [core.v1.Pod, 'Nominated Node', { sort: '.status.nominatedNodeName', wide: true }],
+  [core.v1.Pod, 'Readiness Gates', { sort: 'pods.v1.readinessGates', wide: true }],
   ...([apps.v1.Deployment, apps.v1.StatefulSet, apps.v1.ReplicaSet] as const).flatMap((k): [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] => {
     const ref = kindRef(k);
     return [
@@ -110,22 +137,29 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   }),
   [apps.v1.Deployment, 'Strategy', { sort: '.spec.strategy.type', wide: true }],
   [apps.v1.Deployment, 'Revision', { sort: 'deployments.v1.apps.revision', wide: true }],
+  ...templated(apps.v1.Deployment, ['containers', 'images', 'selector']),
   [apps.v1.ReplicaSet, 'Revision', { sort: 'replicasets.v1.apps.revision' }],
   [apps.v1.ReplicaSet, 'Images', { sort: 'replicasets.v1.apps.images' }],
+  ...templated(apps.v1.ReplicaSet, ['containers', 'selector']),
   [apps.v1.StatefulSet, 'Service', { sort: '.spec.serviceName', wide: true }],
   [apps.v1.StatefulSet, 'Update', { sort: '.spec.updateStrategy.type', wide: true }],
   [apps.v1.StatefulSet, 'Partition', { sort: '.spec.updateStrategy.rollingUpdate.partition', wide: true }],
   [apps.v1.StatefulSet, 'Pod Management', { sort: '.spec.podManagementPolicy', wide: true }],
   [apps.v1.StatefulSet, 'Revision', { sort: '.status.updateRevision', wide: true }],
+  ...templated(apps.v1.StatefulSet, ['containers', 'images']),
   [apps.v1.DaemonSet, 'Status', { sort: 'daemonsets.v1.apps.health', format: statusFormat }],
   [apps.v1.DaemonSet, 'Desired', { sort: 'daemonsets.v1.apps.desired' }],
+  [apps.v1.DaemonSet, 'Current', { sort: '.status.currentNumberScheduled' }],
   [apps.v1.DaemonSet, 'Ready', { sort: 'daemonsets.v1.apps.ready' }],
   [apps.v1.DaemonSet, 'Up-to-date', { sort: 'daemonsets.v1.apps.updated' }],
   [apps.v1.DaemonSet, 'Available', { sort: 'daemonsets.v1.apps.available' }],
+  [apps.v1.DaemonSet, 'Node Selector', { sort: 'daemonsets.v1.apps.nodeSelector' }],
   [apps.v1.DaemonSet, 'Misscheduled', { sort: '.status.numberMisscheduled', wide: true }],
   [apps.v1.DaemonSet, 'Max Unavailable', { sort: '.spec.updateStrategy.rollingUpdate.maxUnavailable', wide: true }],
+  ...templated(apps.v1.DaemonSet, ['containers', 'images', 'selector']),
   [batch.v1.Job, 'Status', { sort: 'jobs.v1.batch.status', format: statusFormat }],
   [batch.v1.Job, 'Completions', { sort: 'jobs.v1.batch.succeeded', values: ['jobs.v1.batch.succeeded', 'jobs.v1.batch.completions'], format: ratio }],
+  [batch.v1.Job, 'Duration', { values: ['jobs.v1.batch.started', 'jobs.v1.batch.finished'], format: durationFormat }],
   [batch.v1.Job, 'Parallelism', { sort: '.spec.parallelism', wide: true }],
   [batch.v1.Job, 'Failed', { sort: '.status.failed', wide: true }],
   [batch.v1.Job, 'Started', { sort: 'jobs.v1.batch.started', wide: true }],
@@ -134,16 +168,19 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   [batch.v1.Job, 'TTL', { sort: '.spec.ttlSecondsAfterFinished', wide: true }],
   [batch.v1.Job, 'Backoff Limit', { sort: '.spec.backoffLimit', wide: true }],
   [batch.v1.Job, 'Completion Mode', { sort: '.spec.completionMode', wide: true }],
+  ...templated(batch.v1.Job, ['containers', 'images', 'selector']),
   [batch.v1.CronJob, 'Status', { sort: 'cronjobs.v1.batch.status', format: statusFormat }],
   [batch.v1.CronJob, 'Schedule', { sort: '.spec.schedule' }],
+  [batch.v1.CronJob, 'Time Zone', { sort: '.spec.timeZone' }],
   [batch.v1.CronJob, 'Suspend', { sort: '.spec.suspend' }],
+  [batch.v1.CronJob, 'Active', { sort: 'cronjobs.v1.batch.active' }],
   [batch.v1.CronJob, 'Last Schedule', { sort: 'cronjobs.v1.batch.lastSchedule' }],
   [batch.v1.CronJob, 'Next', { values: ['.spec.schedule', '.spec.timeZone', '.spec.suspend'], format: nextFormat }],
   [batch.v1.CronJob, 'Last Successful', { sort: 'cronjobs.v1.batch.lastSuccess', wide: true }],
-  [batch.v1.CronJob, 'Time Zone', { sort: '.spec.timeZone', wide: true }],
   [batch.v1.CronJob, 'Concurrency', { sort: '.spec.concurrencyPolicy', wide: true }],
   [batch.v1.CronJob, 'Starting Deadline', { sort: '.spec.startingDeadlineSeconds', wide: true }],
   [batch.v1.CronJob, 'History Limits', { values: ['.spec.successfulJobsHistoryLimit', '.spec.failedJobsHistoryLimit'], format: historyFormat, wide: true }],
+  ...templated(batch.v1.CronJob, ['containers', 'images', 'selector']),
   [core.v1.Service, 'Type', { sort: '.spec.type' }],
   [core.v1.Service, 'Cluster-IP', { sort: '.spec.clusterIP' }],
   [
@@ -158,21 +195,27 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   [core.v1.Service, 'Traffic Policy', { sort: '.spec.externalTrafficPolicy', wide: true }],
   [core.v1.Service, 'Session Affinity', { sort: '.spec.sessionAffinity', wide: true }],
   [core.v1.Service, 'IP Families', { values: ['.spec.ipFamilies[*]', '.spec.ipFamilyPolicy'], format: familiesFormat, wide: true }],
+  [core.v1.Service, 'Selector', { sort: 'services.v1.selector', wide: true }],
   [networking.v1.Ingress, 'Class', { sort: '.spec.ingressClassName' }],
   [networking.v1.Ingress, 'Hosts', { sort: '.spec.rules[*].host' }],
   [networking.v1.Ingress, 'Address', { sort: '.status.loadBalancer.ingress[*].ip' }],
+  [networking.v1.Ingress, 'Ports', { sort: 'ingresses.v1.networking.k8s.io.ports' }],
   [networking.v1.NetworkPolicy, 'Pod-Selector', { sort: 'networkpolicies.v1.networking.k8s.io.pods' }],
   [core.v1.ConfigMap, 'Data', { sort: 'configmaps.v1.keys' }],
   [core.v1.ConfigMap, 'Immutable', { sort: '.immutable', wide: true }],
   [core.v1.Secret, 'Type', { sort: '.type' }],
   [core.v1.Secret, 'Data', { sort: 'secrets.v1.keys' }],
   [core.v1.Secret, 'Immutable', { sort: '.immutable', wide: true }],
+  [core.v1.ServiceAccount, 'Secrets', { sort: 'serviceaccounts.v1.secrets' }],
   [core.v1.ServiceAccount, 'Automount', { sort: '.automountServiceAccountToken', wide: true }],
+  [core.v1.ResourceQuota, 'Request', { values: ['resourcequotas.v1.request'], format: listFormat }],
+  [core.v1.ResourceQuota, 'Limit', { values: ['resourcequotas.v1.limit'], format: listFormat }],
   [core.v1.PersistentVolumeClaim, 'Status', { sort: 'persistentvolumeclaims.v1.status', format: statusFormat }],
   [core.v1.PersistentVolumeClaim, 'Volume', { sort: '.spec.volumeName' }],
   [core.v1.PersistentVolumeClaim, 'Capacity', { sort: '.status.capacity.storage' }],
   [core.v1.PersistentVolumeClaim, 'Access Modes', { sort: '.spec.accessModes[*]' }],
   [core.v1.PersistentVolumeClaim, 'StorageClass', { sort: '.spec.storageClassName' }],
+  [core.v1.PersistentVolumeClaim, 'VolumeAttributesClass', { sort: '.spec.volumeAttributesClassName' }],
   [core.v1.PersistentVolumeClaim, 'Requested', { sort: '.spec.resources.requests.storage', wide: true }],
   [core.v1.PersistentVolumeClaim, 'VolumeMode', { sort: '.spec.volumeMode', wide: true }],
   [core.v1.PersistentVolumeClaim, 'Data Source', { values: ['.spec.dataSource.kind', '.spec.dataSource.name'], format: sourceFormat, wide: true }],
@@ -182,6 +225,8 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   [core.v1.PersistentVolume, 'Reclaim Policy', { sort: '.spec.persistentVolumeReclaimPolicy' }],
   [core.v1.PersistentVolume, 'Claim', { sort: '.spec.claimRef.name' }],
   [core.v1.PersistentVolume, 'StorageClass', { sort: '.spec.storageClassName' }],
+  [core.v1.PersistentVolume, 'VolumeAttributesClass', { sort: '.spec.volumeAttributesClassName' }],
+  [core.v1.PersistentVolume, 'Reason', { sort: '.status.reason' }],
   [core.v1.PersistentVolume, 'VolumeMode', { sort: '.spec.volumeMode', wide: true }],
   [core.v1.PersistentVolume, 'Mount Options', { sort: '.spec.mountOptions[*]', wide: true }],
   [storage.v1.StorageClass, 'Provisioner', { sort: '.provisioner' }],
@@ -189,8 +234,15 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   [storage.v1.StorageClass, 'Volume Binding Mode', { sort: '.volumeBindingMode' }],
   [storage.v1.StorageClass, 'Allow Volume Expansion', { sort: '.allowVolumeExpansion' }],
   [storage.v1.StorageClass, 'Default', { sort: 'storageclasses.v1.storage.k8s.io.default' }],
-  [rbac.v1.RoleBinding, 'Role', { sort: '.roleRef.name' }],
-  [rbac.v1.ClusterRoleBinding, 'Role', { sort: '.roleRef.name' }],
+  ...([rbac.v1.RoleBinding, rbac.v1.ClusterRoleBinding] as const).flatMap((k): [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] => {
+    const ref = kindRef(k);
+    return [
+      [k, 'Role', { sort: '.roleRef.name' }],
+      [k, 'Users', { sort: `${ref}.users`, wide: true }],
+      [k, 'Groups', { sort: `${ref}.groups`, wide: true }],
+      [k, 'ServiceAccounts', { sort: `${ref}.serviceAccounts`, wide: true }],
+    ];
+  }),
   [policy.v1.PodDisruptionBudget, 'Min Available', { sort: '.spec.minAvailable' }],
   [policy.v1.PodDisruptionBudget, 'Max Unavailable', { sort: '.spec.maxUnavailable' }],
   [policy.v1.PodDisruptionBudget, 'Allowed Disruptions', { sort: '.status.disruptionsAllowed' }],
@@ -204,6 +256,10 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   [core.v1.Node, 'Internal-IP', { sort: '.status.addresses[?(@.type=="InternalIP")].address', wide: true }],
   [core.v1.Node, 'CPU', { sort: 'nodes.v1.cpu', wide: true }],
   [core.v1.Node, 'Memory', { sort: 'nodes.v1.memory', wide: true }],
+  [core.v1.Node, 'External-IP', { sort: '.status.addresses[?(@.type=="ExternalIP")].address', wide: true }],
+  [core.v1.Node, 'OS-Image', { sort: '.status.nodeInfo.osImage', wide: true }],
+  [core.v1.Node, 'Kernel-Version', { sort: '.status.nodeInfo.kernelVersion', wide: true }],
+  [core.v1.Node, 'Container-Runtime', { sort: '.status.nodeInfo.containerRuntimeVersion', wide: true }],
   [core.v1.Namespace, 'Status', { sort: '.status.phase', format: statusFormat }],
   [core.v1.Namespace, 'Pod Security', { sort: 'namespaces.v1.podSecurity', wide: true }],
   [core.v1.Event, 'Last Seen', { sort: 'events.v1.lastSeen' }],
@@ -211,6 +267,7 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   [core.v1.Event, 'Reason', { sort: '.reason' }],
   [core.v1.Event, 'Object', { sort: '.involvedObject.name' }],
   [core.v1.Event, 'Message', { sort: '.message' }],
+  [core.v1.Event, 'Subobject', { sort: '.involvedObject.fieldPath', wide: true }],
   [core.v1.Event, 'Source', { values: ['.source.component', '.source.host', '.reportingComponent'], format: listFormat, wide: true }],
   [core.v1.Event, 'First Seen', { sort: 'events.v1.firstSeen', wide: true }],
   [core.v1.Event, 'Count', { sort: 'events.v1.count', wide: true }],
@@ -233,17 +290,78 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   ),
   [certificates.v1.CertificateSigningRequest, 'SignerName', { sort: '.spec.signerName' }],
   [certificates.v1.CertificateSigningRequest, 'Requestor', { sort: '.spec.username' }],
+  [certificates.v1.CertificateSigningRequest, 'Requested Duration', { sort: '.spec.expirationSeconds', format: secondsFormat }],
   [certificates.v1.CertificateSigningRequest, 'Usages', { sort: '.spec.usages[*]', wide: true }],
   [certificates.v1.CertificateSigningRequest, 'Condition', { sort: 'certificatesigningrequests.v1.certificates.k8s.io.status', format: statusFormat }],
   [apiregistration.v1.APIService, 'Available', { sort: 'apiservices.v1.apiregistration.k8s.io.status', format: statusFormat }],
   [apiextensions.v1.CustomResourceDefinition, 'Status', { sort: 'customresourcedefinitions.v1.apiextensions.k8s.io.status', format: statusFormat }],
   [autoscaling.v2.HorizontalPodAutoscaler, 'Reference', { sort: '.spec.scaleTargetRef.name' }],
+  [autoscaling.v2.HorizontalPodAutoscaler, 'Targets', { values: ['horizontalpodautoscalers.v2.autoscaling.targets'], format: targetsFormat }],
   [autoscaling.v2.HorizontalPodAutoscaler, 'MinPods', { sort: '.spec.minReplicas' }],
   [autoscaling.v2.HorizontalPodAutoscaler, 'MaxPods', { sort: '.spec.maxReplicas' }],
   [autoscaling.v2.HorizontalPodAutoscaler, 'Replicas', { sort: '.status.currentReplicas' }],
   [autoscaling.v2.HorizontalPodAutoscaler, 'Desired', { sort: '.status.desiredReplicas', wide: true }],
   [autoscaling.v2.HorizontalPodAutoscaler, 'Last Scaled', { sort: 'horizontalpodautoscalers.v2.autoscaling.lastScale', wide: true }],
   [autoscaling.v2.HorizontalPodAutoscaler, 'Status', { sort: 'horizontalpodautoscalers.v2.autoscaling.status', format: statusFormat }],
+];
+
+/** Labels as chips, one line (key=value each; prefixes folded). */
+const labelsFormat = ([labels]: readonly CellValue[]) => {
+  const items = Object.fromEntries(all([labels]).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
+  return Object.keys(items).length ? <Chips items={items} compact /> : EMPTY;
+};
+
+/** Conditions whose True is a trouble (a node's pressure, a replica failure): the others' True is well. */
+const TROUBLE = /Pressure$|Unavailable$|Failure$|^Failed$|^Stalled$|^Degraded$/;
+
+/** Conditions as marks, each its type: well (a check), not (a cross), not known — its tip, more of it (the object read then). */
+const conditionsFormat = ([conditions, name, namespace]: readonly CellValue[], { kind }: { kind: KindInfo }) => {
+  const said = all([conditions]).map((c) => [c.slice(0, c.indexOf('=')), c.slice(c.indexOf('=') + 1)]);
+  if (!said.length) return EMPTY;
+  const ns = typeof one(namespace) === 'string' ? String(one(namespace)) : undefined;
+  return said.map(([type, status]) => {
+    const well = status === 'True' ? !TROUBLE.test(type) : status === 'False' ? TROUBLE.test(type) : undefined;
+    const [tone, icon] = well === undefined ? (['unknown', 'help'] as const) : well ? (['ok', 'circle-check'] as const) : (['error', 'circle-x'] as const);
+    return (
+      <Tip key={type} card content={() => <ConditionTip kind={kind} namespace={ns} name={String(one(name) ?? '')} type={type} />}>
+        <Status tone={tone} icon={icon} title={`${type}=${status}`} />
+      </Tip>
+    );
+  });
+};
+
+/** A pod's containers' states, a mark each — its tip, more of it (the pod read then). */
+const statesFormat = ([states, name, namespace]: readonly CellValue[], { kind }: { kind: KindInfo }) => {
+  const each = all([states]);
+  if (!each.length) return EMPTY;
+  const ns = typeof one(namespace) === 'string' ? String(one(namespace)) : undefined;
+  return each.map((s) => {
+    const [container, state] = [s.slice(0, s.indexOf('|')), s.slice(s.indexOf('|') + 1)];
+    return (
+      <Tip key={container} card content={() => <ContainerTip kind={kind} namespace={ns} name={String(one(name) ?? '')} container={container} />}>
+        <StatusOf kind={kind} words={state} mark title={`${container}: ${state}`} />
+      </Tip>
+    );
+  });
+};
+
+/** A node's taints: how many — its tip, each (the node read then). */
+const taintsFormat = ([taints, name]: readonly CellValue[], { kind }: { kind: KindInfo }) => {
+  const each = all([taints]);
+  return each.length ? (
+    <Tip card content={() => <TaintsTip kind={kind} name={String(one(name) ?? '')} />}>
+      {each.length}
+    </Tip>
+  ) : (
+    EMPTY
+  );
+};
+
+/** More than kubectl says, a kind's: [kind, header, spec] (more, each). */
+const MORE: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
+  [core.v1.Pod, 'Container States', { values: ['pods.v1.containerStates', 'core.name', 'core.namespace'], format: statesFormat }],
+  [core.v1.Node, 'Taints', { values: ['nodes.v1.taints', 'core.name'], format: taintsFormat }],
+  [core.v1.Node, 'Cordoned', { sort: 'nodes.v1.unschedulable', format: ([on]) => (one(on) === true ? 'Cordoned' : EMPTY) }],
 ];
 
 /** A column's name as kubectl heads it, for a definition's name: "Port(s)" port-s. */
@@ -275,8 +393,25 @@ export function addColumns(c: KubeContributor): void {
   c.add('Column', 'core.age', column({ header: T.columns.age, order: 900, width: 90, when: (k) => k.id !== core.v1.Event.id, sort: 'core.created' }), fallback);
   // An operator's resource's state, as kstatus works it out (its addon's looks say it in its words): after its name, before its CRD's columns.
   c.add('Column', 'core.health', column({ header: T.columns.status, order: 50, when: (k) => !builtIn(k.group), sort: 'core.health', format: statusFormat }), fallback);
-  for (const [i, [kind, header, spec]] of OWN.entries())
+  // Each kind's in its own order (after the name, the namespace, a CRD's state; before the age), as kubectl has them.
+  const placed = new Map<KindInfo, number>();
+  for (const [kind, header, spec] of OWN) {
+    const i = placed.get(kind) ?? 0;
+    placed.set(kind, i + 1);
     c.add('Column', `core.${kind.id}.${slug(header)}`, column({ kinds: [kind], header, order: 100 + i * 10, ...spec }), fallback);
+  }
+  // More than kubectl says (not shown till asked): before the age — any object's, then the kind's.
+  const more = { more: true };
+  c.add('Column', 'core.labels', column({ header: T.columns.labels, order: 800, values: ['core.labels'], format: labelsFormat, ...more }), fallback);
+  c.add('Column', 'core.controlled-by', column({ header: T.columns.controlledBy, order: 810, sort: 'core.controller', ...more }), fallback);
+  c.add(
+    'Column',
+    'core.conditions',
+    column({ header: T.columns.conditions, order: 820, values: ['core.conditions', 'core.name', 'core.namespace'], format: conditionsFormat, ...more }),
+    fallback,
+  );
+  for (const [i, [kind, header, spec]] of MORE.entries())
+    c.add('Column', `core.${kind.id}.${slug(header)}`, column({ kinds: [kind], header, order: 840 + i, ...more, ...spec }), fallback);
 }
 
 /** A column placed: its definition (or a CRD's column, made one), its cell's fields. */
@@ -287,6 +422,15 @@ export interface Placed {
 
 /** A column's fields: those its cell is made of (none said: the one it sorts by). */
 const fieldsOfColumn = (spec: ColumnSpec): readonly string[] => spec.values ?? (spec.sort ? [spec.sort] : []);
+
+/** A column there is for a kind: who gives it (an addon's id; the core's, a CRD's: core), whether it is kubectl's -o wide only, more than kubectl says, whether shown now. */
+export interface Offered {
+  definition: Definition<ColumnSpec>;
+  by: string;
+  wide: boolean;
+  more: boolean;
+  shown: boolean;
+}
 
 /**
  * A kind's columns, as its tables (and a resource's summary) have them: the
@@ -302,12 +446,12 @@ export function useColumns(
   view: { readonly columns?: readonly string[]; readonly hidden?: Readonly<Record<string, boolean>> },
   failed: Failed,
   wide = false,
-): { placed: Placed[]; catalog: FieldCatalog | undefined } {
+): { placed: Placed[]; offered: Offered[]; catalog: FieldCatalog | undefined } {
   const fields = useFields(kindRef(kind));
   // A field defined (an addon's) that cannot be: its owner's failure.
   for (const [name, why] of Object.entries(fields.rejected ?? {})) if (name) failed(fieldOf(name), 'Field', name, 'definition', new Error(why));
   const definitions = useDefinitions(Column);
-  const placed = useMemo(() => {
+  const [placed, offered] = useMemo(() => {
     // Its CRD says its state itself (a Status or Ready column): kstatus's not drawn beside it.
     const says = (fields.columns ?? []).some((k) => ['status', 'ready'].includes(slug(k.name)));
     const all = definitions.filter((c) => {
@@ -327,22 +471,27 @@ export function useColumns(
         spec: { target: { kinds: [kind.id] }, header: k.name, sort: k.field, wide: k.priority > 0, order: 100 + i * 10 } satisfies ColumnSpec,
       }))
       .filter((c) => !named.has(c.name)) as unknown as Definition<ColumnSpec>[];
-    const shown = (c: Definition<ColumnSpec>) => {
-      const hidden = view.hidden?.[c.name];
-      if (hidden !== undefined) return !hidden;
+    const isWide = (c: Definition<ColumnSpec>) => {
       const w = c.spec.wide;
       try {
-        return wide || !(typeof w === 'function' ? w(kind) : w);
+        return typeof w === 'function' ? w(kind) : w === true;
       } catch (error) {
         failed(c, 'Column', c.name, 'wide', error);
-        return true;
+        return false;
       }
     };
-    return arranged([...all, ...crd], view)
-      .filter(shown)
-      .map((definition) => ({ definition, fields: fieldsOfColumn(definition.spec) }));
+    const shown = (c: Definition<ColumnSpec>) => {
+      const hidden = view.hidden?.[c.name];
+      return hidden !== undefined ? !hidden : wide ? !c.spec.more : !isWide(c) && !c.spec.more;
+    };
+    const ordered = arranged([...all, ...crd], view);
+    return [
+      ordered.filter(shown).map((definition) => ({ definition, fields: fieldsOfColumn(definition.spec) })),
+      // Every column there is for it (a CRD's, the core's): who gives it, whether only wide, whether shown — what the columns' settings offer.
+      ordered.map((definition) => ({ definition, by: definition.definedBy ?? 'core', wide: isWide(definition), more: definition.spec.more === true, shown: shown(definition) })),
+    ];
   }, [definitions, fields.columns, kind, view.columns, view.hidden, wide, failed]);
-  return { placed, catalog: fields.catalog };
+  return { placed, offered, catalog: fields.catalog };
 }
 
 /** Columns as a TableView sets them out: those it names first, in its order; the others after, in theirs. */

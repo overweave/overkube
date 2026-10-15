@@ -45,6 +45,21 @@ export interface TabsState {
   open: Signal<string[]>;
 }
 
+/** The pinned tabs' keys, in order — the tabs', the picker's, the start's own: as the user pinned them (the NavView's), then those the KindViews and Pages pin that the user did not say (one an addon pins later, too), not those the user unpinned. */
+export function usePinned(): string[] {
+  return pinnedOf(
+    useNav().pinned.map((e) => e.key),
+    useDefinition(NavView, 'default')?.spec,
+  );
+}
+
+/** The tabs pinned, of those pinned by default and what the user said (pinned, in order; unpinned). */
+export function pinnedOf(defaults: readonly string[], said: { readonly pinned?: readonly string[]; readonly unpinned?: readonly string[] } | undefined): string[] {
+  const pinned = said?.pinned ?? [];
+  const unpinned = new Set(said?.unpinned ?? []);
+  return [...pinned, ...defaults.filter((k) => !pinned.includes(k))].filter((k) => !unpinned.has(k));
+}
+
 /**
  * The tabs: those pinned as the user pinned them, in their order — the
  * user's (NavView pinned: kept between visits; none said, as the KindViews
@@ -52,12 +67,12 @@ export interface TabsState {
  * pinned the user's changes, the open the page's.
  */
 export function useTabs(state: TabsState): { lists: TabLists; keep(next: TabLists): void } {
-  const nav = useNav();
   const user = useUser();
-  const said = useDefinition(NavView, 'default')?.spec.pinned;
-  const lists: TabLists = { pinned: said ? [...said] : nav.pinned.map((e) => e.key), open: state.open.value };
+  const defaults = useNav().pinned.map((e) => e.key);
+  const lists: TabLists = { pinned: usePinned(), open: state.open.value };
   const keep = (next: TabLists) => {
-    if (next.pinned.join('\n') !== lists.pinned.join('\n')) user.patch('NavView', 'default', { pinned: next.pinned });
+    // The user's: those pinned, in order; those pinned by default they unpinned.
+    if (next.pinned.join('\n') !== lists.pinned.join('\n')) user.patch('NavView', 'default', { pinned: next.pinned, unpinned: defaults.filter((k) => !next.pinned.includes(k)) });
     if (next.open.join('\n') !== state.open.peek().join('\n')) state.open.value = next.open;
   };
   return { lists, keep };
@@ -246,8 +261,8 @@ export function NavSide({ tabs }: { tabs: TabsState }) {
     anchor.current?.focus();
   };
   const sidePicking = useMemo<SidePicking>(() => ({ picking, toggle: () => (picking ? close() : setPicking(true)), anchor }), [picking]);
-  if (view.mode !== 'side') return null;
   const user = useUser();
+  if (view.mode !== 'side') return null;
   const pinned = view.side === 'pinned';
   return (
     <SidePicker.Provider value={sidePicking}>

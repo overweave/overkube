@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render } from '@testing-library/preact';
 import { useRef, useState } from 'preact/hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Popover } from '../overlays/Popover';
+import { Tip } from '../overlays/Tip';
 import { Layer, useLeave } from './layers';
 
 /*
@@ -160,5 +162,110 @@ describe('useLeave', () => {
     kept.unmount();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+});
+
+describe('a box placed by its anchor', () => {
+  const box = (top: number, height: number) => ({ top, bottom: top + height, left: 0, right: 100, width: 100, height, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+
+  /** A button in a body that scrolls (a modal's, over its foot), opening a popover under it. */
+  function Placed({ bodyBottom }: { bodyBottom: number }) {
+    const anchor = useRef<HTMLButtonElement>(null);
+    const [open, setOpen] = useState(false);
+    return (
+      <div class="uk-root">
+        <div class="body" style={{ overflowY: 'auto' }} data-bottom={bodyBottom}>
+          <button type="button" ref={anchor} onClick={() => setOpen(true)}>
+            open
+          </button>
+        </div>
+        {open && (
+          <Popover anchor={anchor} onClose={() => setOpen(false)}>
+            <p>in it</p>
+          </Popover>
+        )}
+      </div>
+    );
+  }
+
+  it('is held to the room on its side, to the edge of what scrolls it (a modal’s body over its foot), a margin kept; over it where it does not fit under and there is more; its side kept as it scrolls, till that side’s room is too small', () => {
+    let anchorTop = 400;
+    let height = 0;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this.tagName === 'BUTTON') return box(anchorTop, 20);
+      if (this.classList.contains('body')) return box(0, Number((this as HTMLElement).dataset.bottom));
+      return box(0, 0);
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('uk-popover') ? height : 0;
+    });
+    vi.stubGlobal('innerHeight', 800);
+    const pop = () => document.querySelector('.uk-popover') as HTMLElement;
+    const placed = () => [pop().style.getPropertyValue('--uk-placed-room'), pop().dataset.side];
+    // Small: under it — the body ends at 600, it at 420: 6 apart, 5 kept.
+    height = 100;
+    const view = render(<Placed bodyBottom={600} />);
+    fireEvent.click(view.getByText('open'));
+    expect(placed()).toEqual(['169px', 'bottom']);
+    cleanup();
+    // Taller than the room under it, more over it: over it (400 - 6 - 5).
+    height = 300;
+    const tall = render(<Placed bodyBottom={600} />);
+    fireEvent.click(tall.getByText('open'));
+    expect(placed()).toEqual(['389px', 'top']);
+    // Scrolled a little (the anchor lower): kept over it; scrolled to the top (no room over it), under it.
+    anchorTop = 450;
+    fireEvent.scroll(tall.container.querySelector('.body') as HTMLElement);
+    expect(placed()).toEqual(['439px', 'top']);
+    anchorTop = 60;
+    fireEvent.scroll(tall.container.querySelector('.body') as HTMLElement);
+    expect(placed()).toEqual(['509px', 'bottom']);
+    cleanup();
+    // Its height not there to measure yet, little room under it, more over it: over it for now.
+    height = 0;
+    anchorTop = 100;
+    const low = render(<Placed bodyBottom={200} />);
+    fireEvent.click(low.getByText('open'));
+    expect(placed()).toEqual(['89px', 'top']);
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('a tip placed by its anchor', () => {
+  const rect = (left: number, top: number, w: number, h: number) =>
+    ({ left, top, right: left + w, bottom: top + h, width: w, height: h, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
+  function placed(anchor: DOMRect, beside: boolean) {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return this.classList.contains('uk-tip-at') ? anchor : rect(0, 0, 0, 0);
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('uk-tip') ? 20 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('uk-tip') ? 150 : 0;
+    });
+    vi.stubGlobal('innerHeight', 800);
+    vi.stubGlobal('innerWidth', 1000);
+    render(
+      <div class="uk-root">
+        <Tip open beside={beside} content={() => 'said'}>
+          <span>it</span>
+        </Tip>
+      </div>,
+    );
+    const tip = document.querySelector('.uk-tip') as HTMLElement;
+    const at = [tip.style.left, tip.style.top, tip.dataset.side];
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    return at;
+  }
+
+  it('under it where it fits, little room though there is (not over it); beside it at its right, its left where the right has no room', () => {
+    // 100px from the window's foot: under it (it fits), not over it.
+    expect(placed(rect(100, 680, 40, 20), false)).toEqual(['100px', '704px', 'bottom']);
+    expect(placed(rect(100, 300, 40, 20), true)).toEqual(['144px', '300px', 'right']);
+    expect(placed(rect(900, 300, 40, 20), true)).toEqual(['746px', '300px', 'left']);
   });
 });

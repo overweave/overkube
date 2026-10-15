@@ -1,4 +1,4 @@
-import { cleanup, render } from '@testing-library/preact';
+import { cleanup, fireEvent, render } from '@testing-library/preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { css } from '../styles';
 import { Badge } from './Badge';
@@ -34,10 +34,10 @@ describe('Badge', () => {
     expect(render(<Badge level="ok">Running</Badge>).container.querySelector('.uk-badge-dot')).toBeNull();
   });
 
-  it('says it in full under the pointer, given a title', () => {
-    expect(badge(render(<Badge title="Back-off restarting a failed container">CrashLoopBackOff</Badge>).container).getAttribute('title')).toBe(
-      'Back-off restarting a failed container',
-    );
+  it('says it in full under the pointer, given a title (its tip)', () => {
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.focusIn(badge(render(<Badge title="Back-off restarting a failed container">CrashLoopBackOff</Badge>).container));
+    expect(document.querySelector('.uk-tip')?.textContent).toBe('Back-off restarting a failed container');
   });
 
   it('draws a number', () => {

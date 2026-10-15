@@ -1,12 +1,16 @@
 import { kinds } from '@overkube/kube-types';
 import { action, type CellProps, column, defineAddon, forKinds, menuItem, type NavTabProps, type PageProps, type ResourceProps, section, slots, t, wrap } from '@overkube/sdk';
-import { KindTable, usePageProps } from '@overkube/sdk/preact';
+import { KindTable, tipField, usePageProps } from '@overkube/sdk/preact';
 import { cleanup, kubeWorld, make } from '@overkube/testkit';
-import { renderPage } from '@overkube/testkit/preact';
+import { mount, renderPage } from '@overkube/testkit/preact';
 import { LEAVE_MS, PEEK_MS, TabButton } from '@overkube/uikit';
 import { fill, slotElement } from '@overweave/ui/preact';
+import { fireEvent } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { orderOf } from './CoreTable.tsx';
 import core from './index.tsx';
+import { pinnedOf } from './Nav.tsx';
+import { ConditionTip } from './tips.tsx';
 
 /*
  * The page the core draws, as its user sees it — over the testkit's world,
@@ -99,6 +103,188 @@ describe('a kind’s table', () => {
     expect(page.container.querySelector('a[href="#/k/pods.v1?open=pods.v1/shop/web"]')?.textContent).toBe('web');
   });
 
+  it('has its columns’ settings over it: every column there is, grouped — kubectl’s, -o wide, each addon’s — turned on and off (a group at once), the user’s; back to the defaults', () => {
+    const w = world('web-1');
+    w.addon(addon('images', ({ contributor }) => void contributor.add('Column', 'images.size', column({ kinds: [Pod], header: 'Size', sort: 'core.name' }))));
+    const page = renderPage(w, '/k/pods.v1');
+    page.act(() => ([...page.container.querySelectorAll('button')].find((b) => b.textContent === 'Columns') as HTMLButtonElement).click());
+    const heads = () => [...document.querySelectorAll<HTMLButtonElement>('.uk-checklist-head')];
+    const item = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.uk-checklist-item')].find((i) => i.textContent === label) as HTMLButtonElement;
+    expect(heads().map((h) => h.textContent)).toEqual(['General6/6', 'Wide0/6', 'More0/4', 'images · addon1/1']);
+    // The name stays.
+    expect(item('Name').getAttribute('aria-disabled')).toBe('true');
+    page.act(() => heads()[1].click());
+    page.act(() => item('Size').click());
+    expect(page.headers()).toEqual(['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'IP', 'Node', 'QoS', 'Started', 'Nominated Node', 'Readiness Gates', 'Age']);
+    expect(w.user.saved().patches).toEqual([
+      {
+        kind: 'TableView',
+        name: Pod.id,
+        fields: {
+          hidden: {
+            'core.v1/Pod.ip': false,
+            'core.v1/Pod.node': false,
+            'core.v1/Pod.qos': false,
+            'core.v1/Pod.started': false,
+            'core.v1/Pod.nominated-node': false,
+            'core.v1/Pod.readiness-gates': false,
+            'images.size': true,
+          },
+        },
+      },
+    ]);
+    page.act(() => ([...document.querySelectorAll('.uk-checklist-foot button')].find((b) => b.textContent === 'Reset to defaults') as HTMLButtonElement).click());
+    expect([page.headers(), w.user.saved().patches]).toEqual([['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Size', 'Age'], []]);
+  });
+
+  it('takes the user’s say of a column back when it is turned back as it would be without them: by default, as another’s TableView says', () => {
+    const w = world('web-1');
+    w.addon(addon('quiet', ({ contributor }) => void contributor.patch('TableView', Pod.id, { hidden: { 'core.v1/Pod.restarts': true } })));
+    const page = renderPage(w, '/k/pods.v1');
+    page.act(() => ([...page.container.querySelectorAll('button')].find((b) => b.textContent === 'Columns') as HTMLButtonElement).click());
+    const item = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.uk-checklist-item')].find((i) => i.textContent === label) as HTMLButtonElement;
+    const hidden = () => w.user.saved().patches.find((p) => p.kind === 'TableView')?.fields.hidden;
+    page.act(() => item('Restarts').click());
+    page.act(() => item('Labels').click());
+    expect([hidden(), page.headers()]).toEqual([{ 'core.v1/Pod.restarts': false, 'core.labels': false }, ['Name', 'Namespace', 'Ready', 'Status', 'Restarts', 'Labels', 'Age']]);
+    page.act(() => item('Restarts').click());
+    page.act(() => item('Labels').click());
+    expect([hidden(), page.headers()]).toEqual([undefined, ['Name', 'Namespace', 'Ready', 'Status', 'Age']]);
+  });
+
+  it('has more than kubectl says, not shown till asked: labels, the controller, conditions, containers’ states', () => {
+    const w = world();
+    w.cluster.add(
+      Pod,
+      make(Pod, {
+        metadata: {
+          name: 'web-1',
+          namespace: 'shop',
+          uid: 'p1',
+          labels: { app: 'web' },
+          ownerReferences: [{ apiVersion: 'apps/v1', kind: 'ReplicaSet', name: 'web-7f', uid: 'r1', controller: true }],
+        },
+        status: {
+          conditions: [{ type: 'Ready', status: 'False' }],
+          containerStatuses: [{ name: 'app', image: 'a', imageID: '', restartCount: 0, ready: false, state: { waiting: { reason: 'CrashLoopBackOff' } } }],
+        },
+      }),
+    );
+    w.user.patch('TableView', Pod.id, {
+      hidden: Object.fromEntries(['core.labels', 'core.controlled-by', 'core.conditions', 'core.v1/Pod.container-states'].map((n) => [n, false])),
+    });
+    const page = renderPage(w, '/k/pods.v1');
+    expect(page.headers().slice(5, 9)).toEqual(['Labels', 'Controlled By', 'Conditions', 'Container States']);
+    expect(['Labels', 'Controlled By'].map((c) => page.column(c)[0])).toEqual(['appweb', 'ReplicaSet/web-7f']);
+    expect(page.container.querySelector('.uk-status[aria-label="Ready=False"]')?.getAttribute('data-tone')).toBe('error');
+    expect(page.container.querySelector('[aria-label="app: CrashLoopBackOff"]')).not.toBeNull();
+  });
+
+  it('has a tip for each condition: the core’s title, fields, message — others’ fields among them, none in another’s place', () => {
+    vi.useFakeTimers();
+    const w = world();
+    w.cluster.add(
+      Pod,
+      make(Pod, {
+        metadata: { name: 'api-0', namespace: 'shop' },
+        status: { conditions: [{ type: 'Ready', status: 'False', reason: 'ContainersNotReady', message: 'not ready: [api]', lastTransitionTime: '2026-10-15T10:00:00Z' }] },
+      }),
+    );
+    const field = (id: string, order: number, label: string) =>
+      addon(id, ({ contributor }) => void contributor.add('Fill', `${id}.field`, tipField(slots.tip.condition.fields, { kinds: [Pod], order, label, value: () => id })));
+    w.addon(field('probes', 250, 'Probe'));
+    w.addon(field('runbooks', 900, 'Runbook'));
+    w.user.patch('TableView', Pod.id, { hidden: { 'core.conditions': false } });
+    const page = renderPage(w, '/k/pods.v1');
+    page.act(() => void (page.container.querySelector('.uk-table-row .uk-tip-at') as HTMLElement).dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' })));
+    page.act(() => void vi.advanceTimersByTime(400));
+    const tip = document.querySelector('.uk-tip') as HTMLElement;
+    expect([
+      tip.querySelector('.uk-tip-title')?.textContent,
+      [...tip.querySelectorAll('.uk-tip-field dt')].map((d) => d.textContent),
+      tip.querySelector('.uk-tip-sections')?.textContent,
+    ]).toEqual(['Ready · Pod api-0', ['Status', 'Reason', 'Probe', 'Last Transition', 'Runbook'], 'not ready: [api]']);
+    vi.useRealTimers();
+  });
+
+  it('has a tip for each container: its state, exit code, restarts, image; its message', () => {
+    const w = world();
+    w.cluster.add(
+      Pod,
+      make(Pod, {
+        metadata: { name: 'job-1', namespace: 'shop' },
+        spec: { containers: [{ name: 'run', image: 'busybox:1.37' }] },
+        status: {
+          containerStatuses: [
+            { name: 'run', image: 'busybox:1.37', imageID: '', ready: false, restartCount: 2, state: { terminated: { exitCode: 1, reason: 'Error', message: 'no such file' } } },
+          ],
+        },
+      }),
+    );
+    w.user.patch('TableView', Pod.id, { hidden: { 'core.v1/Pod.container-states': false } });
+    const page = renderPage(w, '/k/pods.v1');
+    fireEvent.keyDown(document, { key: 'Tab' });
+    page.act(() => void fireEvent.focusIn(page.container.querySelector('.uk-table-row .uk-tip-at') as HTMLElement));
+    const tip = document.querySelector('.uk-tip') as HTMLElement;
+    expect([
+      tip.querySelector('.uk-tip-title')?.textContent,
+      [...tip.querySelectorAll('.uk-tip-field')].map((f) => f.textContent),
+      tip.querySelector('.uk-tip-sections')?.textContent,
+    ]).toEqual(['run · Pod job-1', ['StateError', 'Exit Code1', 'Restarts2', 'Imagebusybox:1.37'], 'no such file']);
+  });
+
+  it('says in a tip what it could not read: not there, refused — no placeholder for ever', () => {
+    const w = world();
+    const tip = mount(w, <ConditionTip kind={Pod} namespace="shop" name="gone" type="Ready" />);
+    expect(tip.container.textContent).toBe('There is no Pod gone (now).');
+    tip.unmount();
+    w.cluster.state(Pod, 'denied', { status: 403, code: 'Forbidden', message: 'pods is forbidden' });
+    expect(mount(w, <ConditionTip kind={Pod} namespace="shop" name="gone" type="Ready" />).container.textContent).toBe('pods cannot be had: Forbidden');
+  });
+
+  it('gives a node’s more: its taints (each in its tip), whether cordoned', () => {
+    const w = world();
+    w.cluster.add(Node, make(Node, { metadata: { name: 'n1' }, spec: { unschedulable: true, taints: [{ key: 'gpu', effect: 'NoSchedule' }] } }));
+    w.user.patch('TableView', Node.id, { hidden: Object.fromEntries(['taints', 'cordoned'].map((n) => [`core.v1/Node.${n}`, false])) });
+    const page = renderPage(w, '/k/nodes.v1');
+    expect(['Taints', 'Cordoned'].map((c) => page.column(c)[0])).toEqual(['1', 'Cordoned']);
+    // Its taints' tip: each, its key, value and effect.
+    fireEvent.keyDown(document, { key: 'Tab' });
+    page.act(() => void fireEvent.focusIn(page.container.querySelector('.uk-table-row .uk-tip-at') as HTMLElement));
+    const tip = document.querySelector('.uk-tip') as HTMLElement;
+    expect([tip.querySelector('.uk-tip-title')?.textContent, [...tip.querySelectorAll('.uk-tip-field')].map((f) => f.textContent)]).toEqual([
+      'Taints · Node n1',
+      ['gpuNoSchedule'],
+    ]);
+  });
+
+  it('keeps a column moved among those shown in its new place, those not shown in theirs: one turned on later comes where it is by default', () => {
+    const all = ['core.name', 'core.namespace', 'ready', 'status', 'restarts', 'ip', 'node', 'core.age'];
+    // Restarts moved before Ready, in one namespace (its column not shown), IP and Node not shown.
+    const order = orderOf(all, ['core.name', 'restarts', 'ready', 'status', 'core.age']);
+    expect(order).toEqual(['core.name', 'core.namespace', 'restarts', 'ready', 'status', 'ip', 'node', 'core.age']);
+    const w = world('web-1');
+    w.user.patch('TableView', Pod.id, {
+      columns: orderOf(
+        ['core.name', 'core.namespace', 'core.v1/Pod.ready', 'core.v1/Pod.status', 'core.v1/Pod.restarts', 'core.v1/Pod.ip', 'core.age'],
+        ['core.name', 'core.namespace', 'core.v1/Pod.restarts', 'core.v1/Pod.ready', 'core.v1/Pod.status', 'core.age'],
+      ),
+    });
+    const page = renderPage(w, '/k/pods.v1');
+    page.act(() => void w.user.patch('TableView', Pod.id, { hidden: { 'core.v1/Pod.ip': false } }));
+    expect(page.headers()).toEqual(['Name', 'Namespace', 'Restarts', 'Ready', 'Status', 'IP', 'Age']);
+  });
+
+  it('lets an event’s name, shown only when asked, be turned on and off again', () => {
+    const page = renderPage(world(), '/k/events.v1');
+    page.act(() => ([...page.container.querySelectorAll('button')].find((b) => b.textContent === 'Columns') as HTMLButtonElement).click());
+    const name = () => [...document.querySelectorAll<HTMLButtonElement>('.uk-checklist-item')].find((i) => i.textContent === 'Name') as HTMLButtonElement;
+    page.act(() => name().click());
+    expect([page.headers().includes('Name'), name().getAttribute('aria-disabled')]).toEqual([true, null]);
+    page.act(() => name().click());
+    expect(page.headers().includes('Name')).toBe(false);
+  });
+
   it('keeps what the user does to it as theirs (its TableView, patched): a sort, a column’s width (back to its own) — a table in another’s frame changing nothing', () => {
     const w = world();
     for (const name of ['web-1', 'web-2']) w.cluster.add(Pod, make(Pod, { metadata: { name, namespace: 'shop', labels: { app: 'web' } } }));
@@ -119,11 +305,11 @@ describe('a kind’s table', () => {
     expect(view()?.widths).toEqual({ 'core.name': 48 });
     page.act(() => void edge.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
     expect(view()?.widths).toBeUndefined();
-    // A deployment's pods (its view's table): sorted there, for the while it is drawn — the pods' table as the user left it.
+    // A deployment's pods (its view's table): not the page's sort (by name, as by default), sorted there for the while it is drawn — the pods' table as the user left it.
     page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
     const pods = document.querySelector('.uk-modal [data-part="pods"]') as HTMLElement;
     page.act(() => (header('Name', pods).querySelector('button') as HTMLButtonElement).click());
-    expect([header('Name', pods).getAttribute('aria-sort'), view()?.sort]).toEqual(['ascending', { column: 'core.v1/Pod.restarts', descending: true }]);
+    expect([header('Name', pods).getAttribute('aria-sort'), view()?.sort]).toEqual(['descending', { column: 'core.v1/Pod.restarts', descending: true }]);
   });
 
   it('sorts by name when its TableView says nothing (Name shown sorted, ascending) — not as they came', () => {
@@ -340,6 +526,73 @@ describe('a kind’s table', () => {
     w.cluster.add(Service, service('d-inside', { type: 'ClusterIP' }));
     w.cluster.add(Service, service('e-outside', { type: 'ExternalName', externalName: 'db.example.com' }));
     expect(renderPage(w, '/k/services.v1').column('External-IP')).toEqual(['192.168.1.240,lb.example.com', '<pending>', '203.0.113.7', '—', 'db.example.com']);
+  });
+
+  it('has the columns kubectl prints that are worked out: a job’s duration (live while it runs), a cron job’s time zone and active jobs, a daemon set’s current and node selector, an ingress’s ports, a volume’s reason, a quota’s use, an account’s secrets, an autoscaler’s targets', () => {
+    vi.useFakeTimers({ now: Date.parse('2026-01-01T01:00:00Z') });
+    const w = world();
+    const { Job, CronJob } = kinds.batch.v1;
+    const { DaemonSet } = kinds.apps.v1;
+    const { PersistentVolume, ResourceQuota, ServiceAccount } = kinds.core.v1;
+    const { Ingress } = kinds.networking.v1;
+    const { HorizontalPodAutoscaler } = kinds.autoscaling.v2;
+    const job = (name: string, status: object) => make(Job, { metadata: { name, namespace: 'shop' }, spec: { template: {} }, status } as never);
+    w.cluster.add(Job, job('a-done', { startTime: '2026-01-01T00:00:00Z', completionTime: '2026-01-01T00:02:30Z' }));
+    w.cluster.add(Job, job('b-running', { startTime: '2026-01-01T00:59:00Z' }));
+    w.cluster.add(Job, job('c-waiting', {}));
+    w.cluster.add(
+      CronJob,
+      make(CronJob, {
+        metadata: { name: 'c', namespace: 'shop' },
+        spec: { schedule: '0 3 * * *', timeZone: 'UTC', jobTemplate: {} },
+        status: { active: [{ name: 'c-1' }] },
+      } as never),
+    );
+    w.cluster.add(
+      DaemonSet,
+      make(DaemonSet, {
+        metadata: { name: 'agent', namespace: 'shop' },
+        spec: { selector: {}, template: { spec: { nodeSelector: { os: 'linux' }, containers: [] } } },
+        status: { currentNumberScheduled: 3, desiredNumberScheduled: 3, numberMisscheduled: 0, numberReady: 3 },
+      } as never),
+    );
+    w.cluster.add(Ingress, make(Ingress, { metadata: { name: 'i', namespace: 'shop' }, spec: { tls: [{ secretName: 'x' }] } }));
+    w.cluster.add(PersistentVolume, make(PersistentVolume, { metadata: { name: 'pv' }, spec: {}, status: { phase: 'Failed', reason: 'ProvisioningFailed' } } as never));
+    w.cluster.add(ResourceQuota, make(ResourceQuota, { metadata: { name: 'q', namespace: 'shop' }, status: { hard: { pods: '50', 'limits.cpu': '4' }, used: { pods: '3' } } }));
+    w.cluster.add(ServiceAccount, make(ServiceAccount, { metadata: { name: 'sa', namespace: 'shop' }, secrets: [{ name: 't' }] }));
+    w.cluster.add(
+      HorizontalPodAutoscaler,
+      make(HorizontalPodAutoscaler, {
+        metadata: { name: 'h', namespace: 'shop' },
+        spec: {
+          scaleTargetRef: { kind: 'Deployment', name: 'web' },
+          maxReplicas: 4,
+          metrics: [{ type: 'Resource', resource: { name: 'cpu', target: { type: 'Utilization', averageUtilization: 70 } } }],
+        },
+        status: { currentMetrics: [{ type: 'Resource', resource: { name: 'cpu', current: { averageUtilization: 42 } } }] },
+      } as never),
+    );
+    const page = renderPage(w, '/k/jobs.v1.batch');
+    expect(page.column('Duration')).toEqual(['2m30s', '60s', '—']);
+    page.act(() => void vi.advanceTimersByTime(30_000));
+    expect(page.column('Duration')).toEqual(['2m30s', '90s', '—']);
+    page.navigate('/k/cronjobs.v1.batch');
+    expect([page.column('Time Zone'), page.column('Active')]).toEqual([['UTC'], ['1']]);
+    page.navigate('/k/daemonsets.v1.apps');
+    expect([page.column('Current'), page.column('Node Selector')]).toEqual([['3'], ['os=linux']]);
+    page.navigate('/k/ingresses.v1.networking.k8s.io');
+    expect(page.column('Ports')).toEqual(['80, 443']);
+    page.navigate('/k/persistentvolumes.v1');
+    expect(page.column('Reason')).toEqual(['ProvisioningFailed']);
+    page.navigate('/k/resourcequotas.v1');
+    expect([page.column('Request'), page.column('Limit')]).toEqual([['pods: 3/50'], ['limits.cpu: 0/4']]);
+    page.navigate('/k/serviceaccounts.v1');
+    expect(page.column('Secrets')).toEqual(['1']);
+    page.navigate('/k/horizontalpodautoscalers.v2.autoscaling');
+    expect(page.column('Targets')).toEqual(['cpu: 42%/70%']);
+    // A kind late in the core's list: its columns before the age all the same, in kubectl's order.
+    expect(page.headers()).toEqual(['Name', 'Namespace', 'Reference', 'Targets', 'MinPods', 'MaxPods', 'Replicas', 'Status', 'Age']);
+    vi.useRealTimers();
   });
 
   it('has the API’s kinds’ columns as kubectl has them: a webhook configuration’s hooks counted, an API service’s service (none: Local)', () => {
@@ -678,7 +931,7 @@ describe('an object', () => {
     const summary = document.querySelector('.uk-modal .uk-fields') as HTMLElement;
     const pairs = [...summary.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
     // Not its name nor its namespace: its title's.
-    expect(pairs.map(([k]) => k)).toEqual(['Ready', 'Status', 'Restarts', 'IP', 'Node', 'QoS', 'Started', 'Age']);
+    expect(pairs.map(([k]) => k)).toEqual(['Ready', 'Status', 'Restarts', 'IP', 'Node', 'QoS', 'Started', 'Nominated Node', 'Readiness Gates', 'Age']);
     // None: nothing ("—").
     expect(Object.fromEntries(pairs)).toMatchObject({ Status: 'Terminating', Node: 'n1!', IP: '—' });
     expect(document.querySelector('.uk-modal .uk-notice')?.textContent).toBe('Deletion requested 5m ago — pending finalizers: example.com/hold');
@@ -714,10 +967,10 @@ describe('an object', () => {
     renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     const rows = [...document.querySelectorAll('.uk-modal [data-part="conditions"] .uk-row')].map((r) => [
       r.querySelector('.uk-row-mark .uk-status')?.getAttribute('data-tone'),
-      r.querySelector('.uk-row-mark .uk-status')?.getAttribute('title'),
+      r.querySelector('.uk-row-mark .uk-status')?.getAttribute('aria-label'),
       ...[...r.children].slice(1).map((c) => c.textContent),
     ]);
-    // Its status its mark (its words under the pointer), its type, when it changed; why under it, where it says.
+    // Its status its mark (its words its name, under the pointer its tip), its type, when it changed; why under it, where it says.
     expect(rows).toEqual([['error', 'False', 'Ready?', '3h', 'ContainersNotReady · not yet']]);
     const section = (title: string) => [...document.querySelectorAll('.uk-modal .uk-section')].find((x) => x.querySelector('h3')?.textContent === title) as HTMLElement;
     const pairs = [...section('Metadata').querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling as HTMLElement]);
@@ -1051,10 +1304,27 @@ describe('the navigation', () => {
   const unwelcome = (w: ReturnType<typeof world>, hidden: Record<string, boolean> = {}) =>
     w.user.patch('Slot', slots.page('overview').name, { hidden: { 'core.page.overview.welcome': true, ...hidden } });
 
-  it('goes from the start to the first pinned kind once nothing else is on it', () => {
+  it('pins as the user said — in their order, then those pinned by default they did not say (one an addon pins later too), not those they unpinned', () => {
+    expect([
+      pinnedOf(['pods', 'deploy', 'svc'], undefined),
+      pinnedOf(['pods', 'deploy', 'svc'], { pinned: ['svc', 'nodes', 'pods'], unpinned: ['deploy'] }),
+      // An addon's pinned page since: there too, after the user's.
+      pinnedOf(['pods', 'deploy', 'svc', 'certs'], { pinned: ['svc', 'nodes', 'pods'], unpinned: ['deploy'] }),
+    ]).toEqual([
+      ['pods', 'deploy', 'svc'],
+      ['svc', 'nodes', 'pods'],
+      ['svc', 'nodes', 'pods', 'certs'],
+    ]);
+  });
+
+  it('goes from the start to the first pinned kind once nothing else is on it — as the user pinned them, if they did', () => {
     const w = world();
     unwelcome(w);
     expect(renderPage(w, '/').path).toBe('/k/pods.v1');
+    const mine = world();
+    unwelcome(mine);
+    mine.user.patch('NavView', 'default', { pinned: ['v1/Node'] });
+    expect(renderPage(mine, '/').path).toBe('/k/nodes.v1');
   });
 
   it('stays at the start once another puts something on it: a page of its own', () => {
@@ -1124,7 +1394,7 @@ describe('the navigation', () => {
     expect([document.querySelector('.uk-menu-title')?.textContent, items()]).toEqual(['Events', ['Pin', 'Close']]);
     page.act(() => (document.querySelector('.uk-menu [role="menuitem"]') as HTMLElement).click());
     await vi.waitFor(() => expect(tab('v1/Event').hasAttribute('data-transient')).toBe(false));
-    expect(w.user.saved().patches).toEqual([{ kind: 'NavView', name: 'default', fields: { pinned: expect.arrayContaining(['v1/Pod', 'v1/Event']) } }]);
+    expect(w.user.saved().patches).toEqual([{ kind: 'NavView', name: 'default', fields: { pinned: expect.arrayContaining(['v1/Pod', 'v1/Event']), unpinned: [] } }]);
     page.act(() => void tab('v1/Pod').dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true })));
     expect(items()).toEqual(['Unpin']);
   });
@@ -1241,14 +1511,14 @@ describe('the navigation', () => {
       ),
     );
     const page = renderPage(added, '/k/pods.v1');
-    expect([...page.container.querySelectorAll('.uk-tabs > button')].map((b) => b.getAttribute('aria-label'))).toEqual(['All kinds', 'More']);
+    expect([...page.container.querySelectorAll('.uk-tabs > button, .uk-tabs > .uk-tip-at > button')].map((b) => b.getAttribute('aria-label'))).toEqual(['All kinds', 'More']);
     cleanup();
     const replaced = world();
     replaced.addon(
       addon('mine', ({ contributor }) => void contributor.add('Wrap', 'mine.picker', { wraps: 'core.nav.tabs.picker', render: () => <TabButton icon="search" label="Find" /> })),
     );
     const other = renderPage(replaced, '/k/pods.v1');
-    expect([...other.container.querySelectorAll('.uk-tabs > button')].map((b) => b.getAttribute('aria-label'))).toEqual(['Find']);
+    expect([...other.container.querySelectorAll('.uk-tabs > button, .uk-tabs > .uk-tip-at > button')].map((b) => b.getAttribute('aria-label'))).toEqual(['Find']);
   });
 
   it('draws the picker through its slots: beside its search, down its side, above what a section shows, after a section’s and an entry’s title (for some kinds), nothing to show; or another’s picker whole', () => {
@@ -1364,10 +1634,14 @@ describe('the navigation', () => {
     const page = renderPage(w, '/k/nodes.v1');
     const rail = page.container.querySelector('aside.uk-rail') as HTMLElement;
     const tabs = [...rail.querySelectorAll('[data-tab]')];
-    // One strip (down the side, none across the top); each tab its mark — the usual kinds' icons — and its name, its tooltip saying both.
+    // One strip (down the side, none across the top); each tab its mark — the usual kinds' icons — and its name.
     expect([page.container.querySelectorAll('nav.uk-tabs').length, rail.dataset.state, tabs.every((t) => t.querySelector('.uk-tab-mark svg'))]).toEqual([1, 'collapsed', true]);
     const current = rail.querySelector('[aria-current="page"]') as HTMLElement;
-    expect([current.querySelector('.uk-tab-label')?.textContent, current.title, seen.at(-1)]).toEqual(['Nodes', 'Nodes · v1/Node', 'side true']);
+    expect([current.querySelector('.uk-tab-label')?.textContent, seen.at(-1)]).toEqual(['Nodes', 'side true']);
+    // No tip of its own (the side opens under the pointer: its name seen).
+    fireEvent.keyDown(document, { key: 'Tab' });
+    page.act(() => void fireEvent.focusIn(current));
+    expect(document.querySelector('.uk-tip')).toBeNull();
     page.act(() => (rail.querySelector('.uk-rail-pin') as HTMLButtonElement).click());
     expect([rail.dataset.state, seen.at(-1)]).toEqual(['pinned', 'side false']);
     // Pinned by its toggle: the user's (the NavView's side, patched), kept.

@@ -191,7 +191,7 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-quiet { color: var(--uk-muted); font-size: 12px; font-weight: 400; }
 /* Words in a line (a name, what is said of it quiet, badges): on one baseline, wrapping — in a table's cell, not. */
 .uk-line { display: inline-flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; min-width: 0; }
-.uk-table-row .uk-line { flex-wrap: nowrap; max-width: 100%; }
+.uk-table-row .uk-line { max-width: 100%; }
 /* In a cell: never wider than it — its words cut short with dots (what is said quietly first, its name last), its badges whole. */
 .uk-table-row .uk-line > :is(span, a, b) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uk-table-row .uk-line > :first-child { flex-shrink: .001; }
@@ -374,6 +374,9 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-table-row[data-clickable]:focus-visible { outline: 2px solid var(--uk-focus); outline-offset: -2px; }
 .uk-table-row > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .uk-table-row > :not([data-wrap]) wbr { display: none; }
+/* A cell is one line (unless it wraps): nothing in it laid out onto another (chips, a line's parts), cut at its edge as its text is. */
+.uk-table-row > :not([data-wrap]) * { flex-wrap: nowrap; }
+.uk-table-row > :not([data-wrap]) .uk-chips > * { flex: none; }
 /* A cell cut short, under the pointer a while: slid along to its end, its edges fading where more is hidden (lib/slide). */
 @property --uk-fade-l { syntax: '<length>'; inherits: false; initial-value: 0px; }
 @property --uk-fade-r { syntax: '<length>'; inherits: false; initial-value: 10px; }
@@ -512,6 +515,26 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-check { width: 16px; height: 16px; flex: none; border: 1.5px solid var(--uk-muted); border-radius: var(--uk-radius-sm); display: inline-flex; align-items: center; justify-content: center; color: var(--uk-on-accent); transition: background .12s, border-color .12s; }
 .uk-check .uk-icon { width: 12px; height: 12px; stroke-width: 3; }
 .uk-ms-option[aria-selected='true'] .uk-check, .uk-ms-all[aria-pressed='true'] .uk-check { background: var(--uk-accent); border-color: var(--uk-accent); }
+.uk-checklist-pop { width: 320px; max-height: min(560px, var(--uk-placed-room, calc(100vh - 48px))); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.uk-checklist { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.uk-checklist > .uk-ms-search, .uk-checklist-foot { flex: none; }
+.uk-checklist-body { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 4px 6px 6px; }
+.uk-checklist-group { all: unset; display: block; }
+.uk-checklist-group + .uk-checklist-group { border-top: 1px solid var(--uk-border); margin-top: 4px; padding-top: 4px; }
+.uk-checklist-row { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; height: 30px; padding: 0 8px; border-radius: var(--uk-radius-sm); cursor: pointer; color: var(--uk-text); }
+.uk-checklist-row:hover:not(:disabled, [aria-disabled='true']) { background: var(--uk-panel-2); }
+.uk-checklist-row:focus-visible { outline: 2px solid var(--uk-focus); outline-offset: -2px; }
+.uk-checklist-row:is(:disabled, [aria-disabled='true']) { cursor: default; color: var(--uk-muted); }
+.uk-checklist-row[aria-pressed='true'] .uk-check, .uk-checklist-row[aria-pressed='mixed'] .uk-check { background: var(--uk-accent); border-color: var(--uk-accent); }
+.uk-checklist-row:is(:disabled, [aria-disabled='true']) .uk-check { opacity: .5; }
+.uk-checklist-head { font-weight: 600; }
+.uk-checklist-item { padding-left: 34px; }
+.uk-checklist-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uk-checklist-note { font-weight: 400; }
+.uk-checklist-note, .uk-checklist-count { color: var(--uk-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.uk-checklist-count { margin-left: auto; }
+.uk-check-mixed { width: 8px; height: 2px; border-radius: 1px; background: var(--uk-on-accent); }
+.uk-checklist-foot { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-top: 1px solid var(--uk-border); color: var(--uk-muted); font-size: 12px; }
 .uk-link { all: unset; cursor: pointer; color: var(--uk-accent); font-size: 12px; }
 .uk-link:disabled { color: var(--uk-muted); cursor: default; }
 .uk-link:focus-visible { outline: 2px solid var(--uk-focus); border-radius: 3px; }
@@ -724,6 +747,23 @@ button.uk-stat:hover .uk-stat-go, button.uk-stat:focus-visible .uk-stat-go { opa
 @keyframes uk-menu-out { to { opacity: 0; scale: .98; } }
 @keyframes uk-menu-blink { 50% { background: none; } }
 @media (prefers-reduced-motion: reduce) { .uk-menu, .uk-menu[data-state='closing'], .uk-menu-item[data-chosen] { animation: none; } .uk-menu-item:active { scale: none; } }
+/* A tip (overlays/Tip): beside what it is about, placed by it; a hint never in the pointer's way, a card taken into. Its parts only where there is something in them. */
+/* Its anchor's wrapper: as what is in it is (inline — text in it cut short with "…" where a cell's is); a flex item where it is one (a cell's line, chips). */
+.uk-tip-at { display: inline; min-width: 0; max-width: 100%; }
+.uk-checklist-group > .uk-tip-at { display: flex; }
+.uk-checklist-group > .uk-tip-at > * { flex: 1; min-width: 0; }
+.uk-tip { position: absolute; visibility: hidden; width: max-content; max-width: 320px; padding: 4px 8px; border: 1px solid var(--uk-border); border-radius: var(--uk-radius-sm); background: var(--uk-panel-2); box-shadow: 0 6px 18px color-mix(in srgb, var(--uk-shadow) 35%, transparent); color: var(--uk-text); font-size: 12px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; pointer-events: none; animation: uk-fade-in .1s ease-out; }
+.uk-tip[data-card] { max-width: 380px; max-height: min(420px, var(--uk-placed-room, 420px)); overflow: auto; padding: 10px 12px; border-radius: var(--uk-radius); background: var(--uk-panel); pointer-events: auto; }
+.uk-tip-card { display: flex; flex-direction: column; gap: 8px; min-width: 200px; }
+.uk-tip-title { font-weight: 600; }
+.uk-tip-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; }
+.uk-tip-field { display: contents; }
+.uk-tip-field > dt { color: var(--uk-muted); }
+.uk-tip-field > dd { margin: 0; min-width: 0; }
+.uk-tip-sections { display: flex; flex-direction: column; gap: 6px; }
+.uk-tip-actions { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid var(--uk-border); }
+:is(.uk-tip, .uk-tip-title, .uk-tip-fields, .uk-tip-sections, .uk-tip-actions):empty { display: none; }
+@media (prefers-reduced-motion: reduce) { .uk-tip { animation: none; } }
 .uk-popover { background: var(--uk-panel); border: 1px solid var(--uk-border); border-radius: var(--uk-radius); box-shadow: 0 10px 30px color-mix(in srgb, var(--uk-shadow) 45%, transparent); padding: 12px; }
 /* As tall as the window (but what is around it: --uk-shell-inset, the host's padding, 16px each way by default): its body to the foot of it, the side down there. */
 .uk-shell { --uk-shell-inset: 32px; display: flex; flex-direction: column; gap: 12px; min-height: calc(100dvh - var(--uk-shell-inset)); }

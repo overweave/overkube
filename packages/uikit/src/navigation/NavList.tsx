@@ -2,6 +2,7 @@ import { type ComponentChildren, Fragment } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { Icon } from '../display/Icon';
 import { uid } from '../lib/focus';
+import { Tip } from '../overlays/Tip';
 
 /*
  * A menu down a page's side: groups under their headings, each entry a
@@ -48,17 +49,13 @@ export function NavList({ groups, current, label, onOpen }: NavListProps) {
           <ul aria-labelledby={`${id}-${g.key}`}>
             {g.items.map((item) => (
               <li key={item.key}>
-                <a
-                  class="uk-navlist-item"
-                  href={item.href}
-                  title={item.title}
-                  aria-current={current === item.key ? 'page' : undefined}
-                  onClick={onOpen ? (e) => onOpen(item, e) : undefined}
-                >
-                  {item.icon && <Icon name={item.icon} />}
-                  <span class="uk-navlist-label">{item.label}</span>
-                  {item.extra !== undefined && <span class="uk-navlist-extra">{item.extra}</span>}
-                </a>
+                <Tip content={item.title ? () => item.title : undefined} beside>
+                  <a class="uk-navlist-item" href={item.href} aria-current={current === item.key ? 'page' : undefined} onClick={onOpen ? (e) => onOpen(item, e) : undefined}>
+                    {item.icon && <Icon name={item.icon} />}
+                    <span class="uk-navlist-label">{item.label}</span>
+                    {item.extra !== undefined && <span class="uk-navlist-extra">{item.extra}</span>}
+                  </a>
+                </Tip>
               </li>
             ))}
           </ul>

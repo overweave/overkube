@@ -17,5 +17,6 @@ export { EVENTS } from './events.ts';
 export { LIBRARY } from './library.ts';
 export { NODES } from './nodes.ts';
 export { PODS } from './pods.ts';
+export { PRINTERS } from './printers.ts';
 export { HEALTH, STATUS } from './status.ts';
 export { WORKLOADS } from './workloads.ts';

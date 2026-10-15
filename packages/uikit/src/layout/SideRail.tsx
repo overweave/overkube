@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../display/Icon';
+import { Tip } from '../overlays/Tip';
 
 /*
  * A page's side, always there, in three states: collapsed (narrow: icons
@@ -147,9 +148,11 @@ export function SideRail({ label, pinned, onPin, labels = SIDE_RAIL_LABELS, hold
           }
         }}
       >
-        <button type="button" class="uk-rail-pin" aria-pressed={pinned} aria-label={labels.pin} title={labels.pin} onClick={() => onPin(!pinned)}>
-          <Icon name={pinned ? 'pin-filled' : 'pin'} />
-        </button>
+        <Tip content={() => labels.pin} beside>
+          <button type="button" class="uk-rail-pin" aria-pressed={pinned} aria-label={labels.pin} onClick={() => onPin(!pinned)}>
+            <Icon name={pinned ? 'pin-filled' : 'pin'} />
+          </button>
+        </Tip>
         <div class="uk-rail-body">{typeof children === 'function' ? children(state !== 'collapsed') : children}</div>
       </div>
       {flyout}

@@ -94,7 +94,7 @@ describe('the user’s changes', () => {
     expect([failing.ready.value, logs]).toEqual([true, ['user: not read: offline']]);
   });
 
-  it('are taken back: a map’s key, a field, a definition, all of them — what is under them shows again', async () => {
+  it('are taken back: a map’s key, a field, a definition, all of them (the page’s, not an addon’s) — what is under them shows again', async () => {
     const { user, view, registry } = setup();
     await user.start();
     user.patch('TableView', POD, { hidden: { 'images.size': false, a: true }, widths: { 'core.name': 240 }, sort: { column: 'core.age' } });
@@ -106,7 +106,7 @@ describe('the user’s changes', () => {
     user.reset('TableView', POD);
     expect(view()).toEqual({ sort: { column: 'core.name' }, hidden: { 'images.size': true } });
     expect(registry.get('Column', 'images.size')?.spec.header).toBe('Bytes');
-    user.reset();
+    user.resetAll();
     expect([registry.get('Column', 'images.size')?.spec.header, user.saved().patches]).toEqual(['Size', []]);
   });
 
@@ -127,6 +127,115 @@ describe('the user’s changes', () => {
     user.patch('TableView', POD, { widths: { 'core.name': 240 } });
     await user.close();
     expect([saves.length, view()?.widths]).toEqual([1, undefined]);
+  });
+});
+
+describe('the user’s changes kept, whatever happens meanwhile', () => {
+  /** A store whose read waits till let go; its writes, as many as asked, failing while it is told to. */
+  function slow(kept: SavedUser) {
+    let let_go: () => void = () => {};
+    const read = new Promise<void>((r) => {
+      let_go = r;
+    });
+    const writes: SavedUser[] = [];
+    let failing = false;
+    return {
+      store: {
+        load: async () => {
+          await read;
+          return kept;
+        },
+        save: async (s: SavedUser) => {
+          if (failing) throw new Error('full');
+          writes.push(s);
+        },
+      },
+      writes,
+      letGo: () => let_go(),
+      fail: (on: boolean) => {
+        failing = on;
+      },
+    };
+  }
+  const KEPT: SavedUser = { version: 1, patches: [{ kind: 'TableView', name: POD, fields: { widths: { a: 1, b: 2 }, hidden: { x: true } } }] };
+  const service = (store: ReturnType<typeof slow>['store']) => {
+    const registry = createRegistry({ kinds: kubeKinds });
+    registry.contributor('core', standingOf('core')).add('TableView', POD, {}, { fallback: true });
+    const user = new UserService({ registry, store, saveMs: 10, log: () => {} });
+    return { user, view: () => registry.get('TableView', POD)?.spec as Record<string, unknown> | undefined };
+  };
+
+  it('does again over what was kept what the user did while it was read: a key taken away, a field reset, all reset, a replace — none of it brought back', async () => {
+    vi.useFakeTimers();
+    const taken = slow(KEPT);
+    const a = service(taken.store);
+    const started = a.user.start();
+    a.user.patch('TableView', POD, { widths: { a: undefined } });
+    a.user.reset('TableView', POD, 'hidden');
+    taken.letGo();
+    await started;
+    expect(a.view()).toEqual({ widths: { b: 2 } });
+    const all = slow(KEPT);
+    const b = service(all.store);
+    const going = b.user.start();
+    b.user.resetAll();
+    all.letGo();
+    await going;
+    expect([b.view(), b.user.saved().patches]).toEqual([{}, []]);
+    const replaced = slow(KEPT);
+    const c = service(replaced.store);
+    const coming = c.user.start();
+    expect(c.user.replace({ version: 1, patches: [] })).toBe(true);
+    replaced.letGo();
+    await coming;
+    expect(c.user.saved().patches).toEqual([]);
+    // Saved so: what was taken away stays away.
+    await vi.advanceTimersByTimeAsync(10);
+    expect([taken.writes.at(-1)?.patches, all.writes.at(-1)?.patches, replaced.writes.at(-1)?.patches]).toEqual([
+      [{ kind: 'TableView', name: POD, fields: { widths: { b: 2 } } }],
+      [],
+      [],
+    ]);
+  });
+
+  it('tries a save that failed again — asked to (flush, close) or changed again; started twice, read once', async () => {
+    vi.useFakeTimers();
+    const s = slow({ version: 1, patches: [] });
+    const { user } = service(s.store);
+    s.letGo();
+    await Promise.all([user.start(), user.start()]);
+    s.fail(true);
+    user.patch('TableView', POD, { widths: { a: 1 } });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(s.writes).toEqual([]);
+    s.fail(false);
+    await user.flush();
+    expect(s.writes.map((w) => w.patches.length)).toEqual([1]);
+    // Nothing changed since: nothing written again.
+    await user.flush();
+    expect(s.writes.length).toBe(1);
+  });
+
+  it('keeps its own copies: what is given or exported, changed after, changes nothing; a reset with nothing to take back saves nothing; closed, it says nothing', async () => {
+    vi.useFakeTimers();
+    const s = slow({ version: 1, patches: [] });
+    const { user, view } = service(s.store);
+    s.letGo();
+    await user.start();
+    const change = { widths: { a: 100 } };
+    user.patch('TableView', POD, change);
+    change.widths.a = 5;
+    const out = user.saved();
+    (out.patches[0]?.fields.widths as Record<string, number>).a = 999;
+    expect([view()?.widths, user.saved().patches[0]?.fields]).toEqual([{ a: 100 }, { widths: { a: 100 } }]);
+    await vi.advanceTimersByTimeAsync(10);
+    const writes = s.writes.length;
+    user.reset('TableView', POD, 'hidden');
+    user.reset('Column', 'none');
+    await vi.advanceTimersByTimeAsync(10);
+    expect(s.writes.length).toBe(writes);
+    await user.close();
+    expect(user.patch('TableView', POD, { widths: { a: 1 } }).status).toBe('rejected');
   });
 });
 
@@ -152,14 +261,16 @@ describe('localStorage as the store', () => {
 
   it('keeps what is saved under its key; reads back nothing where nothing is, where it is not JSON, where there is no storage', async () => {
     const memory = storage();
-    const store = localStore('k', () => memory);
+    const store = localStore('c1', () => memory);
     const saved: SavedUser = { version: 1, patches: [{ kind: 'TableView', name: POD, fields: { widths: { a: 1 } } }] };
     expect(await store.load()).toBeUndefined();
     await store.save(saved);
     expect(await store.load()).toEqual(saved);
-    memory.setItem('k', '{not json');
+    // Another scope (another cluster): its own.
+    expect(await localStore('c2', () => memory).load()).toBeUndefined();
+    memory.setItem('overkube.user:c1', '{not json');
     expect(await store.load()).toBeUndefined();
-    expect(await localStore('k', () => undefined).load()).toBeUndefined();
+    expect(await localStore('c1', () => undefined).load()).toBeUndefined();
   });
 
   it('tells the service a write that fails, which says so and goes on', async () => {
@@ -168,7 +279,7 @@ describe('localStorage as the store', () => {
     registry.contributor('core', standingOf('core')).add('TableView', POD, {}, { fallback: true });
     const logs: string[] = [];
     const full = storage(true);
-    const user = new UserService({ registry, store: localStore('k', () => full), saveMs: 10, log: (m) => logs.push(m) });
+    const user = new UserService({ registry, store: localStore('c1', () => full), saveMs: 10, log: (m) => logs.push(m) });
     await user.start();
     user.patch('TableView', POD, { widths: { a: 1 } });
     await vi.advanceTimersByTimeAsync(10);

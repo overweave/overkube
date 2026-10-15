@@ -16,7 +16,7 @@ import {
   TableView,
 } from '@overkube/sdk';
 import { useList, useSay } from '@overkube/sdk/preact';
-import { Chip, Chips, type ChipsLabels, Nothing, Notice, Row, Rows, Section } from '@overkube/uikit';
+import { Chip, Chips, type ChipsLabels, Nothing, Notice, Row, Rows, Section, Tip } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import type { SlotRef } from '@overweave/ui';
 import { slotElement, useDefinition } from '@overweave/ui/preact';
@@ -48,7 +48,7 @@ import { T } from './texts.ts';
 export function Since({ time }: { time: string | undefined }) {
   const at = time ? Date.parse(time) : Number.NaN;
   const text = useLive(() => (Number.isNaN(at) ? EMPTY : humanDuration(clock.value - at)), [at]);
-  return <span title={time}>{text}</span>;
+  return <Tip content={() => time}>{text}</Tip>;
 }
 
 /** Being deleted (the core's, first in resource.view.summary): since when, and what it waits for (its finalizers). */
@@ -113,7 +113,7 @@ export function SummaryFields({ kind, object }: ResourceProps) {
     <section class="uk-section" data-part="summary">
       {(answer.state === 'error' || answer.state === 'denied') && (
         <Notice level="warn" icon="warning">
-          <span title={answer.error?.message}>{say(T.kind.refused, { kind: kind.plural, code: answer.error?.code ?? '' })}</span>
+          <Tip content={() => answer.error?.message}>{say(T.kind.refused, { kind: kind.plural, code: answer.error?.code ?? '' })}</Tip>
         </Notice>
       )}
       <dl class="uk-fields">
@@ -331,7 +331,7 @@ export function MetadataValue({ kind, object, field, value, display }: ResourceF
       if (!display) return <>{EMPTY}</>;
       return (
         <>
-          <span title={display}>{shortTime(display)}</span> (<Since time={display} />)
+          <Tip content={() => display}>{shortTime(display)}</Tip> (<Since time={display} />)
         </>
       );
   }

@@ -1,7 +1,18 @@
-import { cleanup, fireEvent, render } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render } from '@testing-library/preact';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Tab, type TabItem, type TabProps } from './Tab';
+
+/** Its tip's words: the pointer over it a while. */
+function tipOf(el: Element | null | undefined) {
+  vi.useFakeTimers();
+  fireEvent.pointerEnter(el as Element, { pointerType: 'mouse' });
+  act(() => void vi.advanceTimersByTime(400));
+  vi.useRealTimers();
+  const said = document.querySelector('.uk-tip')?.textContent;
+  fireEvent.keyDown(document, { key: 'Escape' });
+  return said;
+}
 
 /*
  * One tab as a user has it (user-event): what it says (role, name, ARIA
@@ -48,7 +59,7 @@ describe('Tab: what it says', () => {
     const { el } = mount(OPEN);
     expect(el.getAttribute('data-tab')).toBe('kind/v1/Node');
     expect(el.hasAttribute('data-transient')).toBe(true);
-    expect(el.getAttribute('title')).toBe('Nodes (v1/Node)');
+    expect(tipOf(el)).toBe('Nodes (v1/Node)');
   });
 
   it('says the panel it controls, selected only', () => {
@@ -99,7 +110,7 @@ describe('Tab: its ×', () => {
   it('an open one has its ×, in room kept for it, which closes it (not selecting it)', async () => {
     const { close, el, user, told } = mount(OPEN);
     expect(el.getAttribute('data-tool')).toBe('close');
-    expect(close()?.getAttribute('title')).toBe('Close Nodes (v1/Node)');
+    expect(tipOf(close()?.closest('.uk-tip-at'))).toBe('Close Nodes (v1/Node)');
     await user.click(close() as HTMLElement);
     expect(told).toEqual(['close kind/v1/Node']);
   });
@@ -110,9 +121,11 @@ describe('Tab: its ×', () => {
 
   it('names its tools by its key when it has no title', () => {
     expect(
-      mount({ ...OPEN, title: undefined })
-        .close()
-        ?.getAttribute('title'),
+      tipOf(
+        mount({ ...OPEN, title: undefined })
+          .close()
+          ?.closest('.uk-tip-at'),
+      ),
     ).toBe('Close kind/v1/Node');
   });
 });

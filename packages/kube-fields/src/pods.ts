@@ -8,7 +8,9 @@ import { define } from './define.ts';
  * secrets and config maps of its volumes (projected ones too, a CSI
  * volume's secret, the in-tree ones' — azureFile, cephfs, cinder,
  * flexVolume, iscsi, rbd, scaleIO, storageos), of every container's env (init and ephemeral ones too),
- * its image pull secrets; its claims (CEL).
+ * its image pull secrets; its claims (CEL); each container's state (its
+ * init containers' first, its ephemeral ones' last) as name|state — Running (ready), NotReady, else its waiting or terminated
+ * reason (CrashLoopBackOff, Completed).
  */
 const kinds = ['pods.v1'];
 
@@ -40,6 +42,14 @@ export const PODS = define({
   'pods.v1.containers': { kinds, type: 'number', value: { cel: 'podSummary(self).total' } },
   'pods.v1.ready': { kinds, type: 'number', value: { cel: 'podSummary(self).ready' } },
   'pods.v1.not-ready': { kinds, type: 'number', value: { cel: 'podSummary(self).total - podSummary(self).ready' } },
+  'pods.v1.containerStates': {
+    kinds,
+    type: 'string',
+    many: true,
+    value: {
+      cel: "(self.?status.?initContainerStatuses.orValue([]) + self.?status.?containerStatuses.orValue([]) + self.?status.?ephemeralContainerStatuses.orValue([])).map(c, c.name + '|' + (c.?state.?running.hasValue() ? (c.?ready.orValue(false) ? 'Running' : 'NotReady') : c.?state.?waiting.hasValue() ? c.state.waiting.?reason.orValue('Waiting') : c.?state.?terminated.hasValue() ? c.state.terminated.?reason.orValue('Terminated') : 'Unknown'))",
+    },
+  },
   'pods.v1.restarts': { kinds, type: 'number', value: { cel: 'podSummary(self).restarts' } },
   'pods.v1.secrets': {
     kinds,

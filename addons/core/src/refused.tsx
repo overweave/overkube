@@ -1,7 +1,7 @@
 import type { KindInfo } from '@overkube/kube-types';
 import type { QueryError, State } from '@overkube/query';
 import { useSay } from '@overkube/sdk/preact';
-import { Notice } from '@overkube/uikit';
+import { Notice, Tip } from '@overkube/uikit';
 import { T } from './texts.ts';
 
 /*
@@ -18,7 +18,7 @@ export function Refused({ kind, error }: { kind: KindInfo; error?: QueryError | 
   const say = useSay();
   return (
     <Notice level="warn" icon="warning">
-      <span title={error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
+      <Tip content={() => error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</Tip>
     </Notice>
   );
 }
@@ -27,8 +27,8 @@ export function Refused({ kind, error }: { kind: KindInfo; error?: QueryError | 
 export function RefusedQuietly({ kind, error }: { kind: KindInfo; error?: QueryError | undefined }) {
   const say = useSay();
   return (
-    <span class="uk-quiet" title={error?.message}>
-      {say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}
-    </span>
+    <Tip content={() => error?.message}>
+      <span class="uk-quiet">{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
+    </Tip>
   );
 }

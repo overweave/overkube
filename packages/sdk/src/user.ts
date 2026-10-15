@@ -10,6 +10,6 @@ import type { ApplyResult } from '@overweave/core';
 export interface UserChanges {
   /** A change of a definition, merged into what the user said of it before (a map key by key; undefined taking one away). Rejected (not the user's to change): nothing changed. */
   patch(kind: string, name: string, change: Record<string, unknown>): ApplyResult;
-  /** The user's changes taken back — all of them; a definition's; some of its fields (a path: a field, a map's key): what is under them shows again. */
-  reset(kind?: string, name?: string, ...path: string[]): void;
+  /** The user's changes of a kind's definitions taken back — a definition's (of a name), some of its fields (a path: a field, a map's key): what is under them shows again. All of the user's: the page's own to take back, not an addon's. */
+  reset(kind: string, name?: string, ...path: string[]): void;
 }

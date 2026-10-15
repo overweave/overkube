@@ -173,6 +173,8 @@ export interface ColumnSpec {
   format?: (values: readonly CellValue[], context: ColumnContext) => ComponentChildren;
   when?: (kind: KindInfo) => boolean;
   wide?: boolean | ((kind: KindInfo) => boolean);
+  /** Not kubectl's: more than it says (labels, an owner, containers' states) — not shown till asked, among the More in the columns' settings. */
+  more?: boolean;
   width?: number;
   order?: number;
 }
@@ -189,6 +191,7 @@ export const Column = defineKind<ColumnSpec>()('Column', {
       format: [fn, 'notAFunction'],
       when: [fn, 'notAFunction'],
       wide: [(v) => flag(v) || fn(v), 'notAFlag'],
+      more: [flag, 'notAFlag'],
       width: [finite, 'notANumber'],
       order: [finite, 'notANumber'],
     })(spec);
@@ -206,6 +209,7 @@ export const Column = defineKind<ColumnSpec>()('Column', {
     format: behaviour,
     when: behaviour,
     wide: configure,
+    more: configure,
   },
 });
 
@@ -439,8 +443,10 @@ export const MenuItem = defineKind<MenuItemSpec>()('MenuItem', {
 export interface NavViewSpec {
   mode?: 'tabs' | 'side';
   side?: 'collapsed' | 'pinned';
-  /** The pinned tabs' keys, in order (a kind's id, a page's path). */
+  /** The tabs pinned, in order (a kind's id, a page's path): those the KindViews and Pages pin and not said here come after (one an addon pins later, too). */
   pinned?: string[];
+  /** Those the KindViews and Pages pin, unpinned. */
+  unpinned?: string[];
 }
 
 export const NavView = defineKind<NavViewSpec>()('NavView', {
@@ -448,8 +454,9 @@ export const NavView = defineKind<NavViewSpec>()('NavView', {
     mode: [(v) => v === 'tabs' || v === 'side', 'notAMode'],
     side: [(v) => v === 'collapsed' || v === 'pinned', 'notASide'],
     pinned: [texts, 'notKeys'],
+    unpinned: [texts, 'notKeys'],
   }),
-  patchRights: { mode: configure, side: configure, pinned: configure },
+  patchRights: { mode: configure, side: configure, pinned: configure, unpinned: configure },
 });
 
 /**

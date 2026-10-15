@@ -1,7 +1,7 @@
 import { kinds, type ObjectOf } from '@overkube/kube-types';
 import { type KubeContributor, type ResourceProps, section } from '@overkube/sdk';
 import { useNotify, useSay } from '@overkube/sdk/preact';
-import { Badge, ConfigViewer, type ConfigViewerLabels, KeyValue, Notice, Section, Table, textOf } from '@overkube/uikit';
+import { Badge, ConfigViewer, type ConfigViewerLabels, KeyValue, Notice, Section, Table, Tip, textOf } from '@overkube/uikit';
 import type { ComponentChildren } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { clock, useLive } from '../live.ts';
@@ -74,7 +74,7 @@ export function CertificateOf({ object }: ResourceProps) {
         </Notice>
       </Section>
     );
-  const day = (ms: number) => <span title={new Date(ms).toISOString()}>{new Date(ms).toISOString().slice(0, 10)}</span>;
+  const day = (ms: number) => <Tip content={() => new Date(ms).toISOString()}>{new Date(ms).toISOString().slice(0, 10)}</Tip>;
   const mono = (v: string) => <span class="uk-mono">{v}</span>;
   return (
     <Section title={say(t.certificate)} part="certificate">

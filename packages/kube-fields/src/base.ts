@@ -8,11 +8,12 @@ import { EVENTS } from './events.ts';
 import { LIBRARY } from './library.ts';
 import { NODES } from './nodes.ts';
 import { PODS } from './pods.ts';
+import { PRINTERS } from './printers.ts';
 import { HEALTH, STATUS } from './status.ts';
 import { WORKLOADS } from './workloads.ts';
 
 /** The built-in kinds' own fields, a set of them each (a new kind: one more here). */
-export const BUILT_INS: readonly Defs[] = [PODS, NODES, WORKLOADS, BATCH, EVENTS, STATUS, CONFIG];
+export const BUILT_INS: readonly Defs[] = [PODS, NODES, WORKLOADS, BATCH, EVENTS, STATUS, CONFIG, PRINTERS];
 
 /** Every built-in kind's own fields. */
 export const BUILT_IN: Defs = Object.assign({}, ...BUILT_INS);

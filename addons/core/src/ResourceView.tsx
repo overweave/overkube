@@ -1,7 +1,7 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { Action, type ActionSpec, kindRef, type MissingState, type ResourceProps, type ResourceRef, ResourceTab, type ResourceTabSpec, slots, takes } from '@overkube/sdk';
 import { useGet, useMenu, useNotify, useOpened, usePage, useSay } from '@overkube/sdk/preact';
-import { Button, Code, Modal, Notice, Segmented, TabBar, toYaml } from '@overkube/uikit';
+import { Button, Code, Modal, Notice, Segmented, TabBar, Tip, toYaml } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { slotElement, useDefinitions } from '@overweave/ui/preact';
@@ -74,7 +74,7 @@ export function ResourceView({ kind, namespace, name, layout }: ResourceRef & { 
       {/* Shown as last seen: said so (the cluster's changes not coming, or refused). */}
       {state !== 'live' && (
         <Notice level="warn" icon="refresh">
-          <span title={error?.message}>{say(state === 'stale' ? T.kind.table.stale : T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
+          <Tip content={() => error?.message}>{say(state === 'stale' ? T.kind.table.stale : T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</Tip>
         </Notice>
       )}
       {shown && (
@@ -154,7 +154,7 @@ export function ResourceMissing({ kind, name, state, error }: ResourceRef & Miss
   if (state === 'error' || state === 'denied')
     return (
       <Notice level="error" icon="warning">
-        <span title={error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
+        <Tip content={() => error?.message}>{say(T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</Tip>
       </Notice>
     );
   return <Notice icon="puzzle">{say(state === 'stale' ? T.resource.view.missing.goneStale : T.resource.view.missing.gone, { kind: kind.kind, name })}</Notice>;

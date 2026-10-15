@@ -1,4 +1,4 @@
-import { cleanup, render } from '@testing-library/preact';
+import { cleanup, fireEvent, render } from '@testing-library/preact';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'preact/hooks';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -65,11 +65,14 @@ describe('Switch', () => {
     expect(mount().container.querySelector('.uk-switch-track')?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('gives the button what else it is given (an id a label points at, a description)', () => {
+  it('gives the button what else it is given (an id a label points at, a description); its title, its tip', () => {
     const { sw } = mount({ id: 'hide', title: 'Hide kinds with nothing in them', 'aria-describedby': 'hint' });
     expect(sw().id).toBe('hide');
-    expect(sw().getAttribute('title')).toBe('Hide kinds with nothing in them');
-    expect(sw().getAttribute('aria-describedby')).toBe('hint');
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.focusIn(sw());
+    expect(document.querySelector('.uk-tip')?.textContent).toBe('Hide kinds with nothing in them');
+    // Its own description and its tip's, both.
+    expect(sw().getAttribute('aria-describedby')).toBe(`hint ${document.querySelector('.uk-tip')?.id}`);
   });
 
   it('is named by a label in other words than a string', () => {

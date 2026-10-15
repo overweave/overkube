@@ -409,8 +409,36 @@ export const slots = {
       missing: slot<ResourceRef & MissingState>('resource.view.missing'),
     },
   },
+  /**
+   * Tips (uikit's Tip, a card) about something, wherever it is shown (a
+   * mark in a table's cell, in a resource's view): each its parts, each in
+   * order — its title (one drawn: the first, the core's the last), its
+   * fields (each fill a row: tipField; another's among the core's, none
+   * taking another's place), its sections (a message, a list), its actions
+   * at its foot. A part with nothing in it is not drawn. About a
+   * condition: the core's — its type and the object; its status, reason,
+   * when it changed; its message. About a pod's container: the core's —
+   * its name and the pod; its state, exit code, restarts, when it started,
+   * its image; its state's message. About a node's taints: the core's —
+   * the node; each taint (its key, value and effect, since when).
+   */
+  tip: {
+    condition: tipOf<ResourceConditionProps>('condition'),
+    container: tipOf<ResourceContainerProps>('container'),
+    taints: tipOf<ResourceProps>('taints'),
+  },
   page,
 } as const;
+
+/** A tip's parts: tip.<about>.title, .fields, .sections, .actions. */
+function tipOf<P>(about: string) {
+  return {
+    title: slot<P>(`tip.${about}.title`),
+    fields: slot<P>(`tip.${about}.fields`),
+    sections: slot<P>(`tip.${about}.sections`),
+    actions: slot<P>(`tip.${about}.actions`),
+  };
+}
 
 /** A resource's view's tab's slot (its ResourceTab's name): resource.view.tab.<name>. */
 function tab(name: string): SlotRef<ResourceProps> {

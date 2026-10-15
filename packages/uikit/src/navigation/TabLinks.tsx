@@ -1,6 +1,7 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useRef } from 'preact/hooks';
 import { Icon } from '../display/Icon';
+import { Tip } from '../overlays/Tip';
 import { TAB_LABELS, type TabLabels } from './Tab';
 import { closeFocused, type StripSection, TabStrip } from './TabStrip';
 import { lookIn } from './tabState';
@@ -21,7 +22,7 @@ export interface TabLink {
   key: string;
   label: ComponentChildren;
   href: string;
-  /** What it is, in full (a tooltip; the tools' names say it). */
+  /** What it is, in full (the tools' names say it; no tip — its name is seen, down a side too: the side opens under the pointer). */
   title?: string;
   /** Shown as not kept (one open, not pinned). */
   transient?: boolean;
@@ -93,7 +94,6 @@ export function TabLinks({ sections, current, label, onOpen, onClose: onCloseGiv
           const attrs: TabParts['attrs'] = {
             ...drag,
             href: link.href,
-            title: link.title,
             'data-tab': link.key,
             'data-transient': link.transient ? '' : undefined,
             'data-tool': closes ? 'close' : undefined,
@@ -111,9 +111,11 @@ export function TabLinks({ sections, current, label, onOpen, onClose: onCloseGiv
             },
           };
           const close = closes && (
-            <span class="uk-tab-close" aria-hidden="true" title={labels.close(name)} onClick={tool(() => onClose(link.key))}>
-              <Icon name="x" />
-            </span>
+            <Tip content={() => labels.close(name)}>
+              <span class="uk-tab-close" aria-hidden="true" onClick={tool(() => onClose(link.key))}>
+                <Icon name="x" />
+              </span>
+            </Tip>
           );
           if (render) return render(link, { attrs, close });
           return (

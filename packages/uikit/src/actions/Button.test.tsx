@@ -1,4 +1,4 @@
-import { cleanup, render } from '@testing-library/preact';
+import { cleanup, fireEvent, render } from '@testing-library/preact';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { css } from '../styles';
@@ -50,9 +50,27 @@ describe('Button: what it is', () => {
     expect(button(render(<Button icon="x">0</Button>)).hasAttribute('data-square')).toBe(false);
   });
 
+  it('an icon only, named by its title (none other given); with words or a name given, its title only its tip', () => {
+    expect(render(<Button icon="x" title="Close" />).getByRole('button', { name: 'Close' })).toBeTruthy();
+    cleanup();
+    expect(
+      render(<Button icon="x" title="Close" aria-label="Close the panel" />)
+        .getByRole('button')
+        .getAttribute('aria-label'),
+    ).toBe('Close the panel');
+    cleanup();
+    expect(
+      render(<Button title="Restart the pod">Restart</Button>)
+        .getByRole('button')
+        .hasAttribute('aria-label'),
+    ).toBe(false);
+  });
+
   it('passes on what else it is given', () => {
     const b = button(render(<Button title="Restart the pod" data-def="Action/x" type="submit" />));
-    expect(b.getAttribute('title')).toBe('Restart the pod');
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.focusIn(b);
+    expect(document.querySelector('.uk-tip')?.textContent).toBe('Restart the pod');
     expect(b.getAttribute('data-def')).toBe('Action/x');
     // Given a type, that one.
     expect(b.getAttribute('type')).toBe('submit');
