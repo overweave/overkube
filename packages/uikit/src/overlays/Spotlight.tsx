@@ -2,12 +2,13 @@ import type { ComponentChildren } from 'preact';
 import { Fragment } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from '../display/Icon';
-import { activeElement, uid } from '../lib/focus';
+import { uid } from '../lib/focus';
+import { Layer, useLeave } from '../lib/layers';
 
 /*
  * A search over the page, as macOS's Spotlight: a panel floating high in
- * the middle (a native dialog: on top of everything, the page behind it
- * inert, Escape and a click beside it close it), a large field, what is
+ * the middle (a modal layer: over everything, the page behind it inert,
+ * Escape and a click beside it close it), a large field, what is
  * found under it by group — one active, moved by the arrows (Home, End),
  * the pointer; Enter or a click chooses it. It comes in with a little
  * spring, its first rows one after another; Escape or a click beside it
@@ -52,38 +53,17 @@ const OUT_MS = 140;
 const ENTER_MS = 600;
 
 export function Spotlight({ query, onQuery, items, onChoose, onClose, label, resultsLabel = label, placeholder, empty, busy = false, footer }: SpotlightProps) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const [shown, setShown] = useState(false);
   const field = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const ids = useMemo(() => ({ list: uid('uk-spot-list'), item: uid('uk-spot-item') }), []);
   const [active, setActive] = useState(0);
-  const close = useRef(onClose);
-  close.current = onClose;
   // Opening: its first rows come one after another (not those a search brings later). Closing: it fades, then goes.
   const [opening, setOpening] = useState(true);
-  const [closing, setClosing] = useState(false);
+  const { closing, leave } = useLeave(onClose, OUT_MS);
   useEffect(() => {
     const t = setTimeout(() => setOpening(false), 500);
     return () => clearTimeout(t);
-  }, []);
-  const leave = () => {
-    if (closing) return;
-    setClosing(true);
-    const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    setTimeout(() => close.current(), still ? 0 : OUT_MS);
-  };
-
-  // Open as a modal dialog (on top, the rest inert) before anything in it is measured (a closed dialog has no size);
-  // focus in the field; back where it was once closed.
-  useLayoutEffect(() => {
-    const before = activeElement() as HTMLElement | null;
-    const el = dialog.current;
-    if (el && !el.open) {
-      if (typeof el.showModal === 'function') el.showModal();
-      else el.setAttribute('open', '');
-    }
-    field.current?.focus();
-    return () => before?.focus?.();
   }, []);
 
   // A new search: the first is active again.
@@ -130,8 +110,8 @@ export function Spotlight({ query, onQuery, items, onChoose, onClose, label, res
   };
   useLayoutEffect(() => {
     const box = list.current;
-    // Not shown yet (not open): nothing to measure — what it measures first is where things start, not where they come from.
-    if (!dialog.current?.open) return;
+    // Not there yet (a layer: drawn at the root's end once it knows where): nothing to measure — what it measures first is where things start, not where they come from.
+    if (!shown) return;
     const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const places = new Map<string, number>();
     for (const el of box?.querySelectorAll<HTMLElement>('[data-key]') ?? []) {
@@ -164,16 +144,16 @@ export function Spotlight({ query, onQuery, items, onChoose, onClose, label, res
   });
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: a click beside the panel closes it; Escape does from the keyboard (the dialog's cancel).
-    <dialog
+    <Layer
+      modal
+      focus="field"
       class="uk-spot"
-      ref={dialog}
-      aria-label={label}
-      data-state={closing ? 'closing' : opening ? 'opening' : 'open'}
-      onCancel={(e) => {
-        e.preventDefault();
-        leave();
-      }}
+      role="dialog"
+      label={label}
+      onLayer={() => setShown(true)}
+      onDismiss={leave}
+      closing={closing}
+      data-phase={opening ? 'opening' : undefined}
       onClick={(e) => e.target === e.currentTarget && leave()}
     >
       <div class="uk-spot-panel">
@@ -231,6 +211,6 @@ export function Spotlight({ query, onQuery, items, onChoose, onClose, label, res
         </div>
         {footer && <div class="uk-spot-footer">{footer}</div>}
       </div>
-    </dialog>
+    </Layer>
   );
 }

@@ -1,5 +1,7 @@
 import { kinds } from '@overkube/kube-types';
 import { cleanup, kubeWorld, make } from '@overkube/testkit';
+import { Ratio } from '@overkube/uikit';
+import type { VNode } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import core from './index.tsx';
 
@@ -21,9 +23,10 @@ describe('core', () => {
     ]);
     // Of kinds with namespaces only.
     expect([Pod, Namespace].map((k) => spec('core.namespace')?.when?.(k))).toEqual([true, false]);
-    // A pod's readiness: of its fields, as kubectl writes it.
+    // A pod's readiness: of its fields, a part of a whole (a ring, 1/2 beside it).
     const ready = spec(`core.${Pod.id}.ready`);
-    expect([ready?.values, ready?.format?.([1, 2], { now: 0, kind: Pod, say: (() => '') as never })]).toEqual([['pods.v1.ready', 'pods.v1.containers'], '1/2']);
+    const drawn = ready?.format?.([1, 2], { now: 0, kind: Pod, say: (() => '') as never }) as VNode<{ value: number; of: number }>;
+    expect([ready?.values, drawn.type, drawn.props]).toEqual([['pods.v1.ready', 'pods.v1.containers'], Ratio, { value: 1, of: 2 }]);
   });
 
   it('answers a kind’s table by its columns’ fields, sorted as asked', () => {

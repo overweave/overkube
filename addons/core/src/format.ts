@@ -19,6 +19,14 @@ const NOTHING = new Set(['', '<none>', '<unset>']);
 export const shownAs = (display: unknown): string => (display === undefined || display === null || NOTHING.has(display as string) ? EMPTY : String(display));
 
 /** How long a time is ago, as kubectl's HumanDuration says it: 45s, 3m20s, 5h, 2d3h, 1y40d. */
+/** A time as the page's clock shows it, to the minute: 2026-10-10 22:59 (unreadable: as it is). */
+export function shortTime(time: string): string {
+  const at = new Date(time);
+  if (Number.isNaN(at.getTime())) return time;
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())} ${two(at.getHours())}:${two(at.getMinutes())}`;
+}
+
 export function humanDuration(ms: number): string {
   const seconds = Math.trunc(ms / 1000);
   // A machine's clock off by up to 2s is now.
@@ -63,6 +71,33 @@ export function bytes(n: number): string {
     i++;
   }
   return `${Math.round(v * 10) / 10}${BINARY[i]}`;
+}
+
+const SUFFIX: Record<string, number> = {
+  n: 1e-9,
+  u: 1e-6,
+  m: 1e-3,
+  '': 1,
+  k: 1e3,
+  M: 1e6,
+  G: 1e9,
+  T: 1e12,
+  P: 1e15,
+  E: 1e18,
+  Ki: 2 ** 10,
+  Mi: 2 ** 20,
+  Gi: 2 ** 30,
+  Ti: 2 ** 40,
+  Pi: 2 ** 50,
+  Ei: 2 ** 60,
+};
+
+/** A quantity as the API writes it (100m, 1.5Gi, 2, 1e3) as a number; not one: NaN. */
+export function quantity(q: string | number | undefined): number {
+  if (typeof q === 'number') return q;
+  const m = /^([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)([a-zA-Z]*)$/.exec(String(q ?? '').trim());
+  const scale = m ? SUFFIX[m[2] ?? ''] : undefined;
+  return m && scale !== undefined ? Number(m[1]) * scale : Number.NaN;
 }
 
 /** Cores as the API writes them: whole ones as they are, the rest in millicores (250m). */

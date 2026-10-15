@@ -1,23 +1,28 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
-import { Action, type ActionSpec, kindRef, type MissingState, type ResourceProps, type ResourceRef, slots, takes } from '@overkube/sdk';
+import { Action, type ActionSpec, kindRef, type MissingState, type ResourceProps, type ResourceRef, ResourceTab, type ResourceTabSpec, slots, takes } from '@overkube/sdk';
 import { useGet, useMenu, useNotify, useOpened, usePage, useSay } from '@overkube/sdk/preact';
-import { Button, Code, Modal, Notice, Section, toYaml } from '@overkube/uikit';
+import { Button, Code, Modal, Notice, Segmented, TabBar, toYaml } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { slotElement, useDefinitions } from '@overweave/ui/preact';
-import { useMemo, useState } from 'preact/hooks';
+import type { Signal } from '@preact/signals';
+import { useId, useMemo, useState } from 'preact/hooks';
 import { T } from './texts.ts';
 import { Waiting } from './Waiting.tsx';
 
 /**
  * A resource, opened over a page (?open=): its parts, each a slot of
- * resource.view — its title (the core's: its kind and name; a right click
- * on it, its menu), a summary, its sections (the core's YAML among them),
- * its footer (the core's: the Actions for its kind); not there, the
- * missing slot (the core's: on its way, refused, gone). Closed as the page
- * closes what it opened (useOpened): back to where it was opened from.
+ * resource.view — its title (the core's: its kind, name and namespace; a
+ * right click on it, its menu), its marks after it, beside them its header (the core's: how it is
+ * laid out), its tabs (ResourceTabs for its kind and object, in order: the
+ * core's Overview first, YAML last — each a slot of its own), its footer
+ * (the core's: the Actions for its kind); not there, the missing slot (the
+ * core's: on its way, refused, gone). Laid out as the user chose (a side
+ * panel, a window, all the window: its header's switch, one for all of
+ * them). Closed as the page closes what it opened (useOpened): back to
+ * where it was opened from.
  */
-export function ResourceView({ kind, namespace, name }: ResourceRef) {
+export function ResourceView({ kind, namespace, name, layout }: ResourceRef & { layout: Signal<Layout> }) {
   const { close } = useOpened();
   const say = useSay();
   const menu = useMenu('resource.context');
@@ -26,44 +31,119 @@ export function ResourceView({ kind, namespace, name }: ResourceRef) {
   const props = useMemo(() => object && { kind, object }, [kind, object]);
   const missing = useMemo(() => ({ kind, namespace, name, state, ...(error ? { error } : {}) }), [kind, namespace, name, state, error]);
   const named = `${kind.kind} ${namespace ? `${namespace}/` : ''}${name}`;
+  const tabs = useTabs(kind, object);
+  // The tab shown: the one chosen, of this resource (another opened: its first).
+  const [chosen, choose] = useState<{ of: string; tab: string }>();
+  const panel = useId();
   if (!object || !props) {
     return (
-      <Modal title={named} placement="right" onClose={close}>
+      <Modal title={<Titled kind={kind} name={name} namespace={namespace} />} placement={layout.value} onClose={close}>
         {slotElement(slots.resource.view.missing, missing, { limit: 1 })}
       </Modal>
     );
   }
+  const shown = tabs.find((t) => chosen?.of === named && t.name === chosen.tab) ?? tabs[0];
   return (
     <Modal
       title={
         // Its menu, as a row's: a right click, or the menu key (Shift+F10) on it — focusable for that.
-        // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/noNoninteractiveTabindex: a context menu's place, by mouse and keyboard.
-        <span tabIndex={0} onContextMenu={(e) => menu({ kind, object, opened: true }, e, named)} onKeyDown={(e) => menu({ kind, object, opened: true }, e, named)}>
-          {slotElement(slots.resource.view.title, props)}
-        </span>
+        <>
+          {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/noNoninteractiveTabindex: a context menu's place, by mouse and keyboard. */}
+          <span tabIndex={0} onContextMenu={(e) => menu({ kind, object, opened: true }, e, named)} onKeyDown={(e) => menu({ kind, object, opened: true }, e, named)}>
+            {slotElement(slots.resource.view.title, props)}
+          </span>
+          {slotElement(slots.resource.view.marks, props)}
+        </>
       }
-      placement="right"
+      actions={slotElement(slots.resource.view.header, props)}
+      tabs={
+        tabs.length > 1 && (
+          <TabBar
+            label={say(T.resource.view.tabs.label)}
+            tabs={tabs.map((t) => ({ key: t.name, label: say(t.spec.title), icon: t.spec.icon }))}
+            active={shown?.name}
+            onSelect={(tab) => choose({ of: named, tab })}
+            panel={panel}
+          />
+        )
+      }
+      placement={layout.value}
       onClose={close}
       footer={slotElement(slots.resource.view.footer, props)}
     >
-      <div class="uk-region uk-details">
-        {/* Shown as last seen: said so (the cluster's changes not coming, or refused). */}
-        {state !== 'live' && (
-          <Notice level="warn" icon="refresh">
-            <span title={error?.message}>{say(state === 'stale' ? T.kind.table.stale : T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
-          </Notice>
-        )}
-        {slotElement(slots.resource.view.summary, props)}
-        {slotElement(slots.resource.view.sections, props)}
-      </div>
+      {/* Shown as last seen: said so (the cluster's changes not coming, or refused). */}
+      {state !== 'live' && (
+        <Notice level="warn" icon="refresh">
+          <span title={error?.message}>{say(state === 'stale' ? T.kind.table.stale : T.kind.refused, { kind: kind.plural, code: error?.code ?? '' })}</span>
+        </Notice>
+      )}
+      {shown && (
+        <div class="uk-region uk-details" role="tabpanel" id={panel} aria-labelledby={tabs.length > 1 ? `${panel}-${shown.name}` : undefined} data-tab={shown.name}>
+          {slotElement(slots.resource.view.tab(shown.name), props)}
+        </div>
+      )}
     </Modal>
   );
 }
 
-/** Its title (the core's, resource.view.title): its kind and name. */
-export function ResourceTitle({ kind, object }: ResourceProps) {
-  const ns = object.metadata?.namespace;
-  return <>{`${kind.kind} ${ns ? `${ns}/` : ''}${object.metadata?.name ?? ''}`}</>;
+/** Its tabs: the ResourceTabs for its kind and object, not hidden, in order. */
+function useTabs(kind: KindInfo, object: KubeObject | undefined): Definition<ResourceTabSpec>[] {
+  const page = usePage();
+  return inOrder(useDefinitions(ResourceTab)).filter((t) => {
+    if (t.spec.hidden || !object || !takes(t.spec.target, kind)) return false;
+    try {
+      return t.spec.when ? t.spec.when(object) : true;
+    } catch (error) {
+      page.report(t, 'when', error);
+      return false;
+    }
+  });
+}
+
+/** Its Overview (the core's, in its tab): its summary over its sections. */
+export function ResourceOverview(props: ResourceProps) {
+  return (
+    <>
+      {slotElement(slots.resource.view.summary, props)}
+      {slotElement(slots.resource.view.sections, props)}
+    </>
+  );
+}
+
+/** How an opened resource is laid out: a side panel, a window, all the window. */
+export type Layout = 'right' | 'center' | 'full';
+
+/** How it is laid out, switched (the core's, in resource.view.header): one for every resource opened — kept while the page runs (the user's layer's, once there is one). */
+export function LayoutSwitch({ layout }: { layout: Signal<Layout> }) {
+  const say = useSay();
+  const l = T.resource.view.layout;
+  return (
+    <Segmented
+      label={say(l.label)}
+      value={layout.value}
+      onChange={(next) => {
+        layout.value = next;
+      }}
+      options={[
+        { value: 'right', label: say(l.right), icon: 'panel-right' },
+        { value: 'center', label: say(l.center), icon: 'window' },
+        { value: 'full', label: say(l.full), icon: 'maximize' },
+      ]}
+    />
+  );
+}
+
+/** Its title (the core's, resource.view.title): its kind and name, its namespace quiet. */
+export const ResourceTitle = ({ kind, object }: ResourceProps) => <Titled kind={kind} name={object.metadata?.name ?? ''} namespace={object.metadata?.namespace} />;
+
+/** A resource's kind and name, its namespace quiet: its title, there or not. */
+function Titled({ kind, name, namespace }: ResourceRef) {
+  return (
+    <>
+      {`${kind.kind} ${name}`}
+      {namespace && <small> {namespace}</small>}
+    </>
+  );
 }
 
 /** Not there (the core's, resource.view.missing): on its way, refused, not served, gone. */
@@ -80,14 +160,9 @@ export function ResourceMissing({ kind, name, state, error }: ResourceRef & Miss
   return <Notice icon="puzzle">{say(state === 'stale' ? T.resource.view.missing.goneStale : T.resource.view.missing.gone, { kind: kind.kind, name })}</Notice>;
 }
 
-/** The object as YAML: the core's section, last. */
-export function YamlSection({ object }: { object: KubeObject }) {
-  const say = useSay();
-  return (
-    <Section title={say(T.resource.view.yaml.title)}>
-      <Code>{toYaml(object)}</Code>
-    </Section>
-  );
+/** The object as YAML (the core's, in its tab). */
+export function Yaml({ object }: ResourceProps) {
+  return <Code>{toYaml(object)}</Code>;
 }
 
 /** An action asked about: which, for which object (its uid), the object as it was asked about. */

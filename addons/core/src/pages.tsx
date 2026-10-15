@@ -1,8 +1,8 @@
 import type { KindInfo } from '@overkube/kube-types';
 import { kindRef, openedIn, type PageProps, slots } from '@overkube/sdk';
 import { KindTable, useCluster, useCount, usePage, useSay } from '@overkube/sdk/preact';
-import { Button, Notice } from '@overkube/uikit';
-import { useSlotView } from '@overweave/ui/preact';
+import { Button, Notice, Panel } from '@overkube/uikit';
+import { slotElement, useSlotView } from '@overweave/ui/preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { type NavEntry, useNav } from './nav.ts';
 import { T } from './texts.ts';
@@ -76,7 +76,10 @@ function Held({ next, opening }: { next: KindInfo; opening: boolean }) {
   }, [going, ready]);
   return (
     <Waited.Provider value={waited}>
-      <KindTable key={kind.id} kind={kind} />
+      {/* In a frame, its header on top: the kind shown, the table's. */}
+      <Panel header={slotElement(slots.kind.header, { kind }, { limit: 1 })}>
+        <KindTable key={kind.id} kind={kind} />
+      </Panel>
     </Waited.Provider>
   );
 }

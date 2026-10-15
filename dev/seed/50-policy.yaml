@@ -1,0 +1,116 @@
+# Scaling and limits: autoscalers (no metrics server on the stand: their
+# metrics stay unknown), disruption budgets, limit ranges, quotas.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: web }
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: api }
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource: { name: memory, target: { type: Utilization, averageUtilization: 80 } }
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies: [{ type: Pods, value: 1, periodSeconds: 60 }]
+    scaleUp:
+      selectPolicy: Max
+      policies:
+        - { type: Percent, value: 100, periodSeconds: 30 }
+        - { type: Pods, value: 2, periodSeconds: 30 }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: web }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: db
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels: { app: db }
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 5m, memory: 8Mi }
+      default: { cpu: 100m, memory: 64Mi }
+      max: { cpu: "1", memory: 512Mi }
+    - type: PersistentVolumeClaim
+      min: { storage: 16Mi }
+      max: { storage: 1Gi }
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 5m, memory: 8Mi }
+      default: { memory: 32Mi }
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  hard:
+    pods: "30"
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.memory: 2Gi
+    requests.storage: 2Gi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: objects
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  hard:
+    count/configmaps: "20"
+    count/secrets: "20"
+    services.loadbalancers: "0"
+    services.nodeports: "0"

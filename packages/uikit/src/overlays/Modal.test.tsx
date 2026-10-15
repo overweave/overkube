@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Modal } from './Modal';
 
-/* A dialog over the page: focus in it and back; Escape and a click beside it close it (at once). */
+/* A dialog over the page (a modal layer): focus in it and back; Escape and a click beside it close it (going, then gone). */
 
 afterEach(cleanup);
 
@@ -49,14 +49,15 @@ describe('Modal', () => {
     const { getByText, getByRole, queryByRole, getByLabelText } = render(<Opener inner />);
     const user = userEvent.setup();
     await user.click(getByText('open it'));
-    const dialog = getByRole('dialog');
+    // Beside its panel: its frame, all of the window.
+    const beside = getByRole('dialog').querySelector('.uk-modal-frame') as HTMLElement;
     // A press inside, let go beside it: no click beside it.
     fireEvent.pointerDown(getByText('inside'));
-    fireEvent.click(dialog);
+    fireEvent.click(beside);
     await new Promise((r) => setTimeout(r, 250));
     expect(queryByRole('dialog')).not.toBeNull();
-    fireEvent.pointerDown(dialog);
-    fireEvent.click(dialog);
+    fireEvent.pointerDown(beside);
+    fireEvent.click(beside);
     await waitFor(() => expect(queryByRole('dialog')).toBeNull());
     await user.click(getByText('open it'));
     await user.click(getByLabelText('Close'));

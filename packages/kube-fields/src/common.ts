@@ -5,7 +5,7 @@ import { define } from './define.ts';
  * name, namespace, uid, when it was made and when it began to go; its
  * owners (and the one that controls it), finalizers; its labels and
  * conditions as key=value, Type=Status (one field each, for groupBy and
- * selectors); whether it is Ready.
+ * selectors), its labels' keys (a selector's Exists); whether it is Ready.
  */
 export const COMMON = define({
   'core.name': { type: 'string', value: '.metadata.name' },
@@ -18,6 +18,7 @@ export const COMMON = define({
   'core.finalizers': { type: 'string', many: true, value: '.metadata.finalizers[*]' },
   'core.ready': { type: 'string', value: '.status.conditions[?(@.type=="Ready")].status' },
   'core.labels': { type: 'string', many: true, value: { cel: 'cel.bind(l, self.?metadata.?labels.orValue({}), l.map(k, k + "=" + l[k]))' } },
+  'core.label.keys': { type: 'string', many: true, value: { cel: 'self.?metadata.?labels.orValue({}).map(k, k)' } },
   'core.conditions': {
     type: 'string',
     many: true,

@@ -61,28 +61,26 @@ function mount(initial: string[] = []) {
       return id ? document.getElementById(id)?.textContent : undefined;
     },
     allRow: () => view.queryByRole('button', { name: /^All namespaces/ }),
-    popover: () => view.container.querySelector('.uk-popover'),
+    popover: () => view.baseElement.querySelector('.uk-popover'),
   };
 }
 
 describe('MultiSelect: the button', () => {
-  it('says all when nothing is picked, with no count', () => {
+  it('says all when nothing is picked', () => {
     const { trigger } = mount();
     expect(trigger().textContent).toContain('All namespaces');
     expect(trigger().getAttribute('aria-label')).toBe('Namespaces: All namespaces');
-    expect(trigger().querySelector('.uk-ms-count')).toBeNull();
   });
 
   it('names one or two picked, by their labels', () => {
     const { trigger } = mount(['apps', 'media']);
     expect(trigger().querySelector('.uk-ms-summary')?.textContent).toBe('apps, Media library');
-    expect(trigger().querySelector('.uk-ms-count')?.textContent).toBe('2');
   });
 
   it('counts more than two', () => {
     const { trigger } = mount(['apps', 'media', 'kube-system']);
     expect(trigger().getAttribute('aria-label')).toBe('Namespaces: 3 namespaces');
-    expect(trigger().querySelector('.uk-ms-count')?.textContent).toBe('3');
+    expect(trigger().querySelector('.uk-ms-summary')?.textContent).toBe('3 namespaces');
   });
 
   it('names a value no option has by itself', () => {
@@ -104,7 +102,7 @@ describe('MultiSelect: the popup', () => {
     const { open, names, active, getByRole } = mount();
     const input = await open();
     expect(document.activeElement).toBe(input);
-    expect(input.getAttribute('placeholder')).toBe('Filter namespaces');
+    expect(input.getAttribute('placeholder')).toBe('Search…');
     expect(getByRole('dialog', { name: 'Namespaces' })).toBeTruthy();
     const list = getByRole('listbox', { name: 'Namespaces' });
     expect(list.getAttribute('aria-multiselectable')).toBe('true');

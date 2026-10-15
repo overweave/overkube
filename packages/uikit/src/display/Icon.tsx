@@ -13,7 +13,20 @@ export type { IconData } from './icons.generated';
 /** Kubernetes' wheel: not one of Tabler's (it has no logos of this kind). */
 const KUBE: IconData = { d: ['M12 3l7 3.5 1.8 7.6-4.8 6H8l-4.8-6L5 6.5zM12 8v8M8.5 10l7 4M15.5 10l-7 4'] };
 
-const registry = new Map<string, IconData>(Object.entries({ ...TABLER, kube: KUBE }));
+/**
+ * Tabler's, centred for the eye rather than by their frame: a triangle
+ * looks off when its frame is centred (its weight is at its wide side) —
+ * its centre of mass set at (or a touch right of) the middle instead, as
+ * play buttons are drawn.
+ */
+const OPTICAL: Record<string, IconData> = {
+  // A play triangle in a circle, larger than Tabler's (its centre of mass at 12.1, not 12.3: its frame, 11 to 15, set right).
+  'circle-play': { d: ['M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0', 'M10.2 8.6l5.8 3.4l-5.8 3.4z'] },
+  // A play triangle (its centre of mass at 12, not 11.3).
+  run: { d: ['M7.7 4v16l13 -8z'] },
+};
+
+const registry = new Map<string, IconData>(Object.entries({ ...TABLER, ...OPTICAL, kube: KUBE }));
 
 /** The kit's own icons' names. */
 export const ICONS: readonly string[] = [...registry.keys()];

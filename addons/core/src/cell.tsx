@@ -31,14 +31,18 @@ export function drawn(
   failed: Failed,
 ): ComponentChildren {
   try {
-    if (column.spec.format) return column.spec.format(values, context);
-    // The clock read only for a time (the rest not drawn again each second).
-    const now = fields.some((f) => catalog?.fields[f]?.type === 'time') ? context.now : 0;
-    return fields.map((f, i) => formatted(values[i], catalog?.fields[f], now)).join(' ');
+    return column.spec.format ? column.spec.format(values, context) : plain(fields, values, context, catalog);
   } catch (error) {
     failed(column, 'Column', column.name, 'format', error);
     return EMPTY;
   }
+}
+
+/** Values as text, as their fields' types say them (a column with no format of its own; what a cell drawn otherwise says). */
+export function plain(fields: readonly string[], values: readonly CellValue[], context: ColumnContext, catalog: FieldCatalog | undefined): string {
+  // The clock read only for a time (the rest not drawn again each second).
+  const now = fields.some((f) => catalog?.fields[f]?.type === 'time') ? context.now : 0;
+  return fields.map((f, i) => formatted(values[i], catalog?.fields[f], now)).join(' ');
 }
 
 /** What is drawn as text: nothing, "—"; a text or a number as it is; anything else, none (it draws more than text). */
@@ -72,9 +76,14 @@ export function Cell({
   failed: Failed;
 }) {
   const say = useSay();
-  const d = useLive(() => drawn(column, fields, values, contextOf(kind, say), catalog, failed), [column, fields, values, kind, catalog, say, failed]);
+  const [d, said] = useLive(() => {
+    const context = contextOf(kind, say);
+    const d = drawn(column, fields, values, context, catalog, failed);
+    // Drawn as more than text (a state, a link): its values as text, for what wraps it.
+    return [d, textOf(d) ?? plain(fields, values, context, catalog)] as const;
+  }, [column, fields, values, kind, catalog, say, failed]);
   const text = textOf(d);
-  const props = useMemo<CellProps>(() => ({ kind, values, display: text ?? '' }), [kind, values, text]);
+  const props = useMemo<CellProps>(() => ({ kind, values, display: said }), [kind, values, said]);
   return (
     <Wrapped name={column.name} props={props}>
       {text !== undefined ? (

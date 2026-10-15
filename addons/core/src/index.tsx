@@ -1,11 +1,25 @@
 import { type KindInfo, kinds } from '@overkube/kube-types';
-import { defineAddon, KIND_PAGE, type KindViewSpec, type Label, type MenuPage, menuItem, openIn, section, slots } from '@overkube/sdk';
-import { copyText, Highlight, toYaml } from '@overkube/uikit';
+import {
+  action,
+  defineAddon,
+  KIND_PAGE,
+  type KindTableProps,
+  type KindViewSpec,
+  type Label,
+  type MenuPage,
+  menuItem,
+  openIn,
+  type ResourceRef,
+  section,
+  slots,
+} from '@overkube/sdk';
+import { copyText, toYaml } from '@overkube/uikit';
 import { fill } from '@overweave/ui/preact';
 import { signal } from '@preact/signals';
 import { CoreTable, TableEmpty } from './CoreTable.tsx';
 import { addColumns } from './columns.tsx';
 import {
+  AllEvents,
   ConditionChanged,
   ConditionMessage,
   ConditionReason,
@@ -15,6 +29,11 @@ import {
   ConditionType,
   conditionsOf,
   Deleting,
+  EventMessage,
+  EventReason,
+  EventRow,
+  EventSeen,
+  EventType,
   FieldLabel,
   Finalizer,
   field,
@@ -22,15 +41,35 @@ import {
   METADATA,
   Metadata,
   MetadataValue,
+  OWNERS,
   Owner,
+  RecentEvents,
+  Related,
+  RelatedValue,
   SummaryFields,
   SummaryValue,
 } from './details.tsx';
+import { Brand, KindApi, KindCount, KindHeader, KindTitle } from './headers.tsx';
+import { addApi } from './kinds/api.tsx';
+import { addConfig } from './kinds/config.tsx';
+import { addNamespace } from './kinds/namespace.tsx';
+import { addNetwork } from './kinds/network.tsx';
+import { addNode } from './kinds/node.tsx';
+import { addPod } from './kinds/pod.tsx';
+import { addPointings } from './kinds/pointing.tsx';
+import { addRbac } from './kinds/rbac.tsx';
+import { addScaling } from './kinds/scaling.tsx';
+import { addService } from './kinds/service.tsx';
+import { addStorage } from './kinds/storage.tsx';
+import { addWorkloads } from './kinds/workloads.tsx';
 import { titleOf } from './kinds.ts';
 import { Menu } from './Menu.tsx';
-import { NavSide, NavTab, NavTabMark, NavTabs, Picker, PickerButton, PickerGroups, PickerItem, PickerSearch, type TabsKept, type TabsState } from './Nav.tsx';
+import { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, type TabsKept, type TabsState } from './Nav.tsx';
+import { type Chosen, KindNamespaces, NamespacePicker } from './namespaces.tsx';
 import { KindMissing, Overview, PageTable, Welcome } from './pages.tsx';
-import { Actions, ResourceMissing, ResourceTitle, ResourceView, YamlSection } from './ResourceView.tsx';
+import { Picker, PickerContent, PickerEmpty, PickerItem, PickerItemTitle, PickerSearch, PickerSection, PickerSectionTitle, PickerSide } from './picker.tsx';
+import { Actions, type Layout, LayoutSwitch, ResourceMissing, ResourceOverview, ResourceTitle, ResourceView, Yaml } from './ResourceView.tsx';
+import { addStatusLooks } from './statuses.tsx';
 import { Toasts } from './Toasts.tsx';
 import { T } from './texts.ts';
 
@@ -41,6 +80,8 @@ import { T } from './texts.ts';
  *   pages      the start (/: page.overview — a word of welcome; that hidden and nothing else there, to the first pinned kind),
  *              a kind's page (/k/<kind>: page.kind) — its table among what is on it; a resource opened over any page (resource.view, the last in its slot: another's for a kind
  *              takes its place)
+ *   headers    the page's (its mark and name at header.start); a kind's over its table (kind.header: the last in its
+ *              slot — its title, the line under it, its actions each a slot of their own)
  *   tables     a kind's table, wherever drawn (kind.table: the last in its slot)
  *   columns    every kind's: its objects' names (a link to each), namespaces, ages; the usual kinds' own; a CRD's (columns.tsx)
  *   objects    their YAML, as the last section
@@ -58,7 +99,7 @@ import { T } from './texts.ts';
  * core.notifications), core.<slot>.<what> when it is a part — the slot named
  * without the frame part it is in (.content, .header, .footer, .actions,
  * .sections): core.nav.tabs.tab.title is in nav.tabs.tab.content,
- * core.resource.view.yaml in resource.view.sections — a section named for
+ * core.resource.view.conditions in resource.view.sections — a section named for
  * what it draws (core.resource.view.metadata: the metadata section, in
  * resource.view.sections; its fields, core.resource.view.metadata.<field>,
  * fills of the slot resource.view.metadata; a label of them,
@@ -90,12 +131,12 @@ const USUAL: [KindInfo, string, string, boolean][] = [
   [core.v1.Event, 'cluster', 'activity', false],
 ];
 
-const CATEGORIES: [string, Label][] = [
-  ['workloads', T.categories.workloads],
-  ['network', T.categories.network],
-  ['config', T.categories.config],
-  ['storage', T.categories.storage],
-  ['cluster', T.categories.cluster],
+const CATEGORIES: [string, Label, string][] = [
+  ['workloads', T.categories.workloads, 'cube'],
+  ['network', T.categories.network, 'network'],
+  ['config', T.categories.config, 'file'],
+  ['storage', T.categories.storage, 'disk'],
+  ['cluster', T.categories.cluster, 'server'],
 ];
 
 /** The names of the slots in a tree of them (a page's, made by name, aside). */
@@ -117,11 +158,24 @@ export default defineAddon({
     c.add('Fill', 'core.page.kind.table', fill(slots.page('kind'), { render: PageTable }));
     // Its kind not found (not served, not known yet): why, in the table's place.
     c.add('Fill', 'core.page.kind.missing', fill(slots.page('kind'), { when: (p) => !p.kind, render: KindMissing }));
+    // The page's header: its mark and name at its start.
+    c.add('Fill', 'core.header.brand', fill(slots.header.start, { order: 0, render: Brand }));
+    // The namespaces the tables show (none chosen: all), chosen at its end — kept while the page runs (the user's layer's, once there is one).
+    const namespaces: Chosen = signal<readonly string[]>([]);
+    c.add('Fill', 'core.header.namespaces', fill(slots.header.end, { render: () => <NamespacePicker chosen={namespaces} /> }));
+    // A kind's header over its table: the last in its slot (another's for a kind in its place); its title, its group and version, how many, its columns.
+    const header = slots.kind.header;
+    c.add('Fill', 'core.kind.header', fill(header, { order: 1000, render: KindHeader }));
+    c.add('Fill', 'core.kind.header.title', fill(header.title, { render: KindTitle }));
+    c.add('Fill', 'core.kind.header.api', fill(header.sub, { order: 100, render: KindApi }));
+    c.add('Fill', 'core.kind.header.namespaces', fill(header.sub, { order: 150, render: (p) => <KindNamespaces {...p} chosen={namespaces} /> }));
+    c.add('Fill', 'core.kind.header.count', fill(header.sub, { order: 200, render: (p) => <KindCount {...p} chosen={namespaces} /> }));
+    // At its end, last: its columns, to show or hide.
     // A kind's table, wherever drawn: the last in its slot (order 1000) — another's for a kind is drawn in its place.
-    c.add('Fill', 'core.kind.table', { slot: slots.kind.table.name, order: 1000, render: CoreTable });
+    c.add('Fill', 'core.kind.table', { slot: slots.kind.table.name, order: 1000, render: (p: KindTableProps) => <CoreTable {...p} chosen={namespaces} /> });
     // Its table's parts: a column's title in its header (others beside it), no rows said (another's in its place).
     c.add('Fill', 'core.kind.table.column.title', fill(slots.kind.table.column.content, { render: ({ column }) => <>{column.header}</> }));
-    c.add('Fill', 'core.kind.table.empty', fill(slots.kind.table.empty, { order: 1000, render: TableEmpty }));
+    c.add('Fill', 'core.kind.table.empty', fill(slots.kind.table.empty, { order: 1000, render: (p) => <TableEmpty {...p} chosen={namespaces} /> }));
     // An object's menu (a table's row): open it, copy its name, its YAML.
     c.add(
       'MenuItem',
@@ -147,7 +201,19 @@ export default defineAddon({
       'core.resource.context.copy-yaml',
       menuItem({ on: 'resource.context', group: 'copy', title: T.resource.context.copyYaml, icon: 'copy', run: ({ object }, page) => copy(toYaml(object), page) }),
     );
-    c.add('Fill', 'core.resource.view', { slot: slots.resource.view.name, order: 1000, render: ResourceView });
+    // What is done to any object (its view's footer): its YAML copied.
+    c.add('Action', 'core.copy-yaml', action({ title: T.resource.view.actions.copyYaml, icon: 'copy', order: 100, run: (object) => copyText(toYaml(object)) }));
+    // How it is laid out (a side panel, a window, all the window): one for all of them, switched in its header — kept while the page runs.
+    const layout = signal<Layout>('right');
+    c.add('Fill', 'core.resource.view', { slot: slots.resource.view.name, order: 1000, render: (p: ResourceRef) => <ResourceView {...p} layout={layout} /> });
+    c.add('Fill', 'core.resource.view.layout', fill(slots.resource.view.header, { order: 1000, render: () => <LayoutSwitch layout={layout} /> }));
+    // Its tabs: the Overview (its summary, its sections), its YAML — every kind's, another's among them.
+    c.add('ResourceTab', 'core.overview', { target: {}, title: T.resource.view.tabs.overview, icon: 'grid', order: 100 });
+    c.add('Fill', 'core.resource.view.overview', fill(slots.resource.view.tab('core.overview'), { render: ResourceOverview }));
+    c.add('ResourceTab', 'core.events', { target: {}, title: T.resource.view.tabs.events, icon: 'activity', order: 200 });
+    c.add('Fill', 'core.resource.view.events', fill(slots.resource.view.tab('core.events'), { render: AllEvents }));
+    c.add('ResourceTab', 'core.yaml', { target: {}, title: T.resource.view.tabs.yaml, icon: 'file', order: 1000 });
+    c.add('Fill', 'core.resource.view.yaml', fill(slots.resource.view.tab('core.yaml'), { render: Yaml }));
     // Its parts: its title, its footer's Actions, what is said when it is not there (another's in its place).
     c.add('Fill', 'core.resource.view.title', fill(slots.resource.view.title, { render: ResourceTitle }));
     c.add('Fill', 'core.resource.view.actions', fill(slots.resource.view.footer, { render: Actions }));
@@ -168,7 +234,34 @@ export default defineAddon({
     c.add('Fill', 'core.resource.view.conditions.condition.reason', fill(condition.reason, { render: ConditionReason }));
     c.add('Fill', 'core.resource.view.conditions.condition.message', fill(condition.message, { render: ConditionMessage }));
     c.add('Fill', 'core.resource.view.conditions.condition.changed', fill(condition.changed, { render: ConditionChanged }));
+    c.add('Fill', 'core.resource.view.recent-events', section({ order: 200, render: RecentEvents }));
+    const event = slots.resource.view.events.event;
+    c.add('Fill', 'core.resource.view.events.event', fill(event, { order: 1000, render: EventRow }));
+    c.add('Fill', 'core.resource.view.events.event.type', fill(event.type, { render: EventType }));
+    c.add('Fill', 'core.resource.view.events.event.reason', fill(event.reason, { render: EventReason }));
+    c.add('Fill', 'core.resource.view.events.event.message', fill(event.message, { render: EventMessage }));
+    c.add('Fill', 'core.resource.view.events.event.seen', fill(event.seen, { render: EventSeen }));
+    c.add('Fill', 'core.resource.view.related', section({ order: 800, render: Related }));
+    const related = slots.resource.view.related;
+    c.add('Fill', 'core.resource.view.related.owners', fill(related, { order: 100, render: OWNERS }));
+    c.add('Fill', 'core.resource.view.related.field', fill(related.field, { order: 1000, render: field(related.field.label, related.field.value) }));
+    c.add('Fill', 'core.resource.view.related.field.label', fill(related.field.label, { render: FieldLabel }));
+    c.add('Fill', 'core.resource.view.related.field.value', fill(related.field.value, { render: RelatedValue }));
+    c.add('Fill', 'core.resource.view.related.owner', fill(related.owner, { order: 1000, render: Owner }));
     c.add('Fill', 'core.resource.view.metadata', section({ order: 900, render: Metadata }));
+    // The usual kinds' own: their sections, related fields.
+    addPod(c);
+    addWorkloads(c);
+    addService(c);
+    addNode(c);
+    addNamespace(c);
+    addApi(c);
+    addConfig(c);
+    addNetwork(c);
+    addRbac(c);
+    addStorage(c);
+    addScaling(c);
+    addPointings(c);
     const metadata = slots.resource.view.metadata;
     // Its fields, each a fill (100 to 700): another's field among them, by order or by before/after one of these.
     for (const [i, [name, render]] of METADATA.entries()) c.add('Fill', `core.resource.view.metadata.${name}`, fill(metadata, { order: (i + 1) * 100, render }));
@@ -177,23 +270,29 @@ export default defineAddon({
     c.add('Fill', 'core.resource.view.metadata.field.value', fill(metadata.field.value, { render: MetadataValue }));
     c.add('Fill', 'core.resource.view.metadata.label', fill(metadata.label, { order: 1000, render: LabelChip }));
     c.add('Fill', 'core.resource.view.metadata.annotation', fill(metadata.annotation, { order: 1000, render: LabelChip }));
-    c.add('Fill', 'core.resource.view.metadata.owner', fill(metadata.owner, { order: 1000, render: Owner }));
     c.add('Fill', 'core.resource.view.metadata.finalizer', fill(metadata.finalizer, { order: 1000, render: Finalizer }));
 
     // Defaults that yield: another's add of one takes its place.
     const fallback = { fallback: true };
     // The columns: every kind's (name, namespace, age), the usual kinds' own; a CRD's, as it says them (drawn by its tables).
     addColumns(c);
-    c.add('Fill', 'core.resource.view.yaml', section({ title: 'YAML', order: 1000, render: YamlSection }));
+    // How states look (a pod's, a node's, any object's): defaults another's of a name takes the place of.
+    addStatusLooks(c);
 
-    for (const [i, [name, title]] of CATEGORIES.entries()) c.add('Category', name, { title, order: i * 10 }, fallback);
+    for (const [i, [name, title, icon]] of CATEGORIES.entries()) c.add('Category', name, { title, icon, order: i * 10 }, fallback);
     for (const [i, [kind, category, icon, pinned]] of USUAL.entries()) {
       const view: KindViewSpec = { title: titleOf(kind), category, icon, order: i * 10, ...(pinned ? { pinned } : {}) };
       c.add('KindView', kind.id, view, fallback);
     }
 
     // The slots declared — what the user arranges in them (order, hidden) waits for that: every one the SDK names, and the core's pages'.
-    for (const name of [...slotNames(slots), slots.page('overview').name, slots.page('kind').name]) c.add('Slot', name, {}, fallback);
+    for (const name of [
+      ...slotNames(slots),
+      slots.page('overview').name,
+      slots.page('kind').name,
+      ...['core.overview', 'core.events', 'core.yaml'].map((t) => slots.resource.view.tab(t).name),
+    ])
+      c.add('Slot', name, {}, fallback);
 
     // How it looks: the kit's own theme (no tokens of its own: the kit's defaults), as the system is (dark or light).
     c.add('Theme', 'default', { title: 'overkube' }, fallback);
@@ -214,12 +313,18 @@ export default defineAddon({
     c.add('Fill', 'core.nav.tabs.tab.mark', fill(slots.nav.tabs.tab.mark, { order: 1000, render: NavTabMark }));
     // After the tabs: the core's + (the kinds' picker) — others' buttons before or after it.
     c.add('Fill', 'core.nav.tabs.picker', { slot: slots.nav.tabs.actions.name, render: PickerButton });
-    // The picker (nav.picker): the core's whole, the last; its parts each a slot — its search, its groups, an item and its title.
-    c.add('Fill', 'core.nav.picker', fill(slots.nav.picker, { order: 1000, render: Picker }));
-    c.add('Fill', 'core.nav.picker.search', fill(slots.nav.picker.header, { render: PickerSearch }));
-    c.add('Fill', 'core.nav.picker.groups', fill(slots.nav.picker.content, { render: PickerGroups }));
-    c.add('Fill', 'core.nav.picker.item', fill(slots.nav.picker.item, { order: 1000, render: PickerItem }));
-    c.add('Fill', 'core.nav.picker.item.title', fill(slots.nav.picker.item.content, { render: ({ entry, query }) => <Highlight text={entry.title} query={query} /> }));
+    // The picker (nav.picker): the core's whole, the last (pinning there: the tabs'); its parts each a slot — its search, its
+    // side (a section whole, the last; its title), what the chosen one shows (an entry whole, the last; its title), nothing to show.
+    const picker = slots.nav.picker;
+    c.add('Fill', 'core.nav.picker', fill(picker, { order: 1000, render: (p) => <Picker {...p} tabs={tabs} /> }));
+    c.add('Fill', 'core.nav.picker.search', fill(picker.header, { render: PickerSearch }));
+    c.add('Fill', 'core.nav.picker.side', fill(picker.side, { render: PickerSide }));
+    c.add('Fill', 'core.nav.picker.section', fill(picker.section, { order: 1000, render: PickerSection }));
+    c.add('Fill', 'core.nav.picker.section.title', fill(picker.section.content, { render: PickerSectionTitle }));
+    c.add('Fill', 'core.nav.picker.content', fill(picker.content, { render: PickerContent }));
+    c.add('Fill', 'core.nav.picker.item', fill(picker.item, { order: 1000, render: PickerItem }));
+    c.add('Fill', 'core.nav.picker.item.title', fill(picker.item.content, { render: PickerItemTitle }));
+    c.add('Fill', 'core.nav.picker.empty', fill(picker.empty, { order: 1000, render: PickerEmpty }));
     // A tab's menu: pinned or not, closed (an open one).
     c.add(
       'MenuItem',
@@ -277,5 +382,6 @@ export default defineAddon({
 });
 
 export { Menu } from './Menu.tsx';
-export { NavSide, NavTab, NavTabMark, NavTabs, Picker, PickerButton, PickerGroups, PickerItem, PickerPopover, PickerSearch, type TabsKept, type TabsState } from './Nav.tsx';
+export { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, PickerPopover, type TabsKept, type TabsState } from './Nav.tsx';
 export { currentOf, type Nav, type NavEntry, type NavGroup, navOf, useNav } from './nav.ts';
+export { Picker, PickerContent, PickerEmpty, PickerItem, PickerItemTitle, PickerSearch, PickerSection, PickerSectionTitle, PickerSide } from './picker.tsx';

@@ -16,7 +16,10 @@ import core from './index.tsx';
  * instead), the start, another addon's page, what the user is told.
  */
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const { Pod, Namespace, Node } = kinds.core.v1;
 const { Deployment } = kinds.apps.v1;
@@ -300,6 +303,49 @@ describe('a kind’s table', () => {
     vi.useRealTimers();
   });
 
+  it('shows where a Service is reached from outside: its load balancer’s addresses, those it is given; a load balancer’s to come, pending; an external name’s, its name', () => {
+    const w = world();
+    const { Service } = kinds.core.v1;
+    const service = (name: string, spec: object, status: object = {}) => make(Service, { metadata: { name, namespace: 'shop' }, spec, status } as never);
+    w.cluster.add(Service, service('a-lb', { type: 'LoadBalancer' }, { loadBalancer: { ingress: [{ ip: '192.168.1.240' }, { hostname: 'lb.example.com' }] } }));
+    w.cluster.add(Service, service('b-pending', { type: 'LoadBalancer' }));
+    w.cluster.add(Service, service('c-given', { type: 'ClusterIP', externalIPs: ['203.0.113.7'] }));
+    w.cluster.add(Service, service('d-inside', { type: 'ClusterIP' }));
+    w.cluster.add(Service, service('e-outside', { type: 'ExternalName', externalName: 'db.example.com' }));
+    expect(renderPage(w, '/k/services.v1').column('External-IP')).toEqual(['192.168.1.240,lb.example.com', '<pending>', '203.0.113.7', '—', 'db.example.com']);
+  });
+
+  it('has the API’s kinds’ columns as kubectl has them: a webhook configuration’s hooks counted, an API service’s service (none: Local)', () => {
+    const w = world();
+    const { ValidatingWebhookConfiguration } = kinds.admissionregistration.v1;
+    const { APIService } = kinds.apiregistration.v1;
+    const hook = (name: string) => ({ name, admissionReviewVersions: ['v1'], sideEffects: 'None' as const, clientConfig: {} });
+    w.cluster.add(ValidatingWebhookConfiguration, make(ValidatingWebhookConfiguration, { metadata: { name: 'two' }, webhooks: [hook('a'), hook('b')] }));
+    w.cluster.add(APIService, make(APIService, { metadata: { name: 'v1.apps' }, spec: { groupPriorityMinimum: 1, versionPriority: 1 } }));
+    w.cluster.add(
+      APIService,
+      make(APIService, {
+        metadata: { name: 'v1beta1.metrics.k8s.io' },
+        spec: { groupPriorityMinimum: 1, versionPriority: 1, service: { name: 'metrics-server', namespace: 'kube-system' } },
+      }),
+    );
+    expect(renderPage(w, '/k/validatingwebhookconfigurations.v1.admissionregistration.k8s.io').column('Webhooks')).toEqual(['2']);
+    expect(renderPage(w, '/k/apiservices.v1.apiregistration.k8s.io').column('Service')).toEqual(['Local', 'kube-system/metrics-server']);
+  });
+
+  it('shows when a CronJob runs next, in its time zone (none: UTC); suspended or not a schedule, not at all', () => {
+    vi.useFakeTimers({ now: Date.parse('2026-01-01T01:00:00Z') });
+    const w = world();
+    const { CronJob } = kinds.batch.v1;
+    const cron = (name: string, spec: object) => make(CronJob, { metadata: { name, namespace: 'shop' }, spec: { jobTemplate: {}, ...spec } } as never);
+    w.cluster.add(CronJob, cron('a-utc', { schedule: '0 3 * * *' }));
+    w.cluster.add(CronJob, cron('b-berlin', { schedule: '0 3 * * *', timeZone: 'Europe/Berlin' }));
+    w.cluster.add(CronJob, cron('c-suspended', { schedule: '0 3 * * *', suspend: true }));
+    w.cluster.add(CronJob, cron('d-odd', { schedule: 'every day' }));
+    expect(renderPage(w, '/k/cronjobs.v1.batch').column('Next')).toEqual(['in 120m', 'in 60m', '—', '—']);
+    vi.useRealTimers();
+  });
+
   it('says what its answer is: loading (and why), refused, stale (still shown)', () => {
     const w = world('web');
     w.cluster.state(Pod, 'loading', { status: 0, code: 'network', message: 'waiting for room on a watch stream' });
@@ -431,8 +477,8 @@ describe('going from one kind to another', () => {
     w.cluster.state(Deployment, 'loading');
     page.navigate('/k/pods.v1');
     page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
-    expect(page.text()).toContain('Deployment shop/web');
-    expect(page.text()).not.toContain('Pod shop/web');
+    expect(page.text()).toContain('Deployment web shop');
+    expect(page.text()).not.toContain('Pod web shop');
   });
 });
 
@@ -449,7 +495,7 @@ describe('putting one’s own in the core’s place', () => {
     const pods = renderPage(w, '/k/pods.v1');
     expect([pods.text().includes('my pods page'), pods.container.querySelector('[role="table"]')]).toEqual([true, null]);
     const deployments = renderPage(w, '/k/deployments.v1.apps');
-    expect([deployments.text().includes('my pods page'), deployments.headers()]).toEqual([false, ['Name', 'Namespace', 'Ready', 'Up-to-date', 'Available', 'Age']]);
+    expect([deployments.text().includes('my pods page'), deployments.headers()]).toEqual([false, ['Name', 'Namespace', 'Status', 'Ready', 'Up-to-date', 'Available', 'Age']]);
     expect(deployments.container.querySelector('main')?.textContent?.endsWith('a note')).toBe(true);
   });
 
@@ -539,7 +585,7 @@ describe('putting one’s own in the core’s place', () => {
     const page = renderPage(world('web'), '/k/pods.v1');
     const table = page.container.querySelector('[role="table"]');
     page.navigate('/k/pods.v1?open=pods.v1/shop/web');
-    expect(page.text()).toContain('Pod shop/web');
+    expect(page.text()).toContain('Pod web shop');
     expect(page.container.querySelector('[role="table"]')).toBe(table);
     page.navigate('/k/pods.v1');
     expect(page.container.querySelector('[role="table"]')).toBe(table);
@@ -578,7 +624,7 @@ describe('an object', () => {
     );
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     const title = document.querySelector('.uk-modal h2') as HTMLElement;
-    expect(title.textContent).toBe('Pod shop/web · Running');
+    expect(title.textContent).toBe('Pod web shop · Running');
     expect(page.container.querySelector('.summary')?.textContent).toBe('web at a glance');
     expect(document.querySelector('.uk-modal-footer a')?.textContent).toBe('Logs');
     const items = () => [...document.querySelectorAll('.uk-menu [role="menuitem"] .uk-menu-label')].map((i) => i.textContent);
@@ -604,13 +650,14 @@ describe('an object', () => {
     renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     const summary = document.querySelector('.uk-modal .uk-fields') as HTMLElement;
     const pairs = [...summary.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
-    expect(pairs.map(([k]) => k)).toEqual(['Namespace', 'Ready', 'Status', 'Restarts', 'IP', 'Node', 'Age']);
+    // Not its name nor its namespace: its title's.
+    expect(pairs.map(([k]) => k)).toEqual(['Ready', 'Status', 'Restarts', 'IP', 'Node', 'QoS', 'Started', 'Age']);
     // None: nothing ("—").
-    expect(Object.fromEntries(pairs)).toMatchObject({ Namespace: 'shop', Status: 'Terminating', Node: 'n1!', IP: '—' });
-    expect(document.querySelector('.uk-modal .uk-notice')?.textContent).toBe('Being deleted since 5m ago — waiting for example.com/hold');
+    expect(Object.fromEntries(pairs)).toMatchObject({ Status: 'Terminating', Node: 'n1!', IP: '—' });
+    expect(document.querySelector('.uk-modal .uk-notice')?.textContent).toBe('Deletion requested 5m ago — pending finalizers: example.com/hold');
   });
 
-  it('shows its conditions and its metadata, each part a slot: labels and annotations as chips (kubectl’s copy of it left out), owners as links', () => {
+  it('shows its conditions, what it is tied to and its metadata, each part a slot: labels and annotations as chips (kubectl’s copy of it left out), owners as links', () => {
     const w = world();
     const changed = new Date(Date.now() - 3 * 3_600_000).toISOString();
     w.cluster.add(
@@ -638,16 +685,25 @@ describe('an object', () => {
       }),
     );
     renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
-    const rows = [...document.querySelectorAll('.uk-modal .uk-condition')].map((r) => [...r.children].map((c) => c.textContent));
-    // Its status, type, when it changed; why under it, where it says.
-    expect(rows).toEqual([['False', 'Ready?', '3h', 'ContainersNotReady · not yet']]);
-    const metadata = [...document.querySelectorAll('.uk-modal .uk-section')].find((x) => x.querySelector('h3')?.textContent === 'Metadata') as HTMLElement;
-    const pairs = [...metadata.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling as HTMLElement]);
-    expect(pairs.map(([k]) => k)).toEqual(['Created', 'UID', '#Labels', 'Annotations', 'Owners']);
+    const rows = [...document.querySelectorAll('.uk-modal [data-part="conditions"] .uk-row')].map((r) => [
+      r.querySelector('.uk-row-mark .uk-status')?.getAttribute('data-tone'),
+      r.querySelector('.uk-row-mark .uk-status')?.getAttribute('title'),
+      ...[...r.children].slice(1).map((c) => c.textContent),
+    ]);
+    // Its status its mark (its words under the pointer), its type, when it changed; why under it, where it says.
+    expect(rows).toEqual([['error', 'False', 'Ready?', '3h', 'ContainersNotReady · not yet']]);
+    const section = (title: string) => [...document.querySelectorAll('.uk-modal .uk-section')].find((x) => x.querySelector('h3')?.textContent === title) as HTMLElement;
+    const pairs = [...section('Metadata').querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling as HTMLElement]);
+    expect(pairs.map(([k]) => k)).toEqual(['Created', 'UID', '#Labels', 'Annotations']);
     const value = (k: string) => pairs.find(([x]) => x === k)?.[1] as HTMLElement;
     expect([...value('#Labels').querySelectorAll('.uk-chip')].map((c) => c.textContent)).toEqual(['appweb']);
     expect([...value('Annotations').querySelectorAll('.uk-chip')].map((c) => c.textContent)).toEqual(['notehi']);
-    expect(value('Owners').querySelector('a')?.getAttribute('href')).toContain('open=replicasets.v1.apps/shop/web-1');
+    const owners = section('Related').querySelector('dd') as HTMLElement;
+    expect([section('Related').querySelector('dt')?.textContent, owners.textContent, owners.querySelector('a')?.getAttribute('href')]).toEqual([
+      'Owners',
+      'ReplicaSetweb-1',
+      expect.stringContaining('open=replicasets.v1.apps/shop/web-1'),
+    ]);
   });
 
   it('takes another’s metadata field among the core’s, a condition twice as twice, a TableView’s order and hiding in its summary', () => {
@@ -677,16 +733,17 @@ describe('an object', () => {
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     const metadata = () => [...document.querySelectorAll('.uk-modal .uk-section')].find((x) => x.querySelector('h3')?.textContent === 'Metadata') as HTMLElement;
     const fields = () => [...metadata().querySelectorAll('dt')].map((dt) => dt.textContent);
-    expect(fields()).toEqual(['Created', 'UID', 'Labels', 'Team', 'Annotations']);
-    const conditions = [...document.querySelectorAll('.uk-modal .uk-condition')].map((r) => [
-      r.querySelector('.uk-condition-type')?.textContent,
-      r.querySelector('.uk-badge')?.getAttribute('data-level'),
+    // No labels, no annotations: not drawn.
+    expect(fields()).toEqual(['Created', 'UID', 'Team']);
+    const conditions = [...document.querySelectorAll('.uk-modal [data-part="conditions"] .uk-row')].map((r) => [
+      r.querySelector('.uk-row-lead')?.textContent,
+      r.querySelector('.uk-row-mark .uk-status')?.getAttribute('data-tone'),
     ]);
-    // A type twice: two rows; one bad when it holds (DisruptionTarget): True a warning.
+    // A type twice: two rows; one bad when it holds (DisruptionTarget): True as False looks.
     expect(conditions).toEqual([
       ['Ready', 'ok'],
-      ['Ready', 'warn'],
-      ['DisruptionTarget', 'warn'],
+      ['Ready', 'error'],
+      ['DisruptionTarget', 'error'],
     ]);
     const summary = [...(document.querySelector('.uk-modal .uk-fields') as HTMLElement).querySelectorAll('dt')].map((dt) => dt.textContent);
     expect([summary[0], summary.includes('IP')]).toEqual(['Status', false]);
@@ -694,10 +751,10 @@ describe('an object', () => {
     page.act(
       () => void w.as('user', { priority: 1000, rights: ['configure'] }).patch('Slot', slots.resource.view.metadata.name, { hidden: { 'core.resource.view.metadata.uid': true } }),
     );
-    expect(fields()).toEqual(['Created', 'Labels', 'Team', 'Annotations']);
+    expect(fields()).toEqual(['Created', 'Team']);
   });
 
-  it('opens over its kind’s table: its sections (the YAML last), its actions; a dangerous one asks first', async () => {
+  it('opens over its kind’s table: its Overview, its YAML a tab of its own, its actions; a dangerous one asks first', async () => {
     const w = world('web');
     const restarted: string[] = [];
     w.addon(
@@ -708,14 +765,16 @@ describe('an object', () => {
       }),
     );
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
-    expect(page.text()).toContain('Pod shop/web');
+    expect(page.text()).toContain('Pod web shop');
+    expect(page.text()).not.toContain('name: web');
+    page.act(() => (document.querySelector('.uk-modal [role="tab"]:last-child') as HTMLButtonElement).click());
     expect(page.text()).toContain('name: web');
     // Its buttons (not the table's headers: Restarts).
     const button = (text: string) =>
       [...page.container.querySelectorAll('button')].find((b) => !b.closest('[role="columnheader"]') && b.textContent?.includes(text)) as HTMLButtonElement;
     expect(button('Scale')).toBeUndefined();
     page.act(() => button('Restart').click());
-    expect([restarted, button('Restart').textContent]).toEqual([[], 'Restart: sure?']);
+    expect([restarted, button('Restart').textContent]).toEqual([[], 'Confirm Restart?']);
     await page.act(async () => button('Restart').click());
     expect(restarted).toEqual(['web']);
     await page.act(async () => button('Fail').click());
@@ -736,7 +795,7 @@ describe('an object', () => {
     const button = () => [...page.container.querySelectorAll('button')].find((b) => b.textContent?.includes('Delete')) as HTMLButtonElement;
     const first = w.cluster.get(Pod, 'web', 'shop')?.metadata?.uid;
     page.act(() => button().click());
-    expect(button().textContent).toBe('Delete: sure?');
+    expect(button().textContent).toBe('Confirm Delete?');
     // Replaced meanwhile: another object under its name.
     page.act(() => void w.cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop' } })));
     expect(button().textContent).toBe('Delete');
@@ -755,15 +814,201 @@ describe('an object', () => {
     expect(page.text()).not.toContain('There is no Pod');
   });
 
-  it('shows another’s section in it, and the core’s YAML after', () => {
+  it('shows another’s section in its Overview', () => {
     const w = world('web');
-    w.addon(addon('more', ({ contributor }) => void contributor.add('Fill', 'more.s', section({ kinds: [Pod], title: 'More', render: () => <p>more about it</p> }))));
-    const text = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web').text();
-    expect(text.indexOf('more about it')).toBeLessThan(text.indexOf('name: web'));
+    w.addon(addon('more', ({ contributor }) => void contributor.add('Fill', 'more.s', section({ kinds: [Pod], title: 'More', render: () => <p class="more">more about it</p> }))));
+    renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    expect((document.querySelector('.uk-modal .more')?.closest('[role="tabpanel"]') as HTMLElement | null)?.dataset.tab).toBe('core.overview');
   });
 
   it('says so when it is not there (now)', () => {
     expect(renderPage(world('web'), '/k/pods.v1?open=pods.v1/shop/gone').text()).toContain('There is no Pod gone');
+  });
+});
+
+describe('an object’s view', () => {
+  const opened = () => document.querySelector('.uk-modal') as HTMLElement;
+  const tabs = () => [...opened().querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  const shown = () => (opened().querySelector('[role="tabpanel"]') as HTMLElement | null)?.dataset.tab;
+
+  it('is titled by its kind and name, its namespace quiet — there or not', () => {
+    renderPage(world('web'), '/k/pods.v1?open=pods.v1/shop/web');
+    expect([opened().querySelector('h2')?.textContent, opened().querySelector('h2 small')?.textContent]).toEqual(['Pod web shop', ' shop']);
+    cleanup();
+    renderPage(world('web'), '/k/pods.v1?open=pods.v1/shop/gone');
+    expect(opened().querySelector('h2')?.textContent).toBe('Pod gone shop');
+  });
+
+  it('has its tabs in order — the core’s Overview first, YAML last, another’s between them for its kinds — each showing its own slot', () => {
+    const w = world('web');
+    w.cluster.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'shop' } }));
+    w.addon(
+      addon('logs', ({ contributor }) => {
+        contributor.add('ResourceTab', 'logs.logs', { target: forKinds(Pod), title: 'Logs', icon: 'file', order: 500 });
+        contributor.add('Fill', 'logs.logs', fill(slots.resource.view.tab('logs.logs'), { render: ({ object }) => <p class="logs">{object.metadata?.name} said hello</p> }));
+      }),
+    );
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'Logs', 'YAML'], 'core.overview']);
+    page.act(() => tabs()[2]?.click());
+    expect([shown(), opened().querySelector('.logs')?.textContent]).toEqual(['logs.logs', 'web said hello']);
+    page.act(() => tabs()[3]?.click());
+    expect([shown(), opened().querySelector('[role="tabpanel"]')?.textContent?.includes('name: web')]).toEqual(['core.yaml', true]);
+    page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
+    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'YAML'], 'core.overview']);
+  });
+
+  it('shows a tab only for the objects it is for (its when), one whose when fails not at all — said to its owner', async () => {
+    const w = world('web', 'db');
+    w.addon(
+      addon('more', ({ contributor }) => {
+        contributor.add('ResourceTab', 'more.web', { target: {}, title: 'Web', when: (o) => o.metadata?.name === 'web' });
+        contributor.add('ResourceTab', 'more.broken', {
+          target: {},
+          title: 'Broken',
+          when: () => {
+            throw new Error('no');
+          },
+        });
+      }),
+    );
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'Web', 'YAML']);
+    page.navigate('/k/pods.v1?open=pods.v1/shop/db');
+    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'YAML']);
+    await expect.poll(() => page.failures.map((f) => `${f.definition.kind}/${f.definition.name}`)).toContain('ResourceTab/more.broken');
+  });
+
+  it('shows the first tab of another opened, the one chosen kept while it is the same', () => {
+    const page = renderPage(world('web', 'db'), '/k/pods.v1?open=pods.v1/shop/web');
+    page.act(() => tabs()[2]?.click());
+    expect(shown()).toBe('core.yaml');
+    page.navigate('/k/pods.v1?open=pods.v1/shop/db');
+    expect(shown()).toBe('core.overview');
+  });
+
+  it('draws no tabs when there is one (the user hid the rest), and none when there are none', () => {
+    const w = world('web');
+    for (const tab of ['core.events', 'core.yaml']) w.as('user', { priority: 1000, rights: ['configure'] }).patch('ResourceTab', tab, { hidden: true });
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    expect([tabs().length, shown()]).toEqual([0, 'core.overview']);
+    page.act(() => void w.as('user', { priority: 1000, rights: ['configure'] }).patch('ResourceTab', 'core.overview', { hidden: true }));
+    expect([tabs().length, shown()]).toEqual([0, undefined]);
+  });
+
+  /** A pod web (its uid u-web) and the events about it — and one about another. */
+  function told() {
+    const w = world();
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop', uid: 'u-web' } }));
+    const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+    const event = (name: string, about: string, type: string, reason: string, minutes: number, count?: number) =>
+      w.cluster.add(
+        kinds.core.v1.Event,
+        make(kinds.core.v1.Event, {
+          metadata: { name, namespace: 'shop' },
+          involvedObject: { kind: 'Pod', name: 'web', uid: about },
+          type,
+          reason,
+          message: `${reason} said`,
+          ...(count ? { count } : {}),
+          lastTimestamp: ago(minutes),
+        }),
+      );
+    event('a', 'u-web', 'Normal', 'Scheduled', 50);
+    event('b', 'u-web', 'Normal', 'Pulled', 40);
+    // Past ten minutes ago: said in minutes alone, however long the test takes.
+    event('c', 'u-web', 'Warning', 'Unhealthy', 12, 14);
+    event('d', 'u-web', 'Normal', 'Started', 30);
+    event('e', 'u-other', 'Warning', 'NotMine', 1);
+    return w;
+  }
+  const eventRows = (part: Element | null | undefined) =>
+    [...(part?.querySelectorAll('.uk-row') ?? [])].map((r) => [
+      r.querySelector('.uk-row-mark .uk-status')?.getAttribute('data-tone'),
+      r.querySelector('.uk-row-lead')?.textContent,
+      r.querySelector('.uk-row-end')?.textContent,
+      r.querySelector('.uk-row-under')?.textContent,
+    ]);
+
+  it('shows the latest few events about it in its Overview — its own only, the latest first: their type a mark, how often and when last, their message under', () => {
+    renderPage(told(), '/k/pods.v1?open=pods.v1/shop/web');
+    const recent = opened().querySelector('[data-part="events"]');
+    expect([recent?.querySelector('h3')?.textContent, eventRows(recent)]).toEqual([
+      'Recent events',
+      [
+        ['warn', 'Unhealthy', '×14 · 12m', 'Unhealthy said'],
+        ['done', 'Started', '30m', 'Started said'],
+        ['done', 'Pulled', '40m', 'Pulled said'],
+      ],
+    ]);
+  });
+
+  it('shows all the events about it in its Events tab; none, said so — and none in its Overview', () => {
+    const page = renderPage(told(), '/k/pods.v1?open=pods.v1/shop/web');
+    page.act(() => tabs()[1]?.click());
+    expect(eventRows(opened().querySelector('[role="tabpanel"]')).map((r) => r[1])).toEqual(['Unhealthy', 'Started', 'Pulled', 'Scheduled']);
+    cleanup();
+    const quiet = renderPage(world('web'), '/k/pods.v1?open=pods.v1/shop/web');
+    expect(opened().querySelector('[data-part="events"]')).toBeNull();
+    quiet.act(() => tabs()[1]?.click());
+    expect(opened().querySelector('[role="tabpanel"] .uk-nothing')?.textContent).toBe('No events (the API server keeps events for 1h by default).');
+  });
+
+  it('draws an event through its slots: another’s part beside the core’s', () => {
+    const w = told();
+    w.addon(
+      addon(
+        'more',
+        ({ contributor }) =>
+          void contributor.add(
+            'Fill',
+            'more.who',
+            fill(slots.resource.view.events.event.reason, { after: 'core.resource.view.events.event.reason', render: () => <i> (kubelet)</i> }),
+          ),
+      ),
+    );
+    renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    expect(eventRows(opened().querySelector('[data-part="events"]'))[0]?.[1]).toBe('Unhealthy (kubelet)');
+  });
+
+  it('shows what it is tied to only when there is something: its owners, another’s field among them', () => {
+    const related = () => opened().querySelector('[data-part="related"]') as HTMLElement | null;
+    const w = world('web');
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    // Its list empty: the kit's styles draw no such section (.uk-section:has(> .uk-kv:empty)).
+    expect(related()?.querySelector('.uk-kv')?.childNodes.length).toBe(0);
+    page.act(
+      () =>
+        void w.addon(
+          addon('more', ({ contributor }) => {
+            const node = (props: ResourceProps) =>
+              slotElement(slots.resource.view.related.field, { ...props, field: { name: 'node', label: 'Node' }, value: 'n1', display: 'n1' }, { limit: 1 });
+            contributor.add('Fill', 'more.node', fill(slots.resource.view.related, { render: node }));
+          }),
+        ),
+    );
+    expect([...(related()?.querySelectorAll('dt') ?? [])].map((d) => [d.textContent, d.nextElementSibling?.textContent])).toEqual([['Node', 'n1']]);
+  });
+
+  it('has the core’s action for any object: its YAML copied', async () => {
+    const written: string[] = [];
+    vi.stubGlobal('isSecureContext', true);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async (t: string) => void written.push(t) } });
+    const page = renderPage(world('web'), '/k/pods.v1?open=pods.v1/shop/web');
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.uk-modal-footer button')];
+    expect(buttons.map((b) => b.textContent)).toEqual(['Copy YAML']);
+    await page.act(async () => buttons[0]?.click());
+    expect(written[0]).toContain('name: web');
+  });
+
+  it('has its header’s: another’s before the core’s layout switch', () => {
+    const w = world('web');
+    w.addon(
+      addon('more', ({ contributor }) => void contributor.add('Fill', 'more.shell', fill(slots.resource.view.header, { render: () => <button type="button">Shell</button> }))),
+    );
+    renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    const header = opened().querySelector('header') as HTMLElement;
+    expect([...header.querySelectorAll('button')].map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['Shell', 'Side panel', 'Window', 'Full screen', 'Close']);
   });
 });
 
@@ -979,7 +1224,7 @@ describe('the navigation', () => {
     expect([...other.container.querySelectorAll('.uk-tabs > button')].map((b) => b.getAttribute('aria-label'))).toEqual(['Find']);
   });
 
-  it('draws the picker through its slots: beside its search, above its groups, after an item’s title (for some kinds); or another’s picker whole', () => {
+  it('draws the picker through its slots: beside its search, down its side, above what a section shows, after a section’s and an entry’s title (for some kinds), nothing to show; or another’s picker whole', () => {
     const open = (page: ReturnType<typeof renderPage>) => page.act(() => (page.container.querySelector('button[aria-label="All kinds"]') as HTMLButtonElement).click());
     const picker = () => document.querySelector('[role="dialog"][aria-label="All kinds"]') as HTMLElement;
     const added = world();
@@ -987,16 +1232,30 @@ describe('the navigation', () => {
       addon('more', ({ contributor }) => {
         contributor.add('Fill', 'more.toggle', { slot: slots.nav.picker.header.name, after: 'core.nav.picker.search', render: () => <button type="button">only served</button> });
         contributor.add('Fill', 'more.recent', { slot: slots.nav.picker.content.name, order: 100, render: () => <p class="recent">Recent</p> });
+        contributor.add('Fill', 'more.side', { slot: slots.nav.picker.side.name, order: 900, render: () => <p class="side">Saved views</p> });
+        contributor.add(
+          'Fill',
+          'more.new',
+          fill(slots.nav.picker.section.content, { after: 'core.nav.picker.section.title', when: ({ section }) => section.key === 'custom', render: () => <i> new</i> }),
+        );
         contributor.add('Fill', 'more.count', fill(slots.nav.picker.item.content, { after: 'core.nav.picker.item.title', target: forKinds(Pod), render: () => <b> 3</b> }));
+        contributor.add('Fill', 'more.empty', fill(slots.nav.picker.empty, { render: ({ chosen }) => <p class="empty">{`none in ${chosen}`}</p> }));
       }),
     );
     const page = renderPage(added, '/k/pods.v1');
     open(page);
-    expect(picker().querySelector('.uk-catalog-top')?.textContent).toBe('only served');
-    const said = picker().textContent ?? '';
-    expect(said.indexOf('Recent')).toBeLessThan(said.indexOf('Workloads'));
-    expect(picker().querySelector('a[href="#/k/pods.v1"]')?.textContent).toBe('Pods 3');
-    expect(picker().querySelector('a[href="#/k/deployments.v1.apps"]')?.textContent).toBe('Deployments');
+    // Its search and what is beside it; down its side the sections, another's after them; a section's title and what is after it.
+    expect(picker().querySelector('.uk-catalog-top')?.textContent).toBe('only servedEsc');
+    const side = [...picker().querySelectorAll('.uk-catalog-side > *:not(.uk-catalog-mark)')].map((e) => e.textContent?.replace(/\d+$/, ''));
+    expect([side[0], side.includes('Workloads'), side.includes('Custom resources new'), side.at(-1)]).toEqual(['Pinned', true, true, 'Saved views']);
+    // The pinned shown first: another's above them; an entry's title, what is after it for a kind.
+    const pane = () => picker().querySelector('.uk-catalog-pane') as HTMLElement;
+    expect(pane().textContent?.indexOf('Recent')).toBe(0);
+    expect(pane().querySelector('a[href="#/k/pods.v1"]')?.textContent).toBe('Pods 3');
+    expect(pane().querySelector('a[href="#/k/deployments.v1.apps"]')?.textContent).toBe('Deployments');
+    // A section with nothing in it: another's word for it in the core's place.
+    page.act(() => ([...picker().querySelectorAll('.uk-catalog-section')].find((b) => b.textContent?.startsWith('Custom resources')) as HTMLButtonElement).click());
+    expect(pane().querySelector('.empty')?.textContent).toBe('none in custom');
     cleanup();
     const replaced = world();
     replaced.addon(
@@ -1021,20 +1280,44 @@ describe('the navigation', () => {
     expect(picker().textContent).toBe('palette');
   });
 
-  it('opens the kinds’ picker from the tabs’ +: every kind, filtered as typed; one chosen goes there', () => {
+  it('opens the kinds’ picker from the tabs’ +: the pinned first, a section chosen; typed, every section searched (one chosen then, said so when none there); pinned in place; one chosen goes there', () => {
     const page = renderPage(world(), '/k/pods.v1');
     page.act(() => (page.container.querySelector('button[aria-label="All kinds"]') as HTMLButtonElement).click());
-    const picker = () => page.container.querySelector('[role="dialog"][aria-label="All kinds"]');
-    expect(picker()?.textContent).toContain('StorageClasses');
-    page.act(() => ((picker() as Element).querySelector('a[href="#/k/storageclasses.v1.storage.k8s.io"]') as HTMLAnchorElement).click());
-    expect(page.path).toBe('/k/storageclasses.v1.storage.k8s.io');
+    const picker = () => page.container.querySelector('[role="dialog"][aria-label="All kinds"]') as HTMLElement;
+    const pane = () => picker().querySelector('.uk-catalog-pane') as HTMLElement;
+    const section = (name: string) => [...picker().querySelectorAll('.uk-catalog-section')].find((b) => b.textContent?.startsWith(name)) as HTMLButtonElement;
+    const type = (text: string) =>
+      page.act(() => {
+        const input = picker().querySelector('input') as HTMLInputElement;
+        input.value = text;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    expect([section('Pinned').getAttribute('aria-current'), pane().textContent?.includes('Pods'), pane().textContent?.includes('StorageClasses')]).toEqual(['true', true, false]);
+    page.act(() => section('Storage').click());
+    expect(pane().textContent).toContain('StorageClasses');
+    // Typed: every section's matches, by section — each section's count of them; one chosen with none: said so, and a way back.
+    type('class');
+    expect([section('All matches').getAttribute('aria-current'), section('Storage').textContent, pane().querySelector('.uk-catalog-heading')?.textContent]).toEqual([
+      'true',
+      'Storage1',
+      'Storage',
+    ]);
+    page.act(() => section('Workloads').click());
+    expect(pane().textContent).toContain('Nothing like “class” in Workloads');
+    page.act(() => ([...pane().querySelectorAll('button')].find((b) => b.textContent === 'Search everywhere') as HTMLButtonElement).click());
+    expect(section('All matches').getAttribute('aria-current')).toBe('true');
+    // Pinned in place: a tab kept at hand.
+    page.act(() => (pane().querySelector('button[aria-label="Pin StorageClasses"]') as HTMLButtonElement).click());
+    expect([...page.container.querySelectorAll('.uk-tabs a')].map((a) => a.textContent)).toContain('StorageClasses');
+    page.act(() => (pane().querySelector('a[href="#/k/storageclasses.v1.storage.k8s.io"]') as HTMLAnchorElement).click());
+    expect([page.path, picker()?.dataset.state]).toEqual(['/k/storageclasses.v1.storage.k8s.io', 'closing']);
   });
 
   it('opens an object from its name in the table', () => {
     const page = renderPage(world('web'), '/k/pods.v1');
     page.act(() => (page.container.querySelector('a[href="#/k/pods.v1?open=pods.v1/shop/web"]') as HTMLAnchorElement).click());
     expect(page.path).toBe('/k/pods.v1?open=pods.v1/shop/web');
-    expect(page.text()).toContain('Pod shop/web');
+    expect(page.text()).toContain('Pod web shop');
   });
 
   it('draws the same tabs down the side once the user says so (the NavView): in a rail — collapsed at first, pinned by its toggle (or as the NavView says) — each its mark, told where it is', () => {
@@ -1079,7 +1362,7 @@ describe('the navigation', () => {
       'peek',
       'true',
     ]);
-    expect(picker.textContent).toContain('StatefulSets');
+    expect(picker.textContent).toContain('Workloads');
     page.act(() => void picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
     expect([add.getAttribute('aria-expanded'), document.activeElement]).toEqual(['false', add]);
   });
@@ -1126,11 +1409,11 @@ describe('the navigation', () => {
         contributor.add('Fill', 'certs.pods', { slot: slots.page('cert-manager.certs').name, render: () => <KindTable kind={Pod} /> });
       }),
     );
-    const close = (page: ReturnType<typeof renderPage>) => page.act(() => (page.container.querySelector('dialog button[aria-label="Close"]') as HTMLButtonElement).click());
+    const close = (page: ReturnType<typeof renderPage>) => page.act(() => (page.container.querySelector('.uk-modal button[aria-label="Close"]') as HTMLButtonElement).click());
     const page = renderPage(w, '/k/pods.v1');
     page.navigate('/certs');
     page.act(() => (page.container.querySelector('a[href="#/certs?open=pods.v1/shop/web"]') as HTMLAnchorElement).click());
-    expect([page.path, page.text().includes('Pod shop/web'), page.container.querySelectorAll('[role="table"]').length]).toEqual(['/certs?open=pods.v1/shop/web', true, 1]);
+    expect([page.path, page.text().includes('Pod web shop'), page.container.querySelectorAll('[role="table"]').length]).toEqual(['/certs?open=pods.v1/shop/web', true, 1]);
     close(page);
     await vi.waitFor(() => expect(page.path).toBe('/certs'));
     page.back();
@@ -1145,18 +1428,18 @@ describe('the navigation', () => {
     const page = renderPage(w, '/k/pods.v1');
     page.navigate('/k/pods.v1?open=pods.v1/shop/web');
     page.navigate('/k/pods.v1?open=pods.v1/shop/db');
-    page.act(() => (page.container.querySelector('dialog button[aria-label="Close"]') as HTMLButtonElement).click());
+    page.act(() => (page.container.querySelector('.uk-modal button[aria-label="Close"]') as HTMLButtonElement).click());
     await vi.waitFor(() => expect(page.path).toBe('/k/pods.v1'));
     page.back();
     expect(page.path).toBe('/k/pods.v1?open=pods.v1/shop/web');
     const nowhere = renderPage(w, '/nowhere?open=pods.v1/shop/web');
-    expect([nowhere.text().includes('No page at /nowhere'), nowhere.text().includes('Pod shop/web')]).toEqual([true, true]);
+    expect([nowhere.text().includes('No page at /nowhere'), nowhere.text().includes('Pod web shop')]).toEqual([true, true]);
   });
 
   it('opens nothing it cannot — a kind not served, a scope not the kind’s — and says so', () => {
     for (const path of ['/k/pods.v1?open=things.v1.example.com/shop/x', '/k/pods.v1?open=pods.v1/web', '/k/pods.v1?open=nodes.v1/shop/n1']) {
       const page = renderPage(world('web'), path);
-      expect([page.path, page.container.querySelector('dialog'), page.notifications().map((n) => n.text)]).toEqual([
+      expect([page.path, page.container.querySelector('.uk-modal'), page.notifications().map((n) => n.text)]).toEqual([
         '/k/pods.v1',
         null,
         [`Nothing to open at ${path.split('open=')[1]}.`],

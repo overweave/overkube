@@ -1,6 +1,6 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { checkFieldDef, type FieldName, type FieldType, type Path, type Unit, type Value, type Where } from '@overkube/query';
-import { TOKENS, type Tokens } from '@overkube/uikit';
+import { TOKENS, TONES, type Tokens, type Tone } from '@overkube/uikit';
 import { defineKind, type Problem } from '@overweave/core';
 import { uiKinds } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
@@ -109,10 +109,38 @@ export const Category = defineKind<CategorySpec>()('Category', {
   patchRights: { title: configure, icon: configure, order: configure },
 });
 
+/**
+ * How a state is shown wherever a status is (a table's cell, a resource's
+ * summary): the words it is for — as said ("CrashLoopBackOff"), or those a
+ * pattern takes, * any run of them ("Init:*", "*,SchedulingDisabled") —
+ * its tone and icon; for the kinds its target takes (none: every kind).
+ * The words as said before a pattern, a kind's own before every kind's,
+ * then by order. Data only: a user's to change (its tone, its icon).
+ */
+export interface StatusLookSpec {
+  target?: Target;
+  match: string;
+  tone: Tone;
+  icon?: string;
+  order?: number;
+}
+
+export const StatusLook = defineKind<StatusLookSpec>()('StatusLook', {
+  required: ['match', 'tone'],
+  validate: fields({
+    target: [target, 'notATarget'],
+    match: [text, 'notText'],
+    tone: [(v) => (TONES as readonly unknown[]).includes(v), 'notATone'],
+    icon: [text, 'notText'],
+    order: [finite, 'notANumber'],
+  }),
+  patchRights: { target: configure, match: configure, tone: configure, icon: configure, order: configure },
+});
+
 /** A value of a field as a list gives it: one, several (a many field), none (null). */
 export type CellValue = Value | readonly Value[] | null;
 
-/** What a Wrap of a column's cell is given: the kind, the column's values, its text (none: it draws more than text). */
+/** What a Wrap of a column's cell is given: the kind, the column's values, its text (drawn as more than text: its values as text). */
 export interface CellProps {
   kind: KindInfo;
   values: readonly CellValue[];
@@ -281,6 +309,30 @@ export const Page = defineKind<PageSpec>()('Page', {
   validate: fields({ ...looks, path: [path, 'notAPath'], pinned: [flag, 'notAFlag'], hidden: [flag, 'notAFlag'], regions: [regions, 'notRegions'] }),
   patchRights: { title: configure, icon: configure, order: configure, pinned: configure, hidden: configure, regions: configure },
   merge: { lists: { regions: { key: 'name' } } },
+});
+
+/**
+ * A tab of a resource's view: what it is called, its icon, where among the
+ * others (the core's: Overview first, YAML last), for which kinds (none:
+ * every one), whether it is for this object. Empty but for what fills it:
+ * its slot (resource.view.tab.<name>, slots.resource.view.tab(name)), given
+ * the resource. Hidden: not drawn (another's, the user's).
+ */
+export interface ResourceTabSpec {
+  target: Target;
+  title: Label;
+  icon?: string;
+  order?: number;
+  hidden?: boolean;
+  /** Whether it is for this object (none: always). */
+  when?: (object: KubeObject) => boolean;
+}
+
+export const ResourceTab = defineKind<ResourceTabSpec>()('ResourceTab', {
+  required: ['target', 'title'],
+  createRight: behaviour,
+  validate: fields({ ...looks, target: [target, 'notATarget'], hidden: [flag, 'notAFlag'], when: [fn, 'notAFunction'] }),
+  patchRights: { target: behaviour, title: configure, icon: configure, order: configure, hidden: configure, when: behaviour },
 });
 
 /** Something done to an object (its view's actions): the page draws its button, asks first when it is dangerous, tells the cluster's refusal. */
@@ -460,7 +512,23 @@ export const Language = defineKind<LanguageSpec>()('Language', {
 });
 
 /** The dashboard's own kinds (the UI's beside them). */
-export const kubeOwnKinds = [KindView, Category, Column, Field, TableView, Page, Action, MenuItem, NavView, Theme, Appearance, Messages, Language] as const;
+export const kubeOwnKinds = [
+  KindView,
+  Category,
+  Column,
+  StatusLook,
+  Field,
+  TableView,
+  Page,
+  ResourceTab,
+  Action,
+  MenuItem,
+  NavView,
+  Theme,
+  Appearance,
+  Messages,
+  Language,
+] as const;
 
 /** Every kind the dashboard has: its registry is made of them. */
 export const kubeKinds = [ui.Slot, ui.Fill, ui.Wrap, ...kubeOwnKinds] as const;

@@ -79,7 +79,8 @@ describe('a feed', () => {
     const { feed } = feeds.use({ kind: Pod });
     const sizes: number[] = [];
     feed.revision.subscribe(() => sizes.push(feed.objects.size));
-    await until(() => feed.state.value === 'live' && kube.watching === 3);
+    // Live, and told so (its last page told on the frame after it came).
+    await until(() => feed.state.value === 'live' && kube.watching === 3 && sizes.at(-1) === 12);
     // Told once a frame, the pages after the first not each: never an answer per page.
     expect([sizes[0], sizes.at(-1), sizes.length <= 3]).toEqual([0, 12, true]);
     expect(lists(kube, '/api/v1/pods')).toHaveLength(3);

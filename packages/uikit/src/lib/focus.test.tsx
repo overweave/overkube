@@ -7,7 +7,7 @@ import { activeElement, focusable, trapTab, uid } from './focus';
 afterEach(cleanup);
 
 describe('focusable', () => {
-  it('finds what Tab stops at, in order: links, buttons, fields, what has a tabindex', () => {
+  it('finds what Tab stops at, in order: links, buttons, fields, what has a tabindex — none inside what is inert or hidden', () => {
     // Markup a page should not have (a link with no href, a hidden button that takes focus): what focusable leaves out.
     const container = document.createElement('div');
     container.innerHTML = `
@@ -16,7 +16,8 @@ describe('focusable', () => {
       <input aria-label="field"><input aria-label="off" disabled>
       <select aria-label="pick"></select><textarea aria-label="text"></textarea>
       <div tabindex="0">stop</div><div tabindex="-1">no stop</div>
-      <button type="button" aria-hidden="true">hidden</button><button type="button" inert>inert</button>`;
+      <button type="button" aria-hidden="true">hidden</button><button type="button" inert>inert</button>
+      <section inert><input aria-label="in a closed body"></section><div hidden><button type="button">in hidden</button></div>`;
     expect(focusable(container).map((el) => el.textContent || el.getAttribute('aria-label'))).toEqual(['link', 'button', 'field', 'pick', 'text', 'stop']);
   });
 });

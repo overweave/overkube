@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { Icon } from '../display/Icon';
 import { Skeleton } from '../display/Skeleton';
 import { uid } from '../lib/focus';
+import { slideIn, slideOut } from '../lib/slide';
 import { useSortable } from '../lib/sortable';
 
 /*
@@ -78,6 +79,8 @@ export interface TableProps<T> {
   reorderable?: boolean;
   /** The columns' order the user made. */
   onReorder?: (ids: string[]) => void;
+  /** Drawn in what holds it (a section, a card): no frame, no ground of its own, its rows from its edges — what holds it frames it. */
+  plain?: boolean;
   /** A row's context menu asked for (a right click on it; the menu key, Shift+F10 in it): the page's to open, or not (the browser's then). */
   onRowMenu?: (row: T, event: MouseEvent | KeyboardEvent) => void;
 }
@@ -139,6 +142,7 @@ export function Table<T>({
   reorderable = true,
   onReorder,
   onRowMenu,
+  plain = false,
   columns: given,
 }: TableProps<T>) {
   const ids = useMemo(() => ({ header: uid('uk-table-h') }), []);
@@ -303,8 +307,10 @@ export function Table<T>({
   // Columns as wide as the user dragged them, else as they are given.
   const track = (c: TableColumn<T>) => (sized[c.id] !== undefined ? `${sized[c.id]}px` : (c.width ?? 'minmax(0, 1fr)'));
   const template = columns.map(track).join(' ');
-  const pixels = (c: TableColumn<T>) => sized[c.id] ?? (/^\d+(\.\d+)?px$/.test(c.width ?? '') ? Number.parseFloat(c.width as string) : FLEX_WIDTH);
-  const minWidth = columns.reduce((sum, c) => sum + pixels(c), 0) + GAP * (columns.length - 1) + PAD * 2;
+  // At least: as dragged, its width in px, its minmax's least (minmax(120px, 1fr)); a free one, FLEX_WIDTH.
+  const least = (width: string | undefined) => /^(?:minmax\(\s*)?(\d+(?:\.\d+)?)px\b/.exec(width ?? '')?.[1];
+  const pixels = (c: TableColumn<T>) => sized[c.id] ?? (least(c.width) === undefined ? FLEX_WIDTH : Number.parseFloat(least(c.width) as string));
+  const minWidth = columns.reduce((sum, c) => sum + pixels(c), 0) + GAP * (columns.length - 1) + (plain ? 0 : PAD * 2);
 
   const setWidth = (id: string, px: number | undefined, done: boolean) => {
     const width = px === undefined ? undefined : Math.max(MIN_WIDTH, Math.round(px));
@@ -464,13 +470,21 @@ export function Table<T>({
   return (
     <div
       class="uk-table"
+      data-plain={plain ? '' : undefined}
       ref={sortable.root as Ref<HTMLDivElement>}
       role="table"
       aria-rowcount={waiting ? -1 : count + 1}
       aria-busy={waiting ? true : undefined}
       data-resizing={resizing !== undefined ? '' : undefined}
     >
-      <div class="uk-table-body" ref={attach} style={{ maxHeight: height }} onScroll={(e) => setScroll((e.currentTarget as HTMLDivElement).scrollTop)}>
+      <div
+        class="uk-table-body"
+        ref={attach}
+        style={{ maxHeight: height }}
+        onPointerOver={slideIn}
+        onPointerOut={slideOut}
+        onScroll={(e) => setScroll((e.currentTarget as HTMLDivElement).scrollTop)}
+      >
         <div class="uk-table-inner" style={{ minWidth: `${minWidth}px` }}>
           {/* biome-ignore lint/a11y/useFocusableInteractive: the header row is not a stop; its buttons are. */}
           <div class="uk-table-head" role="row" aria-rowindex={1} ref={head} style={{ gridTemplateColumns: template }}>
@@ -553,7 +567,7 @@ export function Table<T>({
                     >
                       {columns.map((c) => (
                         <div key={c.id} {...sortable.item(c.id)} data-wrap={c.wrap ? '' : undefined}>
-                          {c.cell(row)}
+                          <span class="uk-cell-in">{c.cell(row)}</span>
                         </div>
                       ))}
                     </div>
@@ -580,7 +594,7 @@ export function Table<T>({
                   >
                     {columns.map((c) => (
                       <div key={c.id} {...sortable.item(c.id)} role="cell" data-wrap={c.wrap ? '' : undefined}>
-                        {c.cell(row)}
+                        <span class="uk-cell-in">{c.cell(row)}</span>
                       </div>
                     ))}
                   </div>

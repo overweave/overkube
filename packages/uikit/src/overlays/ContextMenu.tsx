@@ -3,12 +3,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../display/Icon';
 import { keyName, onMac } from '../display/Kbd';
 import { activeElement } from '../lib/focus';
+import { Layer, placeAt } from '../lib/layers';
 
 /*
  * A menu of what can be done with something, opened where it was asked for
- * (a right click: at the pointer; the keyboard: under the element). Over
- * the page (the top layer; a modal dialog's own: drawn inside it, else it
- * is seen there but not to be reached), kept inside the window — opening
+ * (a right click: at the pointer; the keyboard: under the element). A layer
+ * over the page (over a modal one too, and to be reached there), kept
+ * inside the window — opening
  * to the left or up where it does not fit, growing from that corner. Its
  * items in groups, a line between them; one may be dangerous (said in the
  * error colour) or not to be had now. The keyboard as a system's menu: the
@@ -61,11 +62,8 @@ function ariaKeys(keys: string): string {
 
 /** How long a chosen item blinks before it is done. */
 const BLINK_MS = 110;
-/** How far from the window's edges it keeps. */
-const EDGE = 8;
 
 export function ContextMenu({ at, groups, label, title, keyboard = false, state = 'open', onClose }: ContextMenuProps) {
-  const box = useRef<HTMLDivElement>(null);
   const [chosen, setChosen] = useState<string>();
   const close = useRef(onClose);
   close.current = onClose;
@@ -74,60 +72,37 @@ export function ContextMenu({ at, groups, label, title, keyboard = false, state 
   const blinking = useRef<{ timer: ReturnType<typeof setTimeout>; item: ContextMenuItem }>();
   const icons = groups.some((g) => g.items.some((i) => i.icon));
 
-  // Placed before it is seen: at the point, or to its left / above it where it does not fit; growing from that corner.
+  // Placed before it is seen (once it is there): at the point, or to its left / above it where it does not fit; growing from that corner.
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const show = el as HTMLDivElement & { showPopover?: () => void };
-    try {
-      show.showPopover?.();
-    } catch {
-      // A browser without popovers: over the page as it is.
-    }
-    const { offsetWidth: w, offsetHeight: h } = el;
-    const left = at.x + w + EDGE > window.innerWidth ? at.x - w : at.x;
-    // Up: from the element's top (not over it), or the point.
-    const up = at.y + h + EDGE > window.innerHeight;
-    const from = up ? (at.above ?? at.y) : at.y;
-    const x = Math.max(EDGE, Math.min(left, window.innerWidth - w - EDGE));
-    const y = Math.max(EDGE, Math.min(up ? from - h : from, window.innerHeight - h - EDGE));
-    Object.assign(el.style, { left: `${x}px`, top: `${y}px`, visibility: 'visible' });
-    el.style.setProperty('--uk-menu-origin', `${at.x - x}px ${from - y}px`);
-  }, [at.x, at.y, at.above]);
+    if (el) placeAt(el, at);
+  }, [el, at.x, at.y, at.above]);
 
-  const items = () => [...(box.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? [])];
+  const items = () => [...(el?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? [])];
 
   useEffect(() => {
+    if (!el) return;
     before.current = activeElement() as HTMLElement | null;
     // Opened by the keyboard: its first item; by the pointer: the menu itself (the arrows from there).
-    (keyboard ? items()[0] : box.current)?.focus();
-    let armed = false;
-    // Not the press that opened it.
-    const arm = setTimeout(() => {
-      armed = true;
-    });
-    const root = box.current;
-    const outside = (e: Event) => armed && root && !e.composedPath().includes(root) && close.current();
+    (keyboard ? items()[0] : el)?.focus();
+    const root = el;
     const gone = () => close.current();
     // The page scrolled (not the menu itself, a long one).
     const scrolled = (e: Event) => root && !e.composedPath().includes(root) && close.current();
-    document.addEventListener('pointerdown', outside, true);
     window.addEventListener('blur', gone);
     window.addEventListener('resize', gone);
     window.addEventListener('scroll', scrolled, true);
     return () => {
-      clearTimeout(arm);
       const b = blinking.current;
       if (b) {
         clearTimeout(b.timer);
         b.item.onSelect();
       }
-      document.removeEventListener('pointerdown', outside, true);
       window.removeEventListener('blur', gone);
       window.removeEventListener('resize', gone);
       window.removeEventListener('scroll', scrolled, true);
     };
-  }, []);
+  }, [el]);
 
   /** Closed, focus back where it was (the keyboard's way out, or a choice). */
   const back = () => {
@@ -172,15 +147,14 @@ export function ContextMenu({ at, groups, label, title, keyboard = false, state 
   };
 
   return (
-    <div
+    <Layer
       class="uk-menu"
       role="menu"
-      aria-label={label || undefined}
-      tabIndex={-1}
-      popover="manual"
-      ref={box}
-      data-state={state}
-      style={{ visibility: 'hidden' }}
+      label={label || undefined}
+      focus="none"
+      onLayer={setEl}
+      onDismiss={() => close.current()}
+      closing={state === 'closing'}
       onKeyDown={keys}
       onContextMenu={(e) => e.preventDefault()}
       onClick={(e) => e.stopPropagation()}
@@ -204,7 +178,7 @@ export function ContextMenu({ at, groups, label, title, keyboard = false, state 
                   data-danger={item.danger ? '' : undefined}
                   data-chosen={chosen === item.key ? '' : undefined}
                   onPointerMove={(e) => !item.disabled && activeElement() !== e.currentTarget && (e.currentTarget as HTMLElement).focus()}
-                  onPointerLeave={(e) => activeElement() === e.currentTarget && box.current?.focus()}
+                  onPointerLeave={(e) => activeElement() === e.currentTarget && el?.focus()}
                   onClick={() => choose(item)}
                   onKeyDown={(e) => {
                     if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -227,6 +201,6 @@ export function ContextMenu({ at, groups, label, title, keyboard = false, state 
             </div>
           </Fragment>
         ))}
-    </div>
+    </Layer>
   );
 }

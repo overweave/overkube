@@ -1,6 +1,6 @@
 import { fieldsOf, scan, valuesOf } from '@overkube/query';
 import { describe, expect, it } from 'vitest';
-import { baseFields, COMMON, type CrdLike, crdFields, type Defs, define, KUBE_CEL, PODS } from './index.ts';
+import { BATCH, baseFields, COMMON, CONFIG, type CrdLike, crdFields, type Defs, define, KUBE_CEL, PODS, WORKLOADS } from './index.ts';
 
 /** Fields as a scan has them (made as the page and a server make them). */
 const paths = (defs: Defs) => fieldsOf(defs, KUBE_CEL.compile).fields;
@@ -13,6 +13,7 @@ const pod = {
     creationTimestamp: '2026-10-01T10:00:00Z',
     deletionTimestamp: '2026-10-02T10:00:00Z',
     finalizers: ['a', 'b'],
+    labels: { app: 'web', tier: 'front' },
     ownerReferences: [
       { kind: 'ReplicaSet', name: 'web', uid: 'rs1', controller: true },
       { kind: 'Thing', name: 'x', uid: 't1' },
@@ -31,6 +32,8 @@ describe('the fields every object has', () => {
     ['core.controller.uid', ['rs1']],
     ['core.finalizers', ['a', 'b']],
     ['core.ready', ['False']],
+    ['core.labels', ['app=web', 'tier=front']],
+    ['core.label.keys', ['app', 'tier']],
   ])('%s: %j', (name, values) => {
     expect(valuesOf(pod, name, paths(COMMON))).toEqual(values);
   });
@@ -43,6 +46,38 @@ describe("a pod's own", () => {
     ['pods.v1.pvcs', ['data']],
   ])('%s: %j', (name, values) => {
     expect(valuesOf(pod, name, paths(PODS))).toEqual(values);
+  });
+});
+
+describe('when a job ran and a workload rolled out', () => {
+  const t = (iso: string) => [Date.parse(iso)];
+  it.each([
+    [{ status: { startTime: '2026-10-01T10:00:00Z', completionTime: '2026-10-01T10:05:00Z' } }, BATCH, 'jobs.v1.batch.started', t('2026-10-01T10:00:00Z')],
+    [{ status: { completionTime: '2026-10-01T10:05:00Z' } }, BATCH, 'jobs.v1.batch.finished', t('2026-10-01T10:05:00Z')],
+    [{ status: {} }, BATCH, 'jobs.v1.batch.finished', []],
+    [{ status: { lastSuccessfulTime: '2026-10-01T09:00:00Z' } }, BATCH, 'cronjobs.v1.batch.lastSuccess', t('2026-10-01T09:00:00Z')],
+    [{ status: { lastScaleTime: '2026-10-01T08:00:00Z' } }, BATCH, 'horizontalpodautoscalers.v2.autoscaling.lastScale', t('2026-10-01T08:00:00Z')],
+    [{ metadata: { annotations: { 'deployment.kubernetes.io/revision': '7' } } }, WORKLOADS, 'deployments.v1.apps.revision', [7]],
+    [{ metadata: {} }, WORKLOADS, 'replicasets.v1.apps.revision', [0]],
+  ])('%j: %s is %j', (object, defs, name, values) => {
+    expect(valuesOf(object, name as string, paths(defs as Defs))).toEqual(values);
+  });
+});
+
+describe('what config holds and policies pick', () => {
+  it.each([
+    [{ data: { a: '1', b: '2' }, binaryData: { c: 'AA==' } }, 'configmaps.v1.keys', [3]],
+    [{}, 'configmaps.v1.keys', [0]],
+    [{ data: { 'tls.crt': 'x' } }, 'secrets.v1.keys', [1]],
+    [{ spec: { podSelector: { matchLabels: { app: 'api' } } } }, 'networkpolicies.v1.networking.k8s.io.pods', ['app=api']],
+    [{ spec: { podSelector: {} } }, 'networkpolicies.v1.networking.k8s.io.pods', []],
+    [{ metadata: { labels: { 'pod-security.kubernetes.io/enforce': 'restricted' } } }, 'namespaces.v1.podSecurity', ['restricted']],
+    [{ metadata: {} }, 'namespaces.v1.podSecurity', ['']],
+    [{ metadata: { annotations: { 'storageclass.kubernetes.io/is-default-class': 'true' } } }, 'storageclasses.v1.storage.k8s.io.default', [true]],
+    [{ metadata: {} }, 'storageclasses.v1.storage.k8s.io.default', [false]],
+    [{ spec: { selector: { matchLabels: { app: 'api', tier: 'x' } } } }, 'poddisruptionbudgets.v1.policy.pods', ['app=api', 'tier=x']],
+  ])('%j: %s is %j', (object, name, values) => {
+    expect(valuesOf(object, name, paths(CONFIG))).toEqual(values);
   });
 });
 

@@ -1,13 +1,14 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import type { Item, ListResult, Where } from '@overkube/query';
-import { type CellValue, type KindTableProps, kindRef, type ListState, slots, TableView } from '@overkube/sdk';
+import { type CellValue, type KindTableProps, KindView, kindRef, type ListState, slots, TableView } from '@overkube/sdk';
 import { useCluster, useCount, useList, useMenu, useSay } from '@overkube/sdk/preact';
-import { Notice, Table, type TableColumn, type TableSort } from '@overkube/uikit';
+import { EmptyState, Nothing, Notice, Table, type TableColumn, type TableSort } from '@overkube/uikit';
 import { slotElement, useDefinition } from '@overweave/ui/preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Cell } from './cell.tsx';
 import { useColumns } from './columns.tsx';
 import { fieldOf, useFailures } from './failures.ts';
+import { type Chosen, scopeOf } from './namespaces.tsx';
 import { T } from './texts.ts';
 import { useWaited } from './waited.ts';
 
@@ -44,8 +45,10 @@ const objectOf = (kind: KindInfo, key: string, uid: string | undefined): KubeObj
   return { apiVersion: kind.group ? `${kind.group}/${kind.version}` : kind.version, kind: kind.kind, metadata };
 };
 
-export function CoreTable(table: KindTableProps) {
+export function CoreTable({ chosen, ...table }: KindTableProps & { chosen: Chosen }) {
   const { kind, title } = table;
+  // Its own scope, else the namespaces chosen in the page's header.
+  const scope = scopeOf(kind, table.scope, chosen.value);
   const ref = kindRef(kind);
   // The page waited for this kind already (the last one shown meanwhile): its placeholders at once.
   const waited = useWaited();
@@ -53,7 +56,11 @@ export function CoreTable(table: KindTableProps) {
   const menu = useMenu('resource.context');
   const failed = useFailures();
   const view = useDefinition(TableView, kind.id)?.spec ?? {};
-  const { placed, catalog } = useColumns(kind, view, failed);
+  const columned = useColumns(kind, view, failed);
+  const { catalog } = columned;
+  // In one namespace only: its namespace not said on every row.
+  const one = typeof scope === 'object' && scope.namespaces.length === 1;
+  const placed = useMemo(() => (one ? columned.placed.filter((c) => c.definition.name !== 'core.namespace') : columned.placed), [columned.placed, one]);
 
   const [range, setRange] = useState({ first: 0, last: FIRST });
   const [asked, setAsked] = useState<TableSort>();
@@ -65,7 +72,7 @@ export function CoreTable(table: KindTableProps) {
   const select = useMemo(() => [...new Set(placed.flatMap((c) => c.fields))], [placed]);
   const asking = {
     kind: ref,
-    ...(table.scope ? { scope: table.scope } : {}),
+    ...(scope ? { scope } : {}),
     ...(where ? { where } : {}),
     ...(sortBy ? { sort: [{ field: sortBy, desc: sort?.desc ?? false }] } : {}),
   };
@@ -78,7 +85,7 @@ export function CoreTable(table: KindTableProps) {
   if (settled) last.current = { answer, offset: range.first, same };
   const kept = !settled && last.current?.same === same ? last.current : null;
   // How many there are of those the table may show (its where aside: "none shown of 12").
-  const all = useCount({ kind: ref, ...(table.scope ? { scope: table.scope } : {}) });
+  const all = useCount({ kind: ref, ...(scope ? { scope } : {}) });
 
   const result = kept?.answer ?? answer;
   const offset = kept?.offset ?? range.first;
@@ -149,6 +156,8 @@ export function CoreTable(table: KindTableProps) {
     );
 
   const list: ListState = { state, ...(count === undefined ? {} : { shown: count }), ...(all.total ? { total: all.total.count } : {}), ...(error ? { error } : {}) };
+  // In another's frame, none: its empty state alone, no table's head over nothing.
+  if (table.plain && !loading && count === 0) return <div class="uk-region">{slotElement(slots.kind.table.empty, { ...table, list }, { limit: 1 })}</div>;
   // One tree, loading or not: the table stays the same table — its placeholders give way to its rows in place.
   return (
     <div class="uk-region">
@@ -181,6 +190,7 @@ export function CoreTable(table: KindTableProps) {
         onSort={setAsked}
         columns={columns}
         rowKey={(item) => item.key}
+        plain={table.plain}
         loading={loading}
         placeholdersAfter={waited ? 0 : undefined}
         empty={slotElement(slots.kind.table.empty, { ...table, list }, { limit: 1 })}
@@ -190,9 +200,28 @@ export function CoreTable(table: KindTableProps) {
   );
 }
 
-/** No rows (the core's, kind.table.empty's last): none at all, or none shown of those there are. */
-export function TableEmpty({ kind, list }: { kind: KindInfo; list: ListState }) {
+/** No rows (the core's, kind.table.empty's last): none at all, or none shown of those there are; in another's frame, a word that there are none. */
+export function TableEmpty({ kind, scope, list, chosen, plain }: KindTableProps & { list: ListState; chosen: Chosen }) {
   const say = useSay();
+  const icon = useDefinition(KindView, kind.id)?.spec.icon ?? 'cube';
+  // In another's frame (a resource's section): a word, not a page's empty state — what it picks is its own, not the page's.
+  if (plain) return <Nothing icon={icon}>{say(T.kind.table.none, { kind: kind.plural })}</Nothing>;
   const total = list.total ?? 0;
-  return <>{(list.shown ?? 0) < total ? say(T.kind.table.noneShown, { kind: kind.plural, total }) : say(T.kind.table.none, { kind: kind.plural })}</>;
+  if ((list.shown ?? 0) < total)
+    return (
+      <EmptyState icon={icon} title={say(T.kind.table.noneShown, { kind: kind.plural, total })}>
+        {say(T.kind.table.filtered)}
+      </EmptyState>
+    );
+  // None in the namespaces chosen in the page's header (not its own scope): all of them a click away.
+  const names = !scope && kind.namespaced ? chosen.value : [];
+  return (
+    <EmptyState
+      icon={icon}
+      title={say(T.kind.table.none, { kind: kind.plural })}
+      action={names.length ? { label: say(T.kind.table.showAll), run: () => (chosen.value = []) } : undefined}
+    >
+      {names.length ? say(T.kind.table.noneIn, { names: names.join(', ') }) : say(T.kind.table.noneYet)}
+    </EmptyState>
+  );
 }

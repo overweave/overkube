@@ -1,16 +1,18 @@
 import type { FieldCatalog, KindRef } from '@overkube/query';
 import { BATCH } from './batch.ts';
 import { COMMON } from './common.ts';
+import { CONFIG } from './config.ts';
 import { type CrdColumn, type CrdLike, crdFields } from './crd.ts';
 import type { Defs } from './define.ts';
 import { EVENTS } from './events.ts';
 import { LIBRARY } from './library.ts';
 import { NODES } from './nodes.ts';
 import { PODS } from './pods.ts';
+import { HEALTH, STATUS } from './status.ts';
 import { WORKLOADS } from './workloads.ts';
 
 /** The built-in kinds' own fields, a set of them each (a new kind: one more here). */
-export const BUILT_INS: readonly Defs[] = [PODS, NODES, WORKLOADS, BATCH, EVENTS];
+export const BUILT_INS: readonly Defs[] = [PODS, NODES, WORKLOADS, BATCH, EVENTS, STATUS, CONFIG];
 
 /** Every built-in kind's own fields. */
 export const BUILT_IN: Defs = Object.assign({}, ...BUILT_INS);
@@ -32,7 +34,7 @@ export function baseFields(kind: KindRef, crd?: CrdLike): Base {
   const of = crd ? crdFields(crd) : { fields: {}, columns: [], skipped: {} };
   const own = Object.entries({ ...BUILT_IN, ...of.fields }).filter(([, def]) => def.kinds?.includes(kind));
   return {
-    fields: { ...COMMON, ...Object.fromEntries(own) },
+    fields: { ...COMMON, ...HEALTH, ...Object.fromEntries(own) },
     functions: LIBRARY,
     columns: of.columns.filter((c) => c.kind === kind),
     skipped: of.skipped,

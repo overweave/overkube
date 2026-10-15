@@ -1,12 +1,6 @@
-import { type NavPickerItemProps, type NavPickerPartProps, type NavPickerProps, type NavTabContext, type NavTabProps, type NavTabsProps, NavView, slots } from '@overkube/sdk';
+import { type NavTabContext, type NavTabProps, type NavTabsProps, NavView, slots } from '@overkube/sdk';
 import { useMenu, usePage, useSay } from '@overkube/sdk/preact';
 import {
-  CatalogBox,
-  type CatalogGroup,
-  CatalogGroups,
-  type CatalogItemParts,
-  CatalogSearch,
-  CatalogTop,
   closeFocused,
   closeTab,
   keepFocused,
@@ -226,63 +220,6 @@ export function PickerPopover({
     <Popover onClose={onClose} anchor={anchor} placed={!flyout} state={state} label={say(T.nav.picker.all)} class={flyout ? 'uk-picker uk-rail-flyout' : 'uk-picker'}>
       {slotElement(slots.nav.picker, { close: onClose }, { limit: 1 })}
     </Popover>
-  );
-}
-
-/** The core's picker (nav.picker's last): what is typed kept here, given to its header (the core's search) and its content (the core's groups). */
-export function Picker({ close }: NavPickerProps) {
-  const [query, setQuery] = useState('');
-  const props: NavPickerPartProps = { query, onQuery: setQuery, close };
-  return (
-    <CatalogBox>
-      <CatalogTop>{slotElement(slots.nav.picker.header, props)}</CatalogTop>
-      {slotElement(slots.nav.picker.content, props)}
-    </CatalogBox>
-  );
-}
-
-/** The core's search, in the picker's header. */
-export function PickerSearch({ query, onQuery }: NavPickerPartProps) {
-  const say = useSay();
-  return <CatalogSearch query={query} onQuery={onQuery} placeholder={say(T.nav.picker.search)} />;
-}
-
-/** The core's groups, in the picker's content: filtered as typed; each item the nav.picker.item slot's. */
-export function PickerGroups({ query, close }: NavPickerPartProps) {
-  const nav = useNav();
-  const page = usePage();
-  const say = useSay();
-  const q = query.trim().toLocaleLowerCase(say.locale);
-  const entries = new Map(nav.groups.flatMap((g) => g.entries.map((e) => [e.key, e] as const)));
-  const groups: CatalogGroup[] = nav.groups
-    .map((g) => ({
-      key: g.key,
-      title: g.title,
-      items: g.entries
-        .filter((e) => !q || e.title.toLocaleLowerCase(say.locale).includes(q) || e.kind?.id.toLowerCase().includes(q))
-        .map((e) => ({ key: e.key, label: e.title, title: e.kind?.id, href: page.href(e.path) })),
-    }))
-    .filter((g) => g.items.length);
-  return (
-    <CatalogGroups
-      groups={groups}
-      query={query}
-      empty={say(T.nav.picker.nothingLike, { query })}
-      onOpen={close}
-      renderItem={(item, parts) => {
-        const e = entries.get(item.key) as NavEntry;
-        return slotElement(slots.nav.picker.item, { entry: { key: e.key, title: e.title, path: e.path }, kind: e.kind, query, ...parts }, { limit: 1 });
-      }}
-    />
-  );
-}
-
-/** An item as the core draws it (nav.picker.item's last): the kit's link, what is in it the content slot's (the core's title there). */
-export function PickerItem({ attrs, ...item }: NavPickerItemProps & CatalogItemParts) {
-  return (
-    <a {...attrs} class="uk-catalog-name">
-      {slotElement(slots.nav.picker.item.content, item)}
-    </a>
   );
 }
 

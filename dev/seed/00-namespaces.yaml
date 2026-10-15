@@ -1,0 +1,18 @@
+# The seed's namespaces: shop (an app: web, api, db) and ops (the cluster's
+# chores, and what is broken on purpose). Everything the seed makes carries
+# overkube.dev/seed=true: make dev-clean deletes by it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: seed-shop
+  labels:
+    overkube.dev/seed: "true"
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: seed-ops
+  labels:
+    overkube.dev/seed: "true"

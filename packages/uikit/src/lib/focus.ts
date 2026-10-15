@@ -5,8 +5,9 @@
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** What can take focus inside root: not inside what is inert, hidden, or hidden from assistive technology (a closed accordion's body). */
 export function focusable(root: Element): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.hasAttribute('inert') && el.getAttribute('aria-hidden') !== 'true');
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.closest('[inert], [hidden], [aria-hidden="true"]'));
 }
 
 /** The element that has focus, looking into shadow roots. */

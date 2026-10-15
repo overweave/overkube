@@ -4,7 +4,7 @@ import { define } from './define.ts';
  * What a workload controller's replicas are, as kubectl shows them:
  * desired (its spec's; none said: 1 — a DaemonSet's, its status's: 0),
  * ready, up to date, available (its status's; none said, no status yet:
- * 0) — and its pods' images.
+ * 0) — its pods' images; a deployment's and a replica set's revision.
  */
 const of = (path: string, none: number) => ({
   cel: `self.${path
@@ -32,4 +32,11 @@ export const WORKLOADS = define({
   'daemonsets.v1.apps.updated': { kinds: DS, type: 'number', value: of('status.updatedNumberScheduled', 0) },
   'daemonsets.v1.apps.available': { kinds: DS, type: 'number', value: of('status.numberAvailable', 0) },
   'daemonsets.v1.apps.images': { kinds: DS, type: 'string', many: true, value: '.spec.template.spec.containers[*].image' },
+  // Which rollout it is (a deployment's, and each of its replica sets'): its revision, as its controller notes it.
+  ...Object.fromEntries(
+    ['deployments.v1.apps', 'replicasets.v1.apps'].map((kind) => [
+      `${kind}.revision`,
+      { kinds: [kind], type: 'number' as const, value: { cel: "int(self.?metadata.?annotations[?'deployment.kubernetes.io/revision'].orValue('0'))" } },
+    ]),
+  ),
 });

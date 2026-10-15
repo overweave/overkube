@@ -159,6 +159,11 @@ describe('Table: drawing', () => {
     // 100px, two flexible (96px each), two gaps, the padding.
     expect((container.querySelector('.uk-table-inner') as HTMLElement).style.minWidth).toBe(`${100 + 96 * 2 + GAP * 2 + PAD * 2}px`);
   });
+
+  it('takes a minmax column’s least as its least (not a flexible one’s)', () => {
+    const { container } = mount({ columns: COLUMNS.map((c, i) => ({ ...c, width: i === 0 ? 'minmax(40px, 1fr)' : i === 1 ? 'minmax(52.5px, 80px)' : '2fr' })) });
+    expect((container.querySelector('.uk-table-inner') as HTMLElement).style.minWidth).toBe(`${40 + 52.5 + 96 + GAP * 2 + PAD * 2}px`);
+  });
 });
 
 describe('Table: sorting', () => {

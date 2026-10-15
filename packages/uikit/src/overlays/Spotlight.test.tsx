@@ -41,14 +41,13 @@ function mount(props: Partial<SpotlightProps> = {}) {
       .queryAllByRole('option')
       .find((o) => o.getAttribute('aria-selected') === 'true')
       ?.getAttribute('data-key');
-  return { ...view, told, field, active, user: userEvent.setup(), dialog: () => view.container.querySelector('dialog') as HTMLDialogElement };
+  return { ...view, told, field, active, user: userEvent.setup(), dialog: () => view.baseElement.querySelector('.uk-spot') as HTMLElement };
 }
 
 describe('Spotlight: opening', () => {
   it('is a dialog named as it is given, open, the field focused', () => {
     const { dialog, field } = mount();
-    expect(dialog().getAttribute('aria-label')).toBe('Search');
-    expect(dialog().open || dialog().hasAttribute('open')).toBe(true);
+    expect([dialog().getAttribute('role'), dialog().getAttribute('aria-label'), dialog().getAttribute('aria-modal')]).toEqual(['dialog', 'Search', 'true']);
     expect(document.activeElement).toBe(field());
     expect(field().getAttribute('placeholder')).toBe('Kinds, pages…');
   });
@@ -80,8 +79,8 @@ describe('Spotlight: the field and its results', () => {
   });
 
   it('shows the results by group, each group named once, with what they are given', () => {
-    const { container, getAllByRole } = mount();
-    expect([...container.querySelectorAll('.uk-spot-group')].map((g) => g.textContent)).toEqual(['Kinds', 'Pages']);
+    const { baseElement, getAllByRole } = mount();
+    expect([...baseElement.querySelectorAll('.uk-spot-group')].map((g) => g.textContent)).toEqual(['Kinds', 'Pages']);
     expect(getAllByRole('option').map((o) => `${o.querySelector('.uk-spot-title')?.textContent}/${o.querySelector('.uk-spot-subtitle')?.textContent}`)).toEqual([
       'Pods/Kind',
       'Nodes/Kind',
@@ -91,21 +90,21 @@ describe('Spotlight: the field and its results', () => {
   });
 
   it('says it is searching', () => {
-    expect(mount({ busy: true }).container.querySelector('.uk-spot-field')?.hasAttribute('data-busy')).toBe(true);
+    expect(mount({ busy: true }).baseElement.querySelector('.uk-spot-field')?.hasAttribute('data-busy')).toBe(true);
     cleanup();
-    expect(mount().container.querySelector('.uk-spot-field')?.hasAttribute('data-busy')).toBe(false);
+    expect(mount().baseElement.querySelector('.uk-spot-field')?.hasAttribute('data-busy')).toBe(false);
   });
 
   it('says a query found nothing — once nothing is being searched, and not for no query', () => {
-    expect(mount({ query: 'zzz', items: [], empty: 'Nothing for zzz' }).container.querySelector('.uk-spot-empty')?.textContent).toBe('Nothing for zzz');
+    expect(mount({ query: 'zzz', items: [], empty: 'Nothing for zzz' }).baseElement.querySelector('.uk-spot-empty')?.textContent).toBe('Nothing for zzz');
     cleanup();
-    expect(mount({ query: 'zzz', items: [], empty: 'Nothing', busy: true }).container.querySelector('.uk-spot-empty')).toBeNull();
+    expect(mount({ query: 'zzz', items: [], empty: 'Nothing', busy: true }).baseElement.querySelector('.uk-spot-empty')).toBeNull();
     cleanup();
-    expect(mount({ query: ' ', items: [], empty: 'Nothing' }).container.querySelector('.uk-spot-empty')).toBeNull();
+    expect(mount({ query: ' ', items: [], empty: 'Nothing' }).baseElement.querySelector('.uk-spot-empty')).toBeNull();
   });
 
   it('shows what it is given under the results', () => {
-    expect(mount({ footer: <span>↵ to open</span> }).container.querySelector('.uk-spot-footer')?.textContent).toBe('↵ to open');
+    expect(mount({ footer: <span>↵ to open</span> }).baseElement.querySelector('.uk-spot-footer')?.textContent).toBe('↵ to open');
   });
 });
 
@@ -179,11 +178,10 @@ describe('Spotlight: choosing', () => {
 });
 
 describe('Spotlight: closing', () => {
-  it('fades by Escape (its dialog’s cancel), then is closed', async () => {
-    const { dialog, told } = mount();
-    const cancel = new Event('cancel', { cancelable: true });
-    dialog().dispatchEvent(cancel);
-    expect(cancel.defaultPrevented).toBe(true);
+  it('fades by Escape, then is closed', async () => {
+    const { dialog, field, told } = mount();
+    await new Promise((r) => setTimeout(r, 5));
+    fireEvent.keyDown(field(), { key: 'Escape' });
     await waitFor(() => expect(dialog().getAttribute('data-state')).toBe('closing'));
     expect(told).toEqual([]);
     await waitFor(() => expect(told).toEqual(['close']));
@@ -202,7 +200,7 @@ describe('Spotlight: closing', () => {
     const { dialog, told } = mount();
     fireEvent.click(dialog());
     fireEvent.click(dialog());
-    dialog().dispatchEvent(new Event('cancel', { cancelable: true }));
+    fireEvent.keyDown(dialog(), { key: 'Escape' });
     await new Promise((r) => setTimeout(r, 250));
     expect(told).toEqual(['close']);
   });

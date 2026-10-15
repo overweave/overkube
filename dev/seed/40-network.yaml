@@ -1,0 +1,166 @@
+# Services of every type, ingresses (TLS from cert-manager; one path to a
+# service that does not exist), network policies.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: web }
+spec:
+  selector: { app: web }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: api }
+spec:
+  selector: { app: api }
+  sessionAffinity: ClientIP
+  ports: [{ name: http, port: 8080, targetPort: http }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: db }
+spec:
+  clusterIP: None
+  selector: { app: db }
+  ports: [{ name: db, port: 5432 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: cache }
+spec:
+  clusterIP: None
+  selector: { app: cache }
+  ports: [{ name: cache, port: 6379 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-public
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: web }
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector: { app: web }
+  ports: [{ name: http, port: 80, targetPort: http, nodePort: 30080 }]
+---
+# A load balancer nobody provides here: its address stays <pending>.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-lb
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: web }
+spec:
+  type: LoadBalancer
+  selector: { app: web }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: status-page
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  type: ExternalName
+  externalName: status.example.com
+---
+# Selects nothing that runs (flaky never gets ready): no ready endpoints.
+apiVersion: v1
+kind: Service
+metadata:
+  name: flaky
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: flaky }
+spec:
+  selector: { app: flaky }
+  ports: [{ port: 80 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shop
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  ingressClassName: seed
+  tls:
+    - hosts: [shop.seed.test, www.shop.seed.test]
+      secretName: shop-tls
+  rules:
+    - host: shop.seed.test
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: web, port: { name: http } } } }
+          - { path: /api, pathType: Prefix, backend: { service: { name: api, port: { number: 8080 } } } }
+          - { path: /admin, pathType: Prefix, backend: { service: { name: admin, port: { number: 80 } } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  ingressClassName: seed-internal
+  tls:
+    - hosts: [api.seed.test]
+      secretName: api-tls
+  defaultBackend:
+    service: { name: api, port: { number: 8080 } }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-from-web
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  podSelector:
+    matchLabels: { app: api }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: { app: web } } }]
+      ports: [{ port: 8080, protocol: TCP }]
+    - from: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: seed-ops } } }]
+      ports: [{ port: 8080 }]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: db } } }]
+      ports: [{ port: 5432 }]
+    - to: [{ namespaceSelector: {} }]
+      ports: [{ port: 53, protocol: UDP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-isolated
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  podSelector:
+    matchLabels: { app: db }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: { tier: back } } }, { ipBlock: { cidr: 10.0.0.0/8, except: [10.42.99.0/24] } }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]

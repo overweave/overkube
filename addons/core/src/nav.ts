@@ -34,6 +34,8 @@ export interface NavEntry {
 export interface NavGroup {
   key: string;
   title: string;
+  /** Its category's (none: a kind's API group, the pages). */
+  icon?: string;
   entries: NavEntry[];
 }
 
@@ -98,8 +100,10 @@ export function navOf(
     if (ia >= 0 || ib >= 0) return (ia < 0 ? Infinity : ia) - (ib < 0 ? Infinity : ib);
     return collator.compare(a, b);
   });
+  const icons = new Map(ordered.map((c) => [c.name, c.spec.icon]));
   const groups = keys.map((key) => ({
     key,
+    icon: icons.get(key),
     // A kind's API group (core: the core group's), as Kubernetes names it: a term, not words to translate.
     title: titles.get(key) ?? (key === 'group:' ? 'Core' : key.replace(/^group:/, '')),
     entries: entries.filter((e) => e.group === key).sort(byOrder),

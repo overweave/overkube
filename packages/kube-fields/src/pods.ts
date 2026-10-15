@@ -33,6 +33,7 @@ export const PODS = define({
   'pods.v1.node': { kinds, type: 'string', value: '.spec.nodeName' },
   'pods.v1.ip': { kinds, type: 'string', value: '.status.podIP' },
   'pods.v1.qos': { kinds, type: 'string', value: '.status.qosClass' },
+  'pods.v1.started': { kinds, type: 'time', value: '.status.startTime' },
   'pods.v1.service-account': { kinds, type: 'string', value: '.spec.serviceAccountName' },
   'pods.v1.images': { kinds, type: 'string', many: true, value: '.spec.containers[*].image' },
   'pods.v1.status': { kinds, type: 'string', value: { cel: 'podSummary(self).reason' } },

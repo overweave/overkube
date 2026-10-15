@@ -1,0 +1,133 @@
+# Cluster-wide: priority, storage and ingress classes, a volume made by hand,
+# aggregated roles and their binding, a certificate request nobody signs.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: seed-high
+  labels: { overkube.dev/seed: "true" }
+value: 100000
+preemptionPolicy: PreemptLowerPriority
+description: Seed workloads that must run.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: seed-low
+  labels: { overkube.dev/seed: "true" }
+value: -10
+preemptionPolicy: Never
+description: Seed batch work; never preempts.
+---
+# The seed's claims' class: local-path, deleted with its claim (the stand's own keeps volumes).
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: seed-local
+  labels: { overkube.dev/seed: "true" }
+provisioner: rancher.io/local-path
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: seed-retain
+  labels: { overkube.dev/seed: "true" }
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+mountOptions: [noatime]
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: seed-manual
+  labels: { overkube.dev/seed: "true" }
+spec:
+  capacity: { storage: 128Mi }
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath: { path: /tmp/seed-manual, type: DirectoryOrCreate }
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: seed
+  labels: { overkube.dev/seed: "true" }
+spec:
+  controller: example.com/seed-ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: seed-internal
+  labels: { overkube.dev/seed: "true" }
+spec:
+  controller: example.com/seed-ingress-internal
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: seed-viewer
+  labels: { overkube.dev/seed: "true" }
+aggregationRule:
+  clusterRoleSelectors:
+    - matchLabels: { overkube.dev/aggregate-to-seed-viewer: "true" }
+rules: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: seed-view-workloads
+  labels: { overkube.dev/seed: "true", overkube.dev/aggregate-to-seed-viewer: "true" }
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, services]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets, replicasets]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: seed-view-config
+  labels: { overkube.dev/seed: "true", overkube.dev/aggregate-to-seed-viewer: "true" }
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch]
+  - nonResourceURLs: [/healthz, /version]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: seed-viewers
+  labels: { overkube.dev/seed: "true" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: seed-viewer }
+subjects:
+  - { kind: Group, apiGroup: rbac.authorization.k8s.io, name: seed-devs }
+  - { kind: ServiceAccount, name: ops-bot, namespace: seed-ops }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: seed-ops-admin
+  labels: { overkube.dev/seed: "true" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: view }
+subjects:
+  - { kind: User, apiGroup: rbac.authorization.k8s.io, name: jane@seed.test }
+---
+# Pending for ever: no controller signs for example.com/seed.
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: seed-client
+  labels: { overkube.dev/seed: "true" }
+spec:
+  signerName: example.com/seed
+  usages: [digital signature, client auth]
+  expirationSeconds: 86400
+  request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQkV6Q0J1Z0lCQURBbE1RMHdDd1lEVlFRS0RBUnpaV1ZrTVJRd0VnWURWUVFEREF0elpXVmtMV05zYVdWdQpkREJaTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCQmZBVFNYTXJLTUdnWFpMRm9Fc1ZQVTVCNFMwCmhSTHlMRTJlQnFPT25wZXZxbnlDTkhCNGxlSXl3b1krV3pNTG1GQzc4VHJieXFvVWVxa1NrTFpWK0hHZ016QXgKQmdrcWhraUc5dzBCQ1E0eEpEQWlNQ0FHQTFVZEVRUVpNQmVDRlhObFpXUXRZMnhwWlc1MExuTmxaV1F1ZEdWegpkREFLQmdncWhrak9QUVFEQWdOSUFEQkZBaUI1TlZGeFd3Yi9YaTJxQlZXdFM4TFRoK2s2RDZ1Zm52bkd5RXlzCnFPWi9hUUloQU9GOWErYlFQWVJkRFJiQmZ2Y0hPN3ZOYlpRWnpUKzVRZE01Nk1uNCtIRjcKLS0tLS1FTkQgQ0VSVElGSUNBVEUgUkVRVUVTVC0tLS0tCg==

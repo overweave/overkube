@@ -1,0 +1,406 @@
+# Workloads on busybox, each asking for next to nothing: shop's web (httpd)
+# and api, its db (a stateful set with claims), a cache; ops' agent on every
+# node and one on none, a worker scaled to zero, one crashing and one whose
+# image does not exist; jobs (one done, one failed), cron jobs, a bare pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: web }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web, tier: front }
+    spec:
+      serviceAccountName: shop-app
+      priorityClassName: seed-high
+      terminationGracePeriodSeconds: 2
+      initContainers:
+        - name: wait-for-config
+          image: busybox:1.37
+          command: [sh, -c, "test -f /www/index.html && echo config ready"]
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 16Mi } }
+          volumeMounts: [{ name: content, mountPath: /www }]
+      containers:
+        - name: httpd
+          image: busybox:1.37
+          command: [httpd, -f, -p, "8080", -h, /www]
+          ports: [{ name: http, containerPort: 8080 }]
+          env:
+            - name: LOG_LEVEL
+              valueFrom: { configMapKeyRef: { name: app-config, key: LOG_LEVEL } }
+            - name: API_KEY
+              valueFrom: { secretKeyRef: { name: app-secrets, key: API_KEY } }
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { cpu: 50m, memory: 32Mi } }
+          volumeMounts: [{ name: content, mountPath: /www, readOnly: true }]
+      volumes:
+        - name: content
+          configMap: { name: web-content }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: api }
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  minReadySeconds: 5
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api, tier: back }
+    spec:
+      serviceAccountName: shop-app
+      terminationGracePeriodSeconds: 2
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: api
+          image: busybox:1.37
+          command: [sh, -c, "mkdir -p /data/www && echo '{\"ok\":true}' > /data/www/health && exec httpd -f -p 8080 -h /data/www"]
+          ports: [{ name: http, containerPort: 8080 }]
+          envFrom:
+            - configMapRef: { name: app-config }
+            - secretRef: { name: app-secrets }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            failureThreshold: 10
+            periodSeconds: 2
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 32Mi } }
+          volumeMounts: [{ name: data, mountPath: /data }]
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: api-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: api-data
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: api }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: seed-local
+  resources: { requests: { storage: 64Mi } }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: db }
+spec:
+  serviceName: db
+  replicas: 2
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: { app: db }
+  template:
+    metadata:
+      labels: { app: db, tier: data }
+    spec:
+      terminationGracePeriodSeconds: 2
+      containers:
+        - name: db
+          image: busybox:1.37
+          command: [sh, -c, "mkdir -p /data/www && echo $HOSTNAME > /data/www/id && exec httpd -f -p 5432 -h /data/www"]
+          ports: [{ name: db, containerPort: 5432 }]
+          env:
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: app-secrets, key: DB_PASSWORD } }
+          readinessProbe:
+            tcpSocket: { port: db }
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 32Mi } }
+          volumeMounts: [{ name: data, mountPath: /data }]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: seed-local
+        resources: { requests: { storage: 64Mi } }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cache
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: cache }
+spec:
+  serviceName: cache
+  replicas: 1
+  updateStrategy: { type: OnDelete }
+  selector:
+    matchLabels: { app: cache }
+  template:
+    metadata:
+      labels: { app: cache }
+    spec:
+      terminationGracePeriodSeconds: 2
+      containers:
+        - name: cache
+          image: busybox:1.37
+          command: [sh, -c, "trap 'exit 0' TERM; while true; do sleep 1; done"]
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 16Mi } }
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-agent
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: node-agent }
+spec:
+  selector:
+    matchLabels: { app: node-agent }
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 1 }
+  template:
+    metadata:
+      labels: { app: node-agent }
+    spec:
+      terminationGracePeriodSeconds: 2
+      tolerations:
+        - { operator: Exists }
+      containers:
+        - name: agent
+          image: busybox:1.37
+          command: [sh, -c, "trap 'exit 0' TERM; while true; do uptime; sleep 30; done"]
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 16Mi } }
+          volumeMounts: [{ name: proc, mountPath: /host/proc, readOnly: true }]
+      volumes:
+        - name: proc
+          hostPath: { path: /proc }
+---
+# Wants nodes labelled for logging: none are, so it runs nowhere.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: log-shipper
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: log-shipper }
+spec:
+  selector:
+    matchLabels: { app: log-shipper }
+  template:
+    metadata:
+      labels: { app: log-shipper }
+    spec:
+      nodeSelector: { overkube.dev/role: logging }
+      terminationGracePeriodSeconds: 2
+      containers:
+        - name: shipper
+          image: busybox:1.37
+          command: [sleep, "3600"]
+          resources: { requests: { cpu: 5m, memory: 8Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: worker }
+spec:
+  replicas: 0
+  selector:
+    matchLabels: { app: worker }
+  template:
+    metadata:
+      labels: { app: worker }
+    spec:
+      containers:
+        - name: worker
+          image: busybox:1.37
+          command: [sleep, "3600"]
+---
+# Exits after five seconds, again and again: CrashLoopBackOff.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flaky
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: flaky }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: flaky }
+  template:
+    metadata:
+      labels: { app: flaky }
+    spec:
+      terminationGracePeriodSeconds: 2
+      containers:
+        - name: flaky
+          image: busybox:1.37
+          command: [sh, -c, "echo starting; sleep 5; echo giving up >&2; exit 1"]
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 16Mi } }
+---
+# Its image does not exist: ImagePullBackOff.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ghost
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: ghost }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ghost }
+  template:
+    metadata:
+      labels: { app: ghost }
+    spec:
+      containers:
+        - name: ghost
+          image: busybox:0.0.0-does-not-exist
+          resources: { requests: { cpu: 5m, memory: 8Mi } }
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: debug }
+spec:
+  serviceAccountName: ops-bot
+  priorityClassName: seed-low
+  terminationGracePeriodSeconds: 2
+  containers:
+    - name: shell
+      image: busybox:1.37
+      command: [sh, -c, "trap 'exit 0' TERM; while true; do sleep 1; done"]
+      resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 16Mi } }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: migrate }
+spec:
+  completions: 3
+  parallelism: 2
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: busybox:1.37
+          command: [sh, -c, "echo migrating; sleep 3; echo done"]
+          resources: { requests: { cpu: 5m, memory: 8Mi } }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: broken-import
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: broken-import }
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      restartPolicy: Never
+      priorityClassName: seed-low
+      containers:
+        - name: import
+          image: busybox:1.37
+          command: [sh, -c, "echo importing; echo 'no such file: /data/dump.sql' >&2; exit 2"]
+          resources: { requests: { cpu: 5m, memory: 8Mi } }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true", app: backup }
+spec:
+  schedule: "*/10 * * * *"
+  # The stand's API server has no time zone database: only UTC is known.
+  timeZone: UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 3600
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: busybox:1.37
+              command: [sh, -c, "echo backing up; sleep 2; echo saved"]
+              resources: { requests: { cpu: 5m, memory: 8Mi } }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weekly-report
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: weekly-report }
+spec:
+  schedule: "0 9 * * 1"
+  suspend: true
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: report
+              image: busybox:1.37
+              command: [echo, report]
+---
+# Its class does not exist: Pending for ever.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lost-claim
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: seed-missing
+  resources: { requests: { storage: 32Mi } }
+---
+# Kept when deleted (its class retains): make dev-clean deletes its volume after.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: archive
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: seed-retain
+  resources: { requests: { storage: 32Mi } }

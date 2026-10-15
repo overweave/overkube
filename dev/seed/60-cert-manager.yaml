@@ -1,0 +1,76 @@
+# cert-manager's own (it is installed first by make dev-seed): a self-signed
+# cluster issuer, a CA made by it and an issuer of that CA in shop, the
+# certificates shop's ingresses serve, one in ops from the cluster issuer.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: seed-selfsigned
+  labels: { overkube.dev/seed: "true" }
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: seed-ca
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  isCA: true
+  commonName: seed CA
+  secretName: seed-ca
+  duration: 8760h
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: seed-selfsigned, kind: ClusterIssuer, group: cert-manager.io }
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: seed-ca
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  ca:
+    secretName: seed-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: shop-tls
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  secretName: shop-tls
+  dnsNames: [shop.seed.test, www.shop.seed.test]
+  duration: 2160h
+  renewBefore: 360h
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: seed-ca, kind: Issuer }
+---
+# Short-lived: shows a certificate about to expire (cert-manager renews it at two thirds).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-tls
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  secretName: api-tls
+  dnsNames: [api.seed.test]
+  ipAddresses: [10.0.0.10]
+  duration: 72h
+  privateKey: { algorithm: RSA, size: 2048, rotationPolicy: Always }
+  issuerRef: { name: seed-ca, kind: Issuer }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ops-tls
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  secretName: ops-tls
+  commonName: ops.seed.test
+  dnsNames: [ops.seed.test]
+  privateKey: { rotationPolicy: Always }
+  issuerRef: { name: seed-selfsigned, kind: ClusterIssuer }

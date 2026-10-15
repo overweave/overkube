@@ -1,73 +1,21 @@
-import type { ComponentChildren } from 'preact';
-import { Highlight } from '../display/Highlight';
+import type { ComponentChildren, JSX } from 'preact';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../display/Icon';
+import { Kbd } from '../display/Kbd';
 
 /*
- * Many things to pick one of, by group (kinds by category): a filter over
- * them (what follows it — a switch — beside it), the groups in columns,
- * each thing a row — its name (what matches the filter marked), what it is
- * given to show (a count), and a toggle (a pin: shown while on, else under
- * the pointer). A click or Enter on a name opens it; the arrows go from one
- * to the next, from the filter into the list. What is in it is the page's:
- * the filter is its (it says what matches), the words are its. Its parts
- * are the page's too, to put together otherwise (CatalogBox, CatalogTop,
- * CatalogSearch, CatalogGroups — an item drawn by the page: renderItem,
- * given what it does for its link).
+ * Many things to pick one of, in two panes: a filter on top; down the side
+ * the sections (each its count; the chosen one marked, the mark moving to
+ * the next one chosen); beside them what is in the chosen one — under
+ * headings, each thing a row (an icon, its name, what it is given to show,
+ * a pin: under the pointer, kept while on), coming in one after another;
+ * nothing in it, said so (EmptyState). The
+ * arrows go from one row to the next, from the filter into the rows. Its
+ * parts are the page's to put together (what is in each: the page's words,
+ * its filtering, its sections).
  */
 
-export interface CatalogItem {
-  key: string;
-  label: string;
-  /** Where it goes (a link: opened in a new tab too). */
-  href?: string;
-  /** What it is, in full (a tooltip). */
-  title?: string;
-  /** Drawn quieter (an empty kind). */
-  muted?: boolean;
-  /** Shown after its name (a count). */
-  extra?: ComponentChildren;
-  /** Its toggle is on (pinned). */
-  on?: boolean;
-  /** Put on its name (marks of where it comes from). */
-  attrs?: Record<string, string | undefined>;
-}
-
-export interface CatalogGroup {
-  key: string;
-  title: ComponentChildren;
-  items: CatalogItem[];
-  /** Put on the group (marks of where it comes from). */
-  attrs?: Record<string, string | undefined>;
-}
-
-/** What an item drawn by the page is given: what it does, for its link (where it goes, opening it, the arrows' mark). */
-export interface CatalogItemParts {
-  attrs: Record<string, unknown>;
-}
-
-export interface CatalogProps {
-  groups: CatalogGroup[];
-  query: string;
-  onQuery: (query: string) => void;
-  /** The filter's name and placeholder. */
-  placeholder: string;
-  /** Beside the filter (a switch). */
-  aside?: ComponentChildren;
-  /** Said with no group. */
-  empty?: ComponentChildren;
-  onOpen?: (item: CatalogItem) => void;
-  /** Its toggle turned on or off; none without. */
-  onToggle?: (item: CatalogItem, on: boolean) => void;
-  /** The toggle's name for an item ("Pin Pods"). */
-  toggleLabel?: (item: CatalogItem) => string;
-  toggleIcon?: string;
-  /** The toggle's icon while on (filled). */
-  toggleOnIcon?: string;
-  /** An item's link drawn by the page (none: its name, what matches marked). */
-  renderItem?: (item: CatalogItem, parts: CatalogItemParts) => ComponentChildren;
-}
-
-/** Its frame: the arrows go from one item to the next (round), down from the filter to the first. */
+/** Its frame: the arrows go from one row to the next (round), down from the filter to the first. */
 export function CatalogBox({ children }: { children?: ComponentChildren }) {
   const arrows = (e: KeyboardEvent) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -81,102 +29,130 @@ export function CatalogBox({ children }: { children?: ComponentChildren }) {
     next.focus();
   };
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: the arrows move between its items (each a link).
+    // biome-ignore lint/a11y/noStaticElementInteractions: the arrows move between its rows (each a link).
     <div class="uk-catalog" onKeyDown={arrows}>
       {children}
     </div>
   );
 }
 
-/** Its top: the filter, what follows it. */
+/** Its top: what is in it (the filter), Esc beside it. */
 export function CatalogTop({ children }: { children?: ComponentChildren }) {
-  return <div class="uk-catalog-top">{children}</div>;
-}
-
-/** The filter: what is typed, named and shown as its placeholder. */
-export function CatalogSearch({ query, onQuery, placeholder }: Pick<CatalogProps, 'query' | 'onQuery' | 'placeholder'>) {
   return (
-    <label class="uk-catalog-search">
-      <Icon name="search" />
-      <input aria-label={placeholder} placeholder={placeholder} value={query} onInput={(e) => onQuery((e.target as HTMLInputElement).value)} />
-    </label>
-  );
-}
-
-/** The groups, in columns; an item's link the kit's or the page's (renderItem). */
-export function CatalogGroups({
-  groups,
-  query,
-  empty,
-  onOpen,
-  onToggle,
-  toggleLabel = (i) => i.label,
-  toggleIcon = 'pin',
-  toggleOnIcon = 'pin-filled',
-  renderItem,
-}: Omit<CatalogProps, 'onQuery' | 'placeholder' | 'aside'>) {
-  return (
-    <div class="uk-catalog-groups">
-      {groups.length === 0 && <div class="uk-catalog-empty">{empty}</div>}
-      <div class="uk-catalog-columns">
-        {groups.map((g) => (
-          <section class="uk-catalog-group" key={g.key} aria-label={typeof g.title === 'string' ? g.title : undefined} {...g.attrs}>
-            <h4>{g.title}</h4>
-            {g.items.map((item) => {
-              const attrs = {
-                href: item.href,
-                title: item.title,
-                tabIndex: 0,
-                'data-catalog-item': '',
-                onClick: (e: MouseEvent) => {
-                  if (!onOpen) return;
-                  // A new tab, a new window: the browser's.
-                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
-                  if (!item.href) e.preventDefault();
-                  onOpen(item);
-                },
-                ...item.attrs,
-              };
-              return (
-                <div class="uk-catalog-row" key={item.key} data-muted={item.muted ? '' : undefined} data-on={item.on ? '' : undefined}>
-                  {renderItem ? (
-                    renderItem(item, { attrs })
-                  ) : (
-                    <a class="uk-catalog-name" {...attrs}>
-                      <Highlight text={item.label} query={query} />
-                    </a>
-                  )}
-                  {item.extra !== undefined && <span class="uk-catalog-extra">{item.extra}</span>}
-                  {onToggle && (
-                    <button
-                      type="button"
-                      class="uk-catalog-toggle"
-                      aria-pressed={item.on ?? false}
-                      aria-label={toggleLabel(item)}
-                      title={toggleLabel(item)}
-                      onClick={() => onToggle(item, !item.on)}
-                    >
-                      <Icon name={item.on ? toggleOnIcon : toggleIcon} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </section>
-        ))}
-      </div>
+    <div class="uk-catalog-top">
+      {children}
+      <Kbd keys="Esc" />
     </div>
   );
 }
 
-export function Catalog({ query, onQuery, placeholder, aside, ...rest }: CatalogProps) {
+/** The filter: what is typed, named and shown as its placeholder; focused as it opens. */
+export function CatalogSearch({ query, onQuery, placeholder }: { query: string; onQuery: (query: string) => void; placeholder: string }) {
   return (
-    <CatalogBox>
-      <CatalogTop>
-        <CatalogSearch query={query} onQuery={onQuery} placeholder={placeholder} />
-        {aside}
-      </CatalogTop>
-      <CatalogGroups query={query} {...rest} />
-    </CatalogBox>
+    <label class="uk-catalog-search">
+      <Icon name="search" />
+      {/* biome-ignore lint/a11y/noAutofocus: typed in as it opens (a picker). */}
+      <input aria-label={placeholder} placeholder={placeholder} value={query} autoFocus onInput={(e) => onQuery((e.target as HTMLInputElement).value)} />
+    </label>
+  );
+}
+
+/** Its two panes: the sections down the side (named), what is in the chosen one beside them. */
+export function CatalogBody({ side, label, children }: { side: ComponentChildren; label: string; children?: ComponentChildren }) {
+  return (
+    <div class="uk-catalog-body">
+      <CatalogSide label={label}>{side}</CatalogSide>
+      {children}
+    </div>
+  );
+}
+
+/** The sections, the chosen one's mark under it — moving to the next one chosen. */
+function CatalogSide({ label, children }: { label: string; children?: ComponentChildren }) {
+  const side = useRef<HTMLElement>(null);
+  const [mark, setMark] = useState<{ top: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const chosen = side.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    const next = chosen ? { top: chosen.offsetTop, height: chosen.offsetHeight } : null;
+    if (next?.top !== mark?.top || next?.height !== mark?.height) setMark(next);
+  });
+  return (
+    <nav class="uk-catalog-side" aria-label={label} ref={side}>
+      {mark && <span class="uk-catalog-mark" style={{ transform: `translateY(${mark.top}px)`, height: `${mark.height}px` }} />}
+      {children}
+    </nav>
+  );
+}
+
+/** A section down the side: its icon, its name, how many in it; chosen (marked), or with nothing in it (quieter). */
+export function CatalogSection({
+  icon,
+  count,
+  chosen = false,
+  children,
+  ...rest
+}: { icon?: string; count?: number; chosen?: boolean; children?: ComponentChildren } & Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'icon'>) {
+  return (
+    <button type="button" class="uk-catalog-section" aria-current={chosen} data-empty={count === 0 ? '' : undefined} {...rest}>
+      {icon && <Icon name={icon} />}
+      <span class="uk-catalog-label">{children}</span>
+      {count !== undefined && <span class="uk-catalog-count">{count}</span>}
+    </button>
+  );
+}
+
+/** What is in the chosen section, scrolled; drawn anew as another is chosen (shown coming in): its key. */
+export function CatalogPane({ children }: { children?: ComponentChildren }) {
+  return <div class="uk-catalog-pane">{children}</div>;
+}
+
+/** A heading over some of the rows. */
+export function CatalogHeading({ children }: { children?: ComponentChildren }) {
+  return <div class="uk-catalog-heading">{children}</div>;
+}
+
+/** What a row's pin is: on or not, its name, turning it. */
+export interface CatalogPin {
+  on: boolean;
+  label: string;
+  onToggle: (on: boolean) => void;
+}
+
+/**
+ * A row: a link (what it is given: where it goes, what it does — marked a
+ * row the arrows go to), its icon, its name (what the page draws), what it
+ * is given to show after it, its pin; quieter (empty); its place among the
+ * rows (they come in one after another).
+ */
+export function CatalogRow({
+  link,
+  icon,
+  muted = false,
+  place = 0,
+  extra,
+  pin,
+  children,
+}: {
+  link: JSX.AnchorHTMLAttributes<HTMLAnchorElement>;
+  icon?: string;
+  muted?: boolean;
+  place?: number;
+  extra?: ComponentChildren;
+  pin?: CatalogPin;
+  children?: ComponentChildren;
+}) {
+  return (
+    <div class="uk-catalog-row" data-muted={muted ? '' : undefined} style={{ '--uk-catalog-i': Math.min(place, 12) }}>
+      <a class="uk-catalog-name" data-catalog-item="" {...link}>
+        {icon && <Icon name={icon} />}
+        <span class="uk-catalog-label">{children}</span>
+      </a>
+      {extra !== undefined && <span class="uk-catalog-count">{extra}</span>}
+      {pin && (
+        <button type="button" class="uk-catalog-pin" aria-pressed={pin.on} aria-label={pin.label} title={pin.label} onClick={() => pin.onToggle(!pin.on)}>
+          <Icon name={pin.on ? 'pin-filled' : 'pin'} />
+        </button>
+      )}
+    </div>
   );
 }

@@ -43,7 +43,7 @@ function mount(props: Partial<Parameters<typeof Popover>[0]> = {}, inside = <but
     );
   }
   const view = render(<Holder />);
-  return { ...view, told, popover: () => view.container.querySelector('.uk-popover') as HTMLElement };
+  return { ...view, told, popover: () => view.baseElement.querySelector('.uk-popover') as HTMLElement };
 }
 
 describe('Popover: where it is', () => {
@@ -60,9 +60,10 @@ describe('Popover: where it is', () => {
     expect(mount({ align: 'end' }).popover().style.left).toBe(`${500 - 200}px`);
   });
 
-  it('is left where its CSS puts it, placed so (a side’s flyout): shown at once, nothing set of its place', () => {
-    const p = mount({ placed: false }).popover();
-    expect([p.style.visibility, p.style.top, p.style.left]).toEqual(['visible', '', '']);
+  it('is left where its CSS puts it, placed so (a side’s flyout): drawn where it is, nothing set of its place', () => {
+    const view = mount({ placed: false });
+    const p = view.popover();
+    expect([view.container.contains(p), p.style.visibility, p.style.top, p.style.left]).toEqual([true, '', '', '']);
   });
 
   it('is kept inside the window, 8px from either edge', () => {

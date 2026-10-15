@@ -28,9 +28,11 @@ export interface MultiSelectProps {
   /** What it picks, for those who cannot see it: "Namespaces". */
   label: string;
   icon?: string;
+  /** What its filter says (its placeholder, its name): no word a browser takes for a login's (Safari offers a password for "Filter namespaces": a name). */
+  search?: string;
 }
 
-export function MultiSelect({ options, value, onChange, all, label, icon }: MultiSelectProps) {
+export function MultiSelect({ options, value, onChange, all, label, icon, search = 'Search…' }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [active, setActive] = useState(0);
@@ -72,7 +74,6 @@ export function MultiSelect({ options, value, onChange, all, label, icon }: Mult
       >
         {icon && <Icon name={icon} />}
         <span class="uk-ms-summary">{summary}</span>
-        {value.length > 0 && <span class="uk-ms-count">{value.length}</span>}
         <Icon name="chevron" />
       </button>
       {presence.mounted && (
@@ -84,8 +85,8 @@ export function MultiSelect({ options, value, onChange, all, label, icon }: Mult
               aria-expanded="true"
               aria-controls={ids.list}
               aria-activedescendant={shown[active] ? `${ids.option}-${active}` : undefined}
-              aria-label={`Filter ${label.toLowerCase()}`}
-              placeholder={`Filter ${label.toLowerCase()}`}
+              aria-label={search}
+              placeholder={search}
               value={filter}
               onInput={(e) => {
                 setFilter((e.target as HTMLInputElement).value);

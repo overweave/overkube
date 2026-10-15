@@ -1,6 +1,6 @@
 import { Appearance, closeIn, openedIn, Page, type PageProps, type PageSpec, slots, Theme, t } from '@overkube/sdk';
 import { OpenedProvider, PagePropsProvider, useCluster, useKind, usePage, useSay } from '@overkube/sdk/preact';
-import { Notice, SHAPE_TOKENS, tokenStyle } from '@overkube/uikit';
+import { Above, Notice, SHAPE_TOKENS, tokenStyle } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { Guarded, slotElement, useDefinition, useDefinitions, useSlotView } from '@overweave/ui/preact';
 import type { RefObject } from 'preact';
@@ -27,17 +27,25 @@ export function Frame() {
     root.lang = say.locale;
     return () => root.removeAttribute('lang');
   }, [say.locale]);
-  // A link within the page (#/…) goes through the router: the same for a hash's and one in memory (a story, a test).
-  const follow = (e: MouseEvent) => {
-    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    const link = (e.target as Element | null)?.closest?.('a[href^="#/"]');
-    if (!link || (link as HTMLAnchorElement).target) return;
-    e.preventDefault();
-    page.navigate((link.getAttribute('href') as string).slice(1));
-  };
+  // A link within the page (#/…) goes through the router: the same for a hash's and one in memory (a story, a test) — on the
+  // page's root, the layers over it too (a picker's, a dialog's: drawn at its end, not in the frame).
+  const navigate = useRef(page.navigate);
+  navigate.current = page.navigate;
+  useEffect(() => {
+    const root = frame.current?.closest('.uk-root') ?? frame.current;
+    const follow = (e: Event) => {
+      const m = e as MouseEvent;
+      if (m.defaultPrevented || m.button !== 0 || m.metaKey || m.ctrlKey || m.shiftKey || m.altKey) return;
+      const link = (m.target as Element | null)?.closest?.('a[href^="#/"]');
+      if (!link || (link as HTMLAnchorElement).target) return;
+      m.preventDefault();
+      navigate.current((link.getAttribute('href') as string).slice(1));
+    };
+    root?.addEventListener('click', follow);
+    return () => root?.removeEventListener('click', follow);
+  }, []);
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: links are followed here, not clicks made of it (a link's Enter is a click).
-    <div class="uk-shell" ref={frame} onClick={follow}>
+    <div class="uk-shell" ref={frame}>
       {slotElement(slots.header.above, NO_PROPS)}
       <header class="uk-shell-header">
         {slotElement(slots.header.start, NO_PROPS)}
@@ -58,14 +66,13 @@ export function Frame() {
 }
 
 /**
- * What the user is told, over everything — a dialog too: in the top layer
- * (a manual popover), shown again on top whenever what is told changes (a
- * dialog opened since would be over it). Its live regions are there from
- * the start (a region made with its first message is often not read out).
+ * What the user is told, over everything — a modal layer too (the kit's
+ * layers: Above, never inert, never closed by a press). Its live regions
+ * are there from the start (a region made with its first message is often
+ * not read out).
  */
 function Notifications() {
   const page = usePage();
-  const box = useRef<HTMLDivElement>(null);
   const polite = useRef<HTMLDivElement>(null);
   const assertive = useRef<HTMLDivElement>(null);
   const said = useRef(new Set<string>());
@@ -79,22 +86,12 @@ function Notifications() {
     }
     said.current = new Set(list.map((n) => n.id));
   }, [list]);
-  useEffect(() => {
-    const el = box.current as (HTMLDivElement & { showPopover?: () => void; hidePopover?: () => void }) | null;
-    if (!el?.showPopover || !el.hidePopover) return;
-    try {
-      if (el.matches(':popover-open')) el.hidePopover();
-      if (list.length) el.showPopover();
-    } catch {
-      // A browser without popovers: shown where it is.
-    }
-  }, [list]);
   return (
-    <div class="uk-shell-notifications" ref={box} popover="manual">
+    <Above class="uk-shell-notifications">
       <div class="uk-shell-live" ref={polite} role="status" aria-live="polite" />
       <div class="uk-shell-live" ref={assertive} role="alert" aria-live="assertive" />
       {slotElement(slots.notifications, NO_PROPS)}
-    </div>
+    </Above>
   );
 }
 

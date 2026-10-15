@@ -1,4 +1,8 @@
 import { storybook } from '@overkube/storybook';
 
-// The core's stories, in Storybook (make storybook): polled, as in Docker no file events cross the mount.
-export default storybook({ stories: ['../src/**/*.stories.tsx'], poll: true, cacheDir: '../../../node_modules/.vite/storybook-core' });
+// The core's stories and the kit's, in Storybook (make storybook): polled, as in Docker no file events cross the mount.
+export default storybook({
+  stories: ['../src/**/*.stories.tsx', '../../../packages/uikit/src/**/*.stories.tsx'],
+  poll: true,
+  cacheDir: '../../../node_modules/.vite/storybook-core',
+});

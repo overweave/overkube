@@ -74,6 +74,8 @@ export const Narrow: Story = {
 
 export const Fixed: Story = { args: { resizable: false } };
 export const Empty: Story = { args: { rows: [], empty: 'No Pods' } };
+/** Plain, in what holds it (a section): no frame of its own, its rows from its edges. */
+export const Plain: Story = { args: { rows: make(4), plain: true, resizable: false, reorderable: false } };
 
 /** As a watched list changes: a row goes (it folds), comes (it fades in), moves a little (it slides); a new sort is at once. */
 export const Live: Story = {

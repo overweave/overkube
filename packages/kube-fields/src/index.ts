@@ -10,10 +10,12 @@
 export { type Base, BUILT_IN, BUILT_INS, baseFields } from './base.ts';
 export { BATCH } from './batch.ts';
 export { COMMON } from './common.ts';
+export { CONFIG } from './config.ts';
 export { type CrdColumn, type CrdFields, type CrdLike, crdFields, crdKindRef, slug } from './crd.ts';
 export { type Defs, define, KUBE_CEL } from './define.ts';
 export { EVENTS } from './events.ts';
 export { LIBRARY } from './library.ts';
 export { NODES } from './nodes.ts';
 export { PODS } from './pods.ts';
+export { HEALTH, STATUS } from './status.ts';
 export { WORKLOADS } from './workloads.ts';

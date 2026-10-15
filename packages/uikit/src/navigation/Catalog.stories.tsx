@@ -1,105 +1,123 @@
 import type { Meta, StoryObj } from '@storybook/preact-vite';
 import { useState } from 'preact/hooks';
-import { Switch } from '../forms/Switch';
-import { Catalog, type CatalogGroup } from './Catalog';
+import { EmptyState } from '../display/EmptyState';
+import { Highlight } from '../display/Highlight';
+import { CatalogBody, CatalogBox, CatalogHeading, CatalogPane, CatalogRow, CatalogSearch, CatalogSection, CatalogTop } from './Catalog';
 
 /*
- * A catalog as a page has it: kinds by category, their counts; filtered by
- * name, the empty ones hidden (a switch), pinned and unpinned, opened.
+ * A catalog as a page has it: kinds by section (the usual ones, a cluster's
+ * CRDs under their groups), pinned and unpinned; filtered — every section
+ * searched, the matches by section, one section chosen among them; nothing
+ * in one, said so.
  */
 
-const KINDS: Record<string, [string, number][]> = {
-  Workloads: [
-    ['ControllerRevisions', 2],
-    ['CronJobs', 2],
-    ['DaemonSets', 1],
-    ['Deployments', 16],
-    ['HorizontalPodAutoscalers', 1],
-    ['Jobs', 4],
-    ['PodDisruptionBudgets', 1],
-    ['Pods', 25],
-    ['ReplicaSets', 16],
-    ['StatefulSets', 1],
-    ['ReplicationControllers', 0],
-  ],
-  Network: [
-    ['Endpoints', 11],
-    ['EndpointSlices', 11],
-    ['IngressClasses', 1],
-    ['Ingresses', 3],
-    ['IPAddresses', 10],
-    ['NetworkPolicies', 1],
-    ['ServiceCIDRs', 1],
-    ['Services', 12],
-  ],
-  Storage: [
-    ['CSINodes', 1],
-    ['PersistentVolumes', 3],
-    ['StorageClasses', 1],
-    ['Volume Claims', 2],
-    ['VolumeAttachments', 0],
-  ],
-  Config: [
-    ['Config Maps', 14],
-    ['Secrets', 21],
-    ['LimitRanges', 0],
-  ],
-  'Access control': [
-    ['ClusterRoleBindings', 67],
-    ['ClusterRoles', 80],
-    ['RoleBindings', 12],
-    ['Roles', 11],
-    ['Service Accounts', 45],
-  ],
-  Cluster: [
-    ['Events', 70],
-    ['Namespaces', 6],
-    ['Nodes', 1],
-  ],
-};
+type Kind = [name: string, section: string, group?: string];
 
-function Picker({ width = '760px', initialQuery = '' }: { width?: string; initialQuery?: string }) {
+const KINDS: Kind[] = [
+  ['Pods', 'Workloads'],
+  ['Deployments', 'Workloads'],
+  ['StatefulSets', 'Workloads'],
+  ['DaemonSets', 'Workloads'],
+  ['Jobs', 'Workloads'],
+  ['CronJobs', 'Workloads'],
+  ['Services', 'Network'],
+  ['Ingresses', 'Network'],
+  ['NetworkPolicies', 'Network'],
+  ['ConfigMaps', 'Config'],
+  ['Secrets', 'Config'],
+  ['PersistentVolumeClaims', 'Storage'],
+  ['StorageClasses', 'Storage'],
+  ['Nodes', 'Cluster'],
+  ['Namespaces', 'Cluster'],
+  ['Events', 'Cluster'],
+  ['Certificates', 'Custom resources', 'cert-manager.io'],
+  ['Issuers', 'Custom resources', 'cert-manager.io'],
+  ['IngressRoutes', 'Custom resources', 'traefik.io'],
+  ['Middlewares', 'Custom resources', 'traefik.io'],
+];
+const ICONS: Record<string, string> = { Pinned: 'pin', Workloads: 'cube', Network: 'network', Config: 'file', Storage: 'disk', Cluster: 'server', 'Custom resources': 'puzzle' };
+
+function Picker({ kinds = KINDS, pins = ['Pods', 'Deployments', 'Services'], initialQuery = '' }: { kinds?: Kind[]; pins?: string[]; initialQuery?: string }) {
   const [query, setQuery] = useState(initialQuery);
-  const [hideEmpty, setHideEmpty] = useState(true);
-  const [pinned, setPinned] = useState<string[]>(['Pods', 'Deployments']);
-  const [opened, setOpened] = useState('—');
+  const [chosen, setChosen] = useState<string | null>('Pinned');
+  const [narrow, setNarrow] = useState<string | null>(null);
+  const [pinned, setPinned] = useState(pins);
   const q = query.trim().toLowerCase();
-  let hidden = 0;
-  const groups: CatalogGroup[] = Object.entries(KINDS)
-    .map(([title, kinds]) => ({
-      key: title,
-      title,
-      items: kinds
-        .filter(([name, count]) => {
-          if (q && !name.toLowerCase().includes(q)) return false;
-          if (hideEmpty && !q && count === 0 && !pinned.includes(name)) {
-            hidden++;
-            return false;
-          }
-          return true;
-        })
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([name, count]) => ({ key: name, label: name, title: name, extra: count, muted: count === 0, on: pinned.includes(name) })),
-    }))
-    .filter((g) => g.items.length > 0);
+  const found = kinds.filter(([name, , group]) => !q || name.toLowerCase().includes(q) || group?.includes(q));
+  const sections = ['Pinned', ...new Set(kinds.map(([, s]) => s))];
+  const of = (s: string) => found.filter(([name, section]) => (s === 'Pinned' ? pinned.includes(name) : section === s));
+  const at = q ? narrow : chosen;
+  const shown = at === null ? found : of(at);
+  const heads = at === null ? (k: Kind) => k[1] : (k: Kind) => k[2] ?? '';
+  let place = 0;
   return (
-    <div style={{ padding: '24px' }}>
-      <div class="uk-panel" style={{ width, overflow: 'hidden', boxShadow: '0 12px 32px color-mix(in srgb, var(--uk-shadow) 35%, transparent)' }}>
-        <Catalog
-          groups={groups}
-          query={query}
-          onQuery={setQuery}
-          placeholder="Filter kinds"
-          aside={<Switch checked={hideEmpty} onChange={setHideEmpty} label={`Hide empty (${hidden})`} />}
-          empty="No kind matches"
-          onOpen={(item) => setOpened(item.label)}
-          onToggle={(item, on) => setPinned((p) => (on ? [...p, item.key] : p.filter((k) => k !== item.key)))}
-          toggleLabel={(item) => (item.on ? `Unpin ${item.label}` : `Pin ${item.label}`)}
-        />
-      </div>
-      <p style={{ color: 'var(--uk-muted)', fontSize: '12px', marginTop: '16px' }}>
-        Opened: <b>{opened}</b> · pinned: {pinned.join(', ') || '—'}
-      </p>
+    <div class="uk-panel" style={{ width: '720px', overflow: 'hidden' }}>
+      <CatalogBox>
+        <CatalogTop>
+          <CatalogSearch
+            query={query}
+            onQuery={(next) => {
+              setQuery(next);
+              setNarrow(null);
+            }}
+            placeholder="Find a kind…"
+          />
+        </CatalogTop>
+        <CatalogBody
+          label="Sections"
+          side={
+            <>
+              {q && (
+                <CatalogSection icon="search" count={found.length} chosen={narrow === null} onClick={() => setNarrow(null)}>
+                  All matches
+                </CatalogSection>
+              )}
+              {sections.map((s) => (
+                <CatalogSection key={s} icon={ICONS[s]} count={of(s).length} chosen={s === at} onClick={() => (q ? setNarrow(s) : setChosen(s))}>
+                  {s}
+                </CatalogSection>
+              ))}
+            </>
+          }
+        >
+          <CatalogPane key={`${!!q}/${at}`}>
+            {shown.length === 0 ? (
+              q ? (
+                <EmptyState icon="search" title={`Nothing like “${query.trim()}”`} action={{ label: 'Clear the search', run: () => setQuery('') }}>
+                  Try part of a name, or an API group.
+                </EmptyState>
+              ) : (
+                <EmptyState icon={ICONS[at ?? 'Pinned'] ?? 'puzzle'} title="Nothing pinned yet">
+                  Pin a kind (the pin beside it) to keep it here and in the tabs.
+                </EmptyState>
+              )
+            ) : (
+              [...new Set(shown.map(heads))].map((h) => (
+                <div key={h}>
+                  {h && <CatalogHeading>{h}</CatalogHeading>}
+                  {shown
+                    .filter((k) => heads(k) === h)
+                    .map(([name, section]) => (
+                      <CatalogRow
+                        key={name}
+                        link={{ href: `#/k/${name.toLowerCase()}` }}
+                        icon={ICONS[section]}
+                        place={place++}
+                        pin={{
+                          on: pinned.includes(name),
+                          label: `${pinned.includes(name) ? 'Unpin' : 'Pin'} ${name}`,
+                          onToggle: (on) => setPinned((p) => (on ? [...p, name] : p.filter((n) => n !== name))),
+                        }}
+                      >
+                        <Highlight text={name} query={query} />
+                      </CatalogRow>
+                    ))}
+                </div>
+              ))
+            )}
+          </CatalogPane>
+        </CatalogBody>
+      </CatalogBox>
     </div>
   );
 }
@@ -108,11 +126,11 @@ const meta = { title: 'Navigation/Catalog', component: Picker, parameters: { con
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Filter; hide the empty ones; pin (a pin under the pointer, kept while pinned); open (a click, Enter; the arrows from the filter down). */
+/** Sections down the side, the chosen one's kinds beside them; pinned and unpinned; typed, every section searched. */
 export const Kinds: Story = {};
 
-/** Narrow: one column. */
-export const Narrow: Story = { args: { width: '300px' } };
+/** Typed: the matches by section, each section's count of them. */
+export const Typed: Story = { args: { initialQuery: 'ing' } };
 
-/** Nothing matches. */
-export const NoMatch: Story = { args: { initialQuery: 'zzz' } };
+/** Nothing pinned yet: said so. */
+export const NothingPinned: Story = { args: { pins: [] } };
