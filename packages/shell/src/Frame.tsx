@@ -1,6 +1,6 @@
 import { Appearance, closeIn, openedIn, Page, type PageProps, type PageSpec, slots, Theme, t } from '@overkube/sdk';
 import { OpenedProvider, PagePropsProvider, useCluster, useKind, usePage, useSay } from '@overkube/sdk/preact';
-import { Above, Notice, SHAPE_TOKENS, tokenStyle } from '@overkube/uikit';
+import { Above, Notice, ScaleContext, SHAPE_TOKENS, SIZES, tokenStyle } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { Guarded, slotElement, useDefinition, useDefinitions, useSlotView } from '@overweave/ui/preact';
 import type { RefObject } from 'preact';
@@ -18,7 +18,7 @@ import { matchPage } from './match.ts';
 export function Frame() {
   const page = usePage();
   const frame = useRef<HTMLDivElement>(null);
-  useTheme(frame);
+  const scale = useTheme(frame);
   // The language said in, on the page's root: read out as it is written.
   const say = useSay();
   useLayoutEffect(() => {
@@ -45,23 +45,25 @@ export function Frame() {
     return () => root?.removeEventListener('click', follow);
   }, []);
   return (
-    <div class="uk-shell" ref={frame}>
-      {slotElement(slots.header.above, NO_PROPS)}
-      <header class="uk-shell-header">
-        {slotElement(slots.header.start, NO_PROPS)}
-        <div class="uk-shell-header-end">{slotElement(slots.header.end, NO_PROPS)}</div>
-      </header>
-      {slotElement(slots.nav.tabs, NO_PROPS)}
-      <div class="uk-shell-body">
+    <ScaleContext.Provider value={scale}>
+      <div class="uk-shell" ref={frame}>
         <div class="uk-shell-side">{slotElement(slots.nav.side, NO_PROPS)}</div>
-        <main class="uk-shell-main">
-          <Outlet />
-        </main>
+        <div class="uk-shell-page">
+          {slotElement(slots.header.above, NO_PROPS)}
+          <header class="uk-shell-header">
+            {slotElement(slots.header.start, NO_PROPS)}
+            <div class="uk-shell-header-end">{slotElement(slots.header.end, NO_PROPS)}</div>
+          </header>
+          {slotElement(slots.nav.tabs, NO_PROPS)}
+          <main class="uk-shell-main">
+            <Outlet />
+          </main>
+        </div>
+        {slotElement(slots.overlay, NO_PROPS)}
+        {slotElement(slots.menu, NO_PROPS)}
+        <Notifications />
       </div>
-      {slotElement(slots.overlay, NO_PROPS)}
-      {slotElement(slots.menu, NO_PROPS)}
-      <Notifications />
-    </div>
+    </ScaleContext.Provider>
   );
 }
 
@@ -99,9 +101,10 @@ function Notifications() {
  * How the page looks, as its Appearance says: its Theme's tokens set on the
  * page's root (.uk-root: where the kit's defaults are, under them) — its
  * colours in the variant asked for (dark, light, or as the system is), its
- * corners and fonts as it says them in either.
+ * corners and fonts as it says them in either; drawn as big as it says
+ * (the kit's --uk-u: its scale, given back for what is sized in code).
  */
-function useTheme(frame: RefObject<HTMLElement>) {
+function useTheme(frame: RefObject<HTMLElement>): number {
   const appearance = useDefinition(Appearance, 'default')?.spec;
   const theme = useDefinition(Theme, appearance?.theme ?? 'default')?.spec;
   const mode = appearance?.mode ?? 'system';
@@ -130,6 +133,14 @@ function useTheme(frame: RefObject<HTMLElement>) {
       delete root.dataset.theme;
     };
   }, [variant, theme]);
+  const scale = SIZES[appearance?.size ?? 'compact'] ?? 1;
+  useLayoutEffect(() => {
+    const root = frame.current?.closest('.uk-root') as HTMLElement | null;
+    if (!root || scale === 1) return;
+    root.style.setProperty('--uk-u', `${scale}px`);
+    return () => root.style.removeProperty('--uk-u');
+  }, [scale]);
+  return scale;
 }
 
 // What the shell says while it runs (said in the page's language); what it says when no addon runs is as it is.

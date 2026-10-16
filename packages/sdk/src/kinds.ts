@@ -483,15 +483,20 @@ export const Theme = defineKind<ThemeSpec>()('Theme', {
   merge: { maps: ['dark', 'light'] },
 });
 
-/** How the page looks: its theme (by name), dark, light or as the system is. One, named 'default'. */
+/** How the page looks: its theme (by name), dark, light or as the system is, how big (its text, its room: compact as given). One, named 'default'. */
 export interface AppearanceSpec {
   theme?: string;
   mode?: 'system' | 'dark' | 'light';
+  size?: 'compact' | 'comfortable' | 'large';
 }
 
 export const Appearance = defineKind<AppearanceSpec>()('Appearance', {
-  validate: fields({ theme: [text, 'notText'], mode: [(v) => v === 'system' || v === 'dark' || v === 'light', 'notAMode'] }),
-  patchRights: { theme: configure, mode: configure },
+  validate: fields({
+    theme: [text, 'notText'],
+    mode: [(v) => v === 'system' || v === 'dark' || v === 'light', 'notAMode'],
+    size: [(v) => v === 'compact' || v === 'comfortable' || v === 'large', 'notASize'],
+  }),
+  patchRights: { theme: configure, mode: configure, size: configure },
 });
 
 /**

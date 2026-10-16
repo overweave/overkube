@@ -4,19 +4,30 @@
  * the defaults' two variants, dark by default, light with
  * data-theme='light' on the root — a theme sets its own over them.
  */
-import { COLOR_TOKENS, DEFAULT_TOKENS, tokenCss } from './theme';
+import { COLOR_TOKENS, DEFAULT_TOKENS, HUE_TRACK, scaled, tokenCss } from './theme';
 
 /** The light variant's colours (its corners and fonts are the dark's: they are not a colour scheme's). */
 const LIGHT_COLORS = Object.fromEntries(COLOR_TOKENS.map((t) => [t, DEFAULT_TOKENS.light[t]]));
 
+/*
+ * The tokens (a theme's as it says them: not scaled, its own or the
+ * kit's), the scale (--uk-u) and the host's padding around the page
+ * (--uk-shell-inset: 16px each way, the host's, not the kit's to scale);
+ * then the kit's own styles, at the scale.
+ */
 export const css = `
 :host, .uk-root {
   ${tokenCss(DEFAULT_TOKENS.dark)}
-  --uk-row: 34px;
-  color: var(--uk-text); font-family: var(--uk-font); font-size: 13px; line-height: 1.4;
+  --uk-u: 1px;
+  --uk-shell-inset: 32px;
 }
 .uk-root[data-theme='light'] {
   ${tokenCss(LIGHT_COLORS)}
+}
+${scaled(`
+:host, .uk-root {
+  --uk-row: 34px;
+  color: var(--uk-text); font-family: var(--uk-font); font-size: 13px; line-height: 1.4;
 }
 .uk-root *, .uk-root *::before, .uk-root *::after { box-sizing: border-box; }
 .uk-root a:not([class]) { color: var(--uk-accent); text-decoration: none; }
@@ -41,6 +52,7 @@ export const css = `
 .uk-button[data-variant='danger']:not(:disabled):hover { background: color-mix(in srgb, var(--uk-error) 22%, transparent); border-color: color-mix(in srgb, var(--uk-error) 55%, transparent); }
 .uk-button[data-variant='ghost'] { background: transparent; border-color: transparent; box-shadow: none; color: var(--uk-muted); }
 .uk-button[data-variant='ghost']:not(:disabled):hover { background: var(--uk-panel-2); color: var(--uk-text); }
+.uk-button[data-variant='ghost'][aria-current='page'] { color: var(--uk-accent); }
 .uk-button[data-variant='field'] { min-width: 240px; justify-content: flex-start; background: var(--uk-bg); color: var(--uk-muted); font-weight: 400; box-shadow: none; }
 .uk-button[data-variant='field']:not(:disabled):hover { color: var(--uk-text); }
 .uk-button[data-size='sm'] { height: 26px; padding: 0 10px; gap: 5px; font-size: 12px; border-radius: var(--uk-radius); }
@@ -104,6 +116,10 @@ a.uk-chip:hover .uk-chip-name, .uk-badge-link:hover .uk-badge { color: var(--uk-
 @container (max-width: 760px) { .uk-board-cols { grid-template-columns: minmax(0, 1fr); } }
 .uk-board-col { display: flex; flex-direction: column; gap: var(--uk-board-gap); min-width: 0; }
 .uk-board-col:empty { display: none; }
+.uk-board-aside { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--uk-board-gap); align-items: start; }
+@container (max-width: 760px) { .uk-board-aside { grid-template-columns: minmax(0, 1fr); } }
+.uk-board-side { position: sticky; top: 12px; min-width: 0; }
+.uk-board-side .uk-panel-body { padding: 8px; }
 .uk-board .uk-panel { overflow: hidden; }
 /* A table in a board's panel: its head and rows at the panel's inset (its title's). */
 .uk-board .uk-panel .uk-table :is(.uk-table-head, .uk-table-row) { padding: 0 var(--uk-board-pad); }
@@ -124,6 +140,8 @@ a.uk-chip:hover .uk-chip-name, .uk-badge-link:hover .uk-badge { color: var(--uk-
 .uk-panel-body .uk-row > .uk-row-under { grid-column: 1 / 2; }
 .uk-panel-body .uk-row[data-mark] > .uk-row-under { grid-column: 2 / 3; }
 .uk-panel-body > .uk-nothing { padding: 16px 0; }
+.uk-panel-body > .uk-accordion { padding: 16px 0; }
+.uk-panel-body .uk-accordion-body .uk-board-facts { margin-top: 4px; }
 .uk-panel-body > .uk-board-loading { display: grid; gap: 12px; padding: 16px 0; }
 .uk-board-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 24px; margin: 0; padding: 4px 0; }
 .uk-board-facts > dt, .uk-board-facts > dd { margin: 0; padding: 8px 0; border-top: 1px solid color-mix(in srgb, var(--uk-border) 70%, transparent); min-width: 0; overflow-wrap: anywhere; }
@@ -380,6 +398,7 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-accordion-item:last-child { padding-bottom: 0; }
 .uk-accordion-item:has(> .uk-accordion-mark) { grid-template-columns: auto minmax(0, 1fr); }
 .uk-accordion-mark { grid-row: 1; align-self: center; display: inline-flex; margin-left: -2px; }
+.uk-accordion-mark > :is(.uk-tip-at, .uk-status) { display: flex; align-items: center; }
 .uk-accordion-line { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; column-gap: 12px; }
 .uk-accordion-head { all: unset; display: flex; align-items: baseline; gap: 10px; min-width: 0; overflow: hidden; white-space: nowrap; cursor: pointer; }
 .uk-accordion-head > * { min-width: 0; overflow: clip; text-overflow: ellipsis; }
@@ -390,6 +409,7 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-accordion-head:focus-visible::after { outline: 2px solid var(--uk-focus); }
 .uk-accordion-end { position: relative; z-index: 1; display: flex; align-items: baseline; gap: 8px; color: var(--uk-muted); font-size: 12px; white-space: nowrap; }
 .uk-accordion-end > :is(.uk-button, .uk-icon) { align-self: center; }
+.uk-accordion-line:has(> .uk-accordion-end > .uk-switch) { align-items: center; }
 .uk-accordion-chevron { align-self: center; display: inline-flex; color: var(--uk-muted); pointer-events: none; transition: rotate .18s cubic-bezier(.2, 0, 0, 1); }
 .uk-accordion-item[data-open] .uk-accordion-chevron { rotate: 180deg; }
 .uk-accordion-body { grid-column: -2; display: grid; grid-template-rows: 0fr; transition: grid-template-rows .2s cubic-bezier(.2, 0, 0, 1); }
@@ -736,13 +756,13 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-rail[data-state='peek'] .uk-rail-panel { box-shadow: 0 12px 32px color-mix(in srgb, var(--uk-shadow) 35%, transparent), 0 1px 3px color-mix(in srgb, var(--uk-shadow) 20%, transparent); }
 /* What is in it in a column: tabs down it scroll in their list (a tab dragged to its foot scrolls it), what follows them stays in view. */
 .uk-rail-body { flex: 1; min-height: 0; box-sizing: border-box; width: var(--uk-rail-wide); display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; padding: 8px 6px; }
-.uk-rail-pin { all: unset; flex: none; margin: 8px 12px 0; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--uk-radius-sm); color: var(--uk-muted); cursor: pointer; transition: color .12s, background .12s; }
+.uk-rail-pin { all: unset; flex: none; margin: 0 12px 8px; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--uk-radius-sm); color: var(--uk-muted); cursor: pointer; transition: color .12s, background .12s; }
 .uk-rail-pin:hover { color: var(--uk-text); background: var(--uk-panel-2); }
 .uk-rail-pin:focus-visible { outline: 2px solid var(--uk-focus); }
 .uk-rail-pin[aria-pressed='true'] { color: var(--uk-text); }
 .uk-rail-pin .uk-icon { width: 16px; height: 16px; }
 /* What it opened from its side: beside its wide panel, its whole height — part of it (kept in view with it as the page scrolls). */
-.uk-popover.uk-rail-flyout { position: absolute; top: 0; bottom: 0; left: var(--uk-rail-wide); z-index: 49; display: flex; flex-direction: column; width: min(520px, calc(100vw - var(--uk-rail-wide) - var(--uk-shell-inset, 32px))); max-height: none; overflow: hidden; border-left: 0; border-radius: 0 var(--uk-radius) var(--uk-radius) 0; transform-origin: left; animation-name: uk-flyout-in; }
+.uk-popover.uk-rail-flyout { position: absolute; top: 0; bottom: 0; left: var(--uk-rail-wide); z-index: 49; display: flex; flex-direction: column; width: min(520px, calc(100vw - var(--uk-rail-wide) - var(--uk-shell-inset))); max-height: none; overflow: hidden; border-left: 0; border-radius: 0 var(--uk-radius) var(--uk-radius) 0; transform-origin: left; animation-name: uk-flyout-in; }
 /* A catalog in it: its whole height, what it lists scrolling under its search. */
 .uk-rail-flyout > .uk-catalog { flex: 1; min-height: 0; }
 .uk-rail-flyout .uk-catalog-body { flex: 1; height: auto; }
@@ -891,16 +911,16 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 :is(.uk-tip, .uk-tip-title, .uk-tip-fields, .uk-tip-sections, .uk-tip-actions):empty { display: none; }
 @media (prefers-reduced-motion: reduce) { .uk-tip { animation: none; } }
 .uk-popover { background: var(--uk-panel); border: 1px solid var(--uk-border); border-radius: var(--uk-radius); box-shadow: 0 10px 30px color-mix(in srgb, var(--uk-shadow) 45%, transparent); padding: 12px; }
-/* As tall as the window (but what is around it: --uk-shell-inset, the host's padding, 16px each way by default): its body to the foot of it, the side down there. */
-.uk-shell { --uk-shell-inset: 32px; display: flex; flex-direction: column; gap: 12px; min-height: calc(100dvh - var(--uk-shell-inset)); }
+/* As tall as the window (but what is around it: --uk-shell-inset, the host's padding): the side (if any) down its edge, the page beside it. */
+.uk-shell { display: flex; align-items: flex-start; gap: 16px; min-height: calc(100dvh - var(--uk-shell-inset)); }
+.uk-shell-page { flex: 1; min-width: 0; align-self: stretch; display: flex; flex-direction: column; gap: 12px; }
 /* The header close over the navigation under it; what is on the page a little further down. */
 .uk-shell-header { display: flex; align-items: center; gap: 12px; min-height: 40px; margin-bottom: -4px; }
 .uk-shell-header-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.uk-shell-body { flex: 1; display: flex; align-items: flex-start; gap: 16px; min-width: 0; padding-top: 8px; }
-/* Down to the page's foot, no taller than the window (kept in view as the page scrolls); over the page (a rail peeking over it — what opens from it, a popover, stays within this layer). */
-.uk-shell-side { flex: none; align-self: stretch; position: sticky; top: calc(var(--uk-shell-inset) / 2); z-index: 20; display: flex; max-height: calc(100dvh - var(--uk-shell-inset)); }
+/* At the window's edge, as tall as it (the host's padding crossed), kept there as the page scrolls; over the page (a rail peeking over it — what opens from it, a popover, stays within this layer). */
+.uk-shell-side { flex: none; position: sticky; top: 0; z-index: 20; display: flex; height: 100dvh; margin: calc(var(--uk-shell-inset) / -2) 0 calc(var(--uk-shell-inset) / -2) calc(var(--uk-shell-inset) / -2); }
 .uk-shell-side:empty { display: none; }
-.uk-shell-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.uk-shell-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
 .uk-shell-notifications { position: fixed; inset: auto 16px 16px auto; display: flex; flex-direction: column; gap: 8px; width: min(420px, calc(100vw - 32px)); }
 .uk-shell-notifications:not(:has(> :not(.uk-shell-live))) { pointer-events: none; }
 .uk-shell-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -919,4 +939,26 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-picker { width: min(720px, calc(100vw - 32px)); padding: 0; overflow: hidden; border-radius: 12px; }
 .uk-navlist-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uk-navlist-extra { color: var(--uk-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.uk-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; padding: 16px 0; }
+.uk-theme { all: unset; display: flex; flex-direction: column; gap: 6px; cursor: pointer; font-size: 12px; color: var(--uk-muted); }
+.uk-theme[aria-pressed='true'] { color: var(--uk-text); }
+.uk-theme-small { height: 72px; border: 1px solid; padding: 8px; display: grid; grid-template-columns: 14px 1fr; gap: 6px; }
+.uk-theme[aria-pressed='true'] > .uk-theme-small { outline: 2px solid var(--uk-accent); outline-offset: 1px; }
+.uk-theme:focus-visible > .uk-theme-small { outline: 2px solid var(--uk-focus); outline-offset: 1px; }
+.uk-theme-small > i { border-radius: 2px; }
+.uk-theme-small > b { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 3px; }
+.uk-theme-small > b > i { height: 4px; border-radius: 2px; }
+.uk-theme-more { place-items: center; grid-template-columns: 1fr; border-style: dashed; border-color: var(--uk-border); border-radius: var(--uk-radius); color: var(--uk-muted); }
+.uk-theme:hover > .uk-theme-more { color: var(--uk-text); border-color: var(--uk-muted); }
+.uk-slider { display: flex; align-items: center; gap: 12px; }
+.uk-slider input { flex: 1; max-width: 280px; margin: 0; accent-color: var(--uk-accent); }
+.uk-slider[data-hue] input { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: ${HUE_TRACK}; }
+.uk-slider output { min-width: 44px; color: var(--uk-muted); font-family: var(--uk-mono); font-size: 12px; }
+.uk-swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.uk-swatch { all: unset; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--uk-shadow) 25%, transparent); }
+.uk-swatch[aria-pressed='true'] { outline: 2px solid var(--uk-text); outline-offset: 2px; }
+.uk-swatch:focus-visible { outline: 2px solid var(--uk-focus); outline-offset: 2px; }
+.uk-swatches input[type='color'] { width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; }
+`)}
 `;

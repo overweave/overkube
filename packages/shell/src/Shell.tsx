@@ -1,5 +1,5 @@
-import { type Cluster, kindMatcher, type UserChanges } from '@overkube/sdk';
-import { KubeProvider, type OpenMenu, PageProvider, type PageValue, UserProvider } from '@overkube/sdk/preact';
+import { type Addons, type Cluster, kindMatcher, type UserChanges } from '@overkube/sdk';
+import { AddonsProvider, KubeProvider, type OpenMenu, PageProvider, type PageValue, UserProvider } from '@overkube/sdk/preact';
 import type { Registry } from '@overweave/core';
 import type { Failure } from '@overweave/ui';
 import { OverweaveProvider, type SlotTrace } from '@overweave/ui/preact';
@@ -88,19 +88,27 @@ export interface ShellProps extends ShellOptions {
   cluster: Cluster;
   /** Where the user's changes are made (a UserService). */
   user: UserChanges;
+  /** The addons it runs (its host); none: not said. */
+  addons?: Addons;
   /** The slots followed, for an overlay that shows them (slotTrace()); none: nothing kept. */
   trace?: SlotTrace;
 }
 
 /** The whole page: the registry and how its slots choose, the cluster, the user's changes, the page's own (ShellProvider), the frame. */
-export function Shell({ registry, cluster, user, trace, ...options }: ShellProps) {
+export function Shell({ registry, cluster, user, addons, trace, ...options }: ShellProps) {
   const onFailure = options.onFailure ?? warn;
   return (
     <OverweaveProvider registry={registry} matcher={kindMatcher} trace={trace} onError={(f: Failure) => onFailure(f.definition, failureField(f), f.error)}>
       <KubeProvider cluster={cluster}>
         <UserProvider user={user}>
           <ShellProvider {...options}>
-            <Frame />
+            {addons ? (
+              <AddonsProvider addons={addons}>
+                <Frame />
+              </AddonsProvider>
+            ) : (
+              <Frame />
+            )}
           </ShellProvider>
         </UserProvider>
       </KubeProvider>

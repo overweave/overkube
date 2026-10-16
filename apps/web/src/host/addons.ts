@@ -1,5 +1,5 @@
 import { type AddonRun, type RunEnv, runAddon } from '@overkube/runtime';
-import type { Addon, AddonState, KubeContributor, Layer, Notification } from '@overkube/sdk';
+import type { Addon, AddonStatus, Addons, KubeContributor, Layer, Notification } from '@overkube/sdk';
 import { standingOf } from '@overkube/sdk';
 import type { Registry } from '@overweave/core';
 import { computed, effect, type ReadonlySignal, type Signal, signal, untracked } from '@preact/signals';
@@ -21,22 +21,6 @@ import { type Facts, holds } from './conditions.ts';
  *   crashloop     its setup failed: started again after a wait that grows
  *   failed        its setup failed maxCrashes times in a row: left alone until restarted
  */
-
-export interface AddonStatus {
-  id: string;
-  title: string;
-  layer: Layer;
-  state: AddonState;
-  /** Why, in words (what is missing, how long until it is tried again). */
-  reason?: string;
-  enabled: boolean;
-  /** Off, and what it detects is there. */
-  suggested: boolean;
-  restarts: number;
-  errors: number;
-  /** Its last error. */
-  error?: string;
-}
 
 // biome-ignore lint/suspicious/noExplicitAny: a registry of the dashboard's kinds, whatever their types.
 type AnyRegistry = Registry<any>;
@@ -82,7 +66,7 @@ interface Runtime {
   drive?: () => void;
 }
 
-export class AddonHost {
+export class AddonHost implements Addons {
   private readonly options: typeof DEFAULTS & HostOptions;
   private readonly runtimes = signal<ReadonlyMap<string, Runtime>>(new Map());
   private readonly services = signal<ReadonlyMap<string, { provider: string; value: unknown }>>(new Map());
@@ -155,7 +139,7 @@ export class AddonHost {
       addon,
       layer,
       enabled: signal(this.options.enabled ? this.options.enabled(addon) : true),
-      status: signal({ id: addon.id, title: addon.title, layer, state: 'disabled', restarts: 0, errors: 0 }),
+      status: signal({ id: addon.id, title: addon.title, ...(addon.description ? { description: addon.description } : {}), layer, state: 'disabled', restarts: 0, errors: 0 }),
       generation: 0,
       run: null,
       crashes: 0,

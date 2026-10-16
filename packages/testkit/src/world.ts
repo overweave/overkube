@@ -1,5 +1,5 @@
 import { runAddon } from '@overkube/runtime';
-import { type Addon, type Cluster, type KubeContributor, kubeOwnKinds, standingOf, ui } from '@overkube/sdk';
+import { type Addon, type AddonStatus, type Cluster, type KubeContributor, kubeOwnKinds, standingOf, ui } from '@overkube/sdk';
 import { memoryStore, type Notifications, notifications, UserService } from '@overkube/shell';
 import { type AddonRun, type Run, uiWorld } from '@overweave/testkit';
 import { type Signal, signal } from '@preact/signals';
@@ -38,6 +38,8 @@ export interface KubeWorld extends KubeWorldBase {
   readonly user: UserService;
   /** The page's language, as its user would set it (Language): w.language('pl'). */
   language(locale: string): void;
+  /** Its addons as the page's host tells them: each run, running (a test says otherwise: statuses.value); one started again, running. */
+  readonly addons: { readonly statuses: Signal<readonly AddonStatus[]>; restart(id: string): void };
 }
 
 /** The cluster for one run: what it writes is in its name; after it stops, it writes nothing. */
@@ -137,6 +139,7 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
   };
   const runs = new Map<string, Run<KubeContributor>>();
   const started = new Map<string, Promise<void>>();
+  const statuses = signal<readonly AddonStatus[]>([]);
 
   const addon = (a: Addon): Run<KubeContributor> => {
     env.failures(a.id).splice(0);
@@ -153,6 +156,18 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
     const run = w.run(r.id, r.setup as never, r.grant) as unknown as Run<KubeContributor>;
     runs.set(a.id, run);
     started.set(a.id, finished);
+    const status: AddonStatus = {
+      id: a.id,
+      title: a.title,
+      ...(a.description ? { description: a.description } : {}),
+      layer: a.layer ?? 'addon',
+      state: 'running',
+      enabled: true,
+      suggested: false,
+      restarts: 0,
+      errors: 0,
+    };
+    statuses.value = [...statuses.peek().filter((s) => s.id !== a.id), status];
     return run;
   };
 
@@ -164,12 +179,19 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
     stop(id: string) {
       runs.get(id)?.stop();
       runs.delete(id);
+      statuses.value = statuses.peek().filter((s) => s.id !== id);
     },
     failures: (id: string) => env.failures(id),
     service: <T>(name: string) => (services.peek().get(name)?.value as T | undefined) ?? null,
     user,
     language(locale: string) {
       user.patch('Language', 'default', { locale });
+    },
+    addons: {
+      statuses,
+      restart: (id: string) => {
+        statuses.value = statuses.peek().map((s) => (s.id === id ? { ...s, state: 'running', restarts: s.restarts + 1 } : s));
+      },
     },
   }) as unknown as KubeWorld;
 }

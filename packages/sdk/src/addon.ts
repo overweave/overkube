@@ -1,4 +1,5 @@
 import type { UiContributor } from '@overweave/ui';
+import type { ReadonlySignal } from '@preact/signals';
 import type { Cluster } from './cluster.ts';
 import type { kubeOwnKinds, Right, ui } from './kinds.ts';
 
@@ -117,6 +118,30 @@ export interface Addon {
 
 /** How an addon is doing, as the page tells it. */
 export type AddonState = 'disabled' | 'unavailable' | 'starting' | 'running' | 'degraded' | 'crashloop' | 'failed';
+
+/** An addon as the page runs it: what it is, how it is doing (and why), how often it failed. */
+export interface AddonStatus {
+  id: string;
+  title: string;
+  description?: string;
+  layer: Layer;
+  state: AddonState;
+  /** Why, in words (what is missing, how long until it is tried again). */
+  reason?: string;
+  enabled: boolean;
+  /** Off, and what it detects is there. */
+  suggested: boolean;
+  restarts: number;
+  errors: number;
+  /** Its last error. */
+  error?: string;
+}
+
+/** The addons the page runs (its host's): each one's status, as it changes; one started again. */
+export interface Addons {
+  readonly statuses: ReadonlySignal<readonly AddonStatus[]>;
+  restart(id: string): void;
+}
 
 const ID = /^[a-z][a-z0-9-]*(\.[a-z0-9-]+)*$/;
 

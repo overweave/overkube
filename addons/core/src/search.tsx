@@ -91,7 +91,7 @@ function Search({ chosen, onClose }: { chosen: Chosen; onClose: () => void }) {
       placeholder={say(T.search.placeholder)}
       empty={empty}
       busy={busy}
-      footer={<Progress found={found} />}
+      footer={found.kinds > 0 && <Progress found={found} />}
     />
   );
 }
@@ -133,7 +133,6 @@ function itemsOf(found: SearchResult, kinds: ReadonlyMap<string, KindInfo>, icon
 /** How far it is: kinds looked through of those there are; those that may not be listed, failed otherwise, read in part, cut short. */
 function Progress({ found }: { found: SearchResult }) {
   const say = useSay();
-  if (!found.kinds) return null;
   return (
     <span class="uk-quiet">
       {say(T.search.searched, { searched: found.searched, kinds: found.kinds })}

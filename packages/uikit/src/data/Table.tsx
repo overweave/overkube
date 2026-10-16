@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { Icon } from '../display/Icon';
 import { Skeleton } from '../display/Skeleton';
 import { uid } from '../lib/focus';
+import { useScale } from '../lib/scale';
 import { slideIn, slideOut } from '../lib/slide';
 import { useSortable } from '../lib/sortable';
 
@@ -132,7 +133,7 @@ export function Table<T>({
   rowKey,
   onRowClick,
   height = '70vh',
-  rowHeight = 34,
+  rowHeight: asked = 34,
   overscan = 8,
   empty,
   loading = false,
@@ -145,6 +146,9 @@ export function Table<T>({
   plain = false,
   columns: given,
 }: TableProps<T>) {
+  // As high, as wide, at the page's scale.
+  const scale = useScale();
+  const rowHeight = asked * scale;
   const ids = useMemo(() => ({ header: uid('uk-table-h') }), []);
   const [scroll, setScroll] = useState(0);
   const [view, setView] = useState(FALLBACK_HEIGHT);
@@ -320,7 +324,7 @@ export function Table<T>({
   // At least: as dragged, its width in px, its minmax's least (minmax(120px, 1fr)); a free one, FLEX_WIDTH.
   const least = (width: string | undefined) => /^(?:minmax\(\s*)?(\d+(?:\.\d+)?)px\b/.exec(width ?? '')?.[1];
   const pixels = (c: TableColumn<T>) => sized[c.id] ?? (least(c.width) === undefined ? FLEX_WIDTH : Number.parseFloat(least(c.width) as string));
-  const minWidth = columns.reduce((sum, c) => sum + pixels(c), 0) + GAP * (columns.length - 1) + (plain ? 0 : PAD * 2);
+  const minWidth = columns.reduce((sum, c) => sum + pixels(c), 0) + (GAP * (columns.length - 1) + (plain ? 0 : PAD * 2)) * scale;
 
   const setWidth = (id: string, px: number | undefined, done: boolean) => {
     const width = px === undefined ? undefined : Math.max(MIN_WIDTH, Math.round(px));

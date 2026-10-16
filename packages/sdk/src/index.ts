@@ -23,6 +23,8 @@
 export {
   type Addon,
   type AddonState,
+  type AddonStatus,
+  type Addons,
   type Condition,
   type Ctx,
   defineAddon,

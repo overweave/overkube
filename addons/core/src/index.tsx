@@ -76,6 +76,7 @@ import { Picker, PickerContent, PickerEmpty, PickerItem, PickerItemTitle, Picker
 import { Actions, type Layout, LayoutSwitch, ResourceMissing, ResourceOverview, ResourceTitle, ResourceView, Yaml } from './ResourceView.tsx';
 import { Owned } from './relations.tsx';
 import { HeaderSearch } from './search.tsx';
+import { OWN_THEME, SETTINGS_PATH, SettingsButton, SettingsPage } from './settings.tsx';
 import { addStatusLooks } from './statuses.tsx';
 import { Toasts } from './Toasts.tsx';
 import { T } from './texts.ts';
@@ -171,6 +172,10 @@ export default defineAddon({
     // A search of every kind (/, ⌘K), before the namespaces.
     c.add('Fill', 'core.header.search', fill(slots.header.end, { order: 100, render: () => <HeaderSearch chosen={namespaces} /> }));
     c.add('Fill', 'core.header.namespaces', fill(slots.header.end, { render: () => <NamespacePicker chosen={namespaces} /> }));
+    // The settings: a page of its own, off the navigation — reached by the gear at the header's end, after the namespaces.
+    c.add('Page', 'settings', { path: SETTINGS_PATH, title: T.page.settings.title, icon: 'gear', hidden: true });
+    c.add('Fill', 'core.page.settings', fill(slots.page('settings'), { render: SettingsPage }));
+    c.add('Fill', 'core.header.settings', fill(slots.header.end, { after: 'core.header.namespaces', render: SettingsButton }));
     addOverview(c, namespaces);
     // A kind's header over its table: the last in its slot (another's for a kind in its place); its title, its group and version, how many, its columns.
     const header = slots.kind.header;
@@ -306,6 +311,7 @@ export default defineAddon({
     for (const name of [
       ...slotNames(slots),
       slots.page('overview').name,
+      slots.page('settings').name,
       slots.page('kind').name,
       ...['core.overview', 'core.events', 'core.yaml'].map((t) => slots.resource.view.tab(t).name),
     ])
@@ -313,6 +319,8 @@ export default defineAddon({
 
     // How it looks: the kit's own theme (no tokens of its own: the kit's defaults), as the system is (dark or light).
     c.add('Theme', 'default', { title: 'overkube' }, fallback);
+    // One's own, bare: its tokens the user's (made in the settings).
+    c.add('Theme', OWN_THEME, { title: T.page.settings.ownTheme.en as string }, fallback);
     c.add('Appearance', 'default', { theme: 'default', mode: 'system' }, fallback);
     // The language: as the browser's, until the user says otherwise; English said as given — there to reword (a patch).
     c.add('Language', 'default', { locale: 'system' }, fallback);

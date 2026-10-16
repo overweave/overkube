@@ -24,8 +24,8 @@ export interface ModalProps {
   actions?: ComponentChildren;
   /** Under its header, staying while it scrolls: what it shows chosen (a TabBar). */
   tabs?: ComponentChildren;
-  /** Under all of it, staying while it scrolls: what can be done (buttons, at its end). */
-  footer?: ComponentChildren;
+  /** Under all of it, staying while it scrolls: what can be done (buttons, at its end) — given how to close it as it goes (its way out, then onClose). */
+  footer?: ComponentChildren | ((close: () => void) => ComponentChildren);
   onClose: () => void;
   /** Its close button's name, for those who cannot see it. */
   closeLabel?: string;
@@ -65,7 +65,7 @@ export function Modal({ title, actions, tabs, footer, onClose, closeLabel = 'Clo
           </header>
           {tabs}
           <div class="uk-modal-body">{children}</div>
-          {footer !== undefined && footer !== null && footer !== false && <footer class="uk-modal-footer">{footer}</footer>}
+          {footer !== undefined && footer !== null && footer !== false && <footer class="uk-modal-footer">{typeof footer === 'function' ? footer(leave) : footer}</footer>}
         </div>
       </div>
     </Layer>

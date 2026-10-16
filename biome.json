@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!packages/uikit/src/display/icons.generated.ts"]
+    "includes": ["**", "!**/dist", "!packages/uikit/src/display/icons.generated.ts", "!addons/core/src/licenses.generated.ts"]
   },
   "formatter": {
     "indentStyle": "space",

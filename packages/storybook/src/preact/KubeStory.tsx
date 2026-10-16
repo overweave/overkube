@@ -1,11 +1,12 @@
 import type { KindInfo } from '@overkube/kube-types';
-import { type Addon, kindMatcher, kubeOwnKinds, PRIORITY, type UserChanges, ui } from '@overkube/sdk';
-import { KubeProvider, UserProvider, usePage } from '@overkube/sdk/preact';
+import { type Addon, type AddonStatus, type Addons, defineAddon, kindMatcher, kubeOwnKinds, PRIORITY, slots, type UserChanges, ui } from '@overkube/sdk';
+import { AddonsProvider, fill, KubeProvider, UserProvider, usePage } from '@overkube/sdk/preact';
 import { Frame, memoryRouter, memoryStore, ShellProvider, UserService } from '@overkube/shell';
 import { type AddonEnv, addonEnv, addonRun, type FakeCluster, fakeCluster } from '@overkube/testkit';
 import { css } from '@overkube/uikit';
 import { WorldStory } from '@overweave/storybook/preact';
 import type { AddonRun } from '@overweave/testkit';
+import { signal } from '@preact/signals';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 /*
@@ -35,8 +36,10 @@ export interface KubeStoryProps {
   theme?: 'dark' | 'light';
   /** The page's language (none: as the Language says — the browser's, by default): 'pl'. */
   locale?: string;
+  /** How its addons are said to be doing, by id (none: running): { nord: { state: 'crashloop', error: '…' } }. */
+  states?: Readonly<Record<string, Partial<AddonStatus>>>;
   /**
-   * cluster, served, kinds and user are the story's start: read once. Another
+   * cluster, served, kinds, user and states are the story's start: read once. Another
    * resetKey starts it anew with what they are then (a control's value: its key).
    */
   resetKey?: unknown;
@@ -69,13 +72,21 @@ function PathBar() {
   );
 }
 
+/** The path bar, over the page's header (beside the side, as the page is). */
+const bar = defineAddon({
+  id: 'story.bar',
+  title: 'Path',
+  layer: 'builtin',
+  setup: ({ contributor }) => void contributor.add('Fill', 'story.bar', fill(slots.header.above, { render: PathBar })),
+});
+
 /** A story of the page: started anew (its cluster, its world, its path) whenever its resetKey changes. */
 export function KubeStory(props: KubeStoryProps) {
   // Another theme, another start (the story's world made anew with it).
   return <Story key={`${String(props.resetKey)}:${props.theme ?? ''}:${props.locale ?? ''}`} {...props} />;
 }
 
-function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale }: KubeStoryProps) {
+function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale, states }: KubeStoryProps) {
   // The story's own, kept while it is shown: its cluster (filled once), its notifications and services, its path.
   const [env] = useState<AddonEnv>(() => {
     const c = fakeCluster({ served, kinds });
@@ -93,6 +104,24 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
     patch: (kind, name, change) => kept.current?.patch(kind, name, change) ?? { status: 'rejected', errors: [{ code: 'disposed' }] },
     reset: (kind, name, ...path) => kept.current?.reset(kind, name, ...path),
   }));
+  // The addons as the page's host tells them: running, unless the story says otherwise; started again, running.
+  const [host] = useState<Addons>(() => {
+    const statuses = signal<readonly AddonStatus[]>(
+      addons.map((a) => ({
+        id: a.id,
+        title: a.title,
+        ...(a.description ? { description: a.description } : {}),
+        layer: a.layer ?? 'addon',
+        state: 'running',
+        enabled: true,
+        suggested: false,
+        restarts: 0,
+        errors: 0,
+        ...states?.[a.id],
+      })),
+    );
+    return { statuses, restart: (id) => (statuses.value = statuses.value.map((s) => (s.id === id ? { ...s, state: 'running', restarts: s.restarts + 1 } : s))) };
+  });
   // Each addon run as the same run (the panel's world is made again only when the addons are others).
   const runs = useRef(new WeakMap<Addon, AddonRun>());
   const run = (a: Addon) => {
@@ -115,7 +144,7 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
         ui={ui}
         kinds={kubeOwnKinds}
         matcher={kindMatcher}
-        addons={addons.map(run)}
+        addons={[...addons, bar].map(run)}
         given={(w) => {
           // The fields its addons define, asked by as the page asks by them.
           env.cluster.follow(w.registry as never);
@@ -133,8 +162,9 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
         <KubeProvider cluster={env.cluster}>
           <UserProvider user={changes}>
             <ShellProvider router={router} notifications={env.notifications} onFailure={onFailure}>
-              <PathBar />
-              <Frame />
+              <AddonsProvider addons={host}>
+                <Frame />
+              </AddonsProvider>
             </ShellProvider>
           </UserProvider>
         </KubeProvider>

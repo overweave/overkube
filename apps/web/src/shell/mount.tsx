@@ -1,11 +1,11 @@
-import type { UserChanges } from '@overkube/sdk';
+import type { AddonStatus, UserChanges } from '@overkube/sdk';
 import { hashRouter, notifications, Shell } from '@overkube/shell';
 import { css, Notice } from '@overkube/uikit';
 import type { Registry } from '@overweave/core';
 import { mountSlotOverlay } from '@overweave/ui/overlay';
 import { slotTrace } from '@overweave/ui/preact';
 import { render } from 'preact';
-import type { AddonHost, AddonStatus } from '../host/addons.ts';
+import type { AddonHost } from '../host/addons.ts';
 import type { ClusterAccess } from '../host/cluster.ts';
 
 export interface Page {
@@ -64,6 +64,7 @@ export function mount(element: HTMLElement, page: Page, told = notifications()):
         registry={page.registry}
         cluster={page.cluster.components()}
         user={page.user}
+        addons={page.host}
         router={router}
         notifications={told}
         trace={trace}

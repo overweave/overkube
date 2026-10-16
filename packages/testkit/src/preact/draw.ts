@@ -1,16 +1,16 @@
 import { kindMatcher } from '@overkube/sdk';
-import { KubeProvider, type Shown, UserProvider } from '@overkube/sdk/preact';
+import { AddonsProvider, KubeProvider, type Shown, UserProvider } from '@overkube/sdk/preact';
 import { Frame, failureField, memoryRouter, ShellProvider } from '@overkube/shell';
 import { type Mounted, type MountOptions, mount as mountTree, type RenderedSlot, renderSlot as renderOne } from '@overweave/testkit/preact';
 import type { SlotRef } from '@overweave/ui';
 import { type ComponentChildren, h } from 'preact';
 import type { KubeWorld } from '../world.ts';
 
-/** The world's cluster and its user's changes around the tree, the app's own providers (if given) around that. */
+/** The world's cluster, its user's changes and its addons around the tree, the app's own providers (if given) around that. */
 function options(world: KubeWorld, given: MountOptions = {}): MountOptions {
   const Outer = given.wrapper;
   const wrapper = ({ children }: { children?: ComponentChildren }) => {
-    const inner = h(KubeProvider, { cluster: world.cluster }, h(UserProvider, { user: world.user }, children));
+    const inner = h(KubeProvider, { cluster: world.cluster }, h(UserProvider, { user: world.user }, h(AddonsProvider, { addons: world.addons }, children)));
     return Outer ? h(Outer, null, inner) : inner;
   };
   return { matcher: kindMatcher, ...given, wrapper };

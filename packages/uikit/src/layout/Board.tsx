@@ -28,6 +28,16 @@ export function BoardColumns({ wide, narrow }: { wide: ComponentChildren; narrow
   );
 }
 
+/** Two columns the other way: a narrow one at the side (its parts: a panel of them, kept in sight), the wide one beside it (the part chosen). */
+export function BoardAside({ side, children }: { side: ComponentChildren; children: ComponentChildren }) {
+  return (
+    <div class="uk-board-aside">
+      <div class="uk-board-side">{side}</div>
+      <div class="uk-board-col">{children}</div>
+    </div>
+  );
+}
+
 /** A panel's head: its title, how many (none: not said), its tools, a link to all of it. */
 export function PanelHead({ title, count, tools, more }: { title: ComponentChildren; count?: number; tools?: ComponentChildren; more?: { label: string; href: string } }) {
   return (

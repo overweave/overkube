@@ -11,7 +11,7 @@ import { Tip } from '../overlays/Tip';
  * till the pointer has left; kept while what it opened is open: a dialog in
  * it, a drag, what the caller holds it for), pinned (wide, the page beside
  * it). With no pointer that rests (a touch), only its toggle widens it. Pinned or not is
- * the caller's (a toggle at its head); peeking is its own. What is in it is
+ * the caller's (a toggle at its foot); peeking is its own. What is in it is
  * told whether it is wide (expanded) — and its CSS reads data-state.
  */
 
@@ -148,12 +148,12 @@ export function SideRail({ label, pinned, onPin, labels = SIDE_RAIL_LABELS, hold
           }
         }}
       >
+        <div class="uk-rail-body">{typeof children === 'function' ? children(state !== 'collapsed') : children}</div>
         <Tip content={() => labels.pin} beside>
           <button type="button" class="uk-rail-pin" aria-pressed={pinned} aria-label={labels.pin} onClick={() => onPin(!pinned)}>
             <Icon name={pinned ? 'pin-filled' : 'pin'} />
           </button>
         </Tip>
-        <div class="uk-rail-body">{typeof children === 'function' ? children(state !== 'collapsed') : children}</div>
       </div>
       {flyout}
     </aside>

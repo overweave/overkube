@@ -12,7 +12,8 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "licenses": "node scripts/licenses.mjs"
   },
   "dependencies": {
     "@overkube/cel": "0.1.0",
