@@ -389,7 +389,12 @@ describe('a workload', () => {
       ['web', null, null],
     ]);
     expect(tableRows(part('rollout')).map((r) => r[0])).toEqual(['web-1']);
-    expect(related()).toEqual([['Selector', 'appweb']]);
+    // What it owns, and what those own in turn (by them).
+    expect(related()).toEqual([
+      ['Selector', 'appweb'],
+      ['ReplicaSets', 'ReplicaSets1'],
+      ['Pods', 'Pods2by its ReplicaSets'],
+    ]);
   });
 
   it('counts the pods a rollout may take: a number as it is, a percent of its replicas — rounded up for more, down for fewer', () => {

@@ -3,6 +3,7 @@ import { signal } from '@preact/signals';
 import { describe, expect, it, vi } from 'vitest';
 import { TICK_MS } from './filter.ts';
 import { memorySource } from './memory.ts';
+import { OWNED_EVERY_MS } from './owned.ts';
 
 /*
  * A source of objects in memory, as a test or a story has it: the page's
@@ -64,6 +65,28 @@ describe('a source in memory', () => {
     expect(names()).toEqual(['new', 'old']);
     off();
     vi.useRealTimers();
+  });
+
+  it('learns what kinds own what kinds from the objects it has (their owners)', () => {
+    const owned = (name: string, kind: string, apiVersion: string) =>
+      ({ metadata: { name, namespace: 'x', uid: name, ownerReferences: [{ apiVersion, kind, name: 'o', uid: 'o' }] } }) as KubeObject;
+    const objects = signal<Record<string, KubeObject[]>>({ 'pods.v1': [pod('a', 'x', 0)] });
+    const source = memorySource(objects);
+    const rs = source.owned('replicasets.v1.apps');
+    expect(rs.value).toEqual([]);
+    vi.useFakeTimers();
+    const off = rs.subscribe(() => {});
+    objects.value = { 'pods.v1': [owned('a', 'ReplicaSet', 'apps/v1')], 'configmaps.v1': [owned('c', 'ReplicaSet', 'apps/v1')] };
+    // Pods looked through a moment ago: again once the while is over.
+    expect(rs.value).toEqual(['configmaps.v1']);
+    vi.advanceTimersByTime(OWNED_EVERY_MS);
+    expect(rs.value).toEqual(['configmaps.v1', 'pods.v1']);
+    off();
+    vi.useRealTimers();
+    expect(source.owned('deployments.v1.apps').value).toEqual([]);
+    // An owner of another version of its kind (an operator's own): the same kind's.
+    objects.value = { ...objects.value, 'secrets.v1': [owned('s', 'ReplicaSet', 'apps/v1beta2')] };
+    expect(rs.value).toEqual(['configmaps.v1', 'pods.v1', 'secrets.v1']);
   });
 
   it('holds to the page’s rules: a get of a namespaced kind says its namespace; a kind of no namespace has no scope; one not served, none', () => {

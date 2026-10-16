@@ -11,7 +11,7 @@
  */
 
 export { fill, Slot, Wrapped } from '@overweave/ui/preact';
-export { KubeProvider, useCluster, useCount, useFields, useGet, useList } from './hooks.ts';
+export { KubeProvider, useCluster, useCount, useFields, useGet, useList, useOwned } from './hooks.ts';
 export { useKind, useServedKinds } from './kinds.ts';
 export { useMenu } from './menu.ts';
 export {

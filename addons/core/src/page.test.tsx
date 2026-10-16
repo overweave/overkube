@@ -1029,7 +1029,7 @@ describe('an object', () => {
     expect([...value('Annotations').querySelectorAll('.uk-chip')].map((c) => c.textContent)).toEqual(['notehi']);
     const owners = section('Related').querySelector('dd') as HTMLElement;
     expect([section('Related').querySelector('dt')?.textContent, owners.textContent, owners.querySelector('a')?.getAttribute('href')]).toEqual([
-      'Owners',
+      'Controlled by',
       'ReplicaSetweb-1',
       expect.stringContaining('open=replicasets.v1.apps/shop/web-1'),
     ]);

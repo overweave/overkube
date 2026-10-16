@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 const { Pod, Namespace, ConfigMap, Secret, Service, ServiceAccount, PersistentVolumeClaim, PersistentVolume, ResourceQuota, LimitRange } = kinds.core.v1;
-const { Deployment } = kinds.apps.v1;
+const { Deployment, ReplicaSet } = kinds.apps.v1;
 const { Ingress, NetworkPolicy } = kinds.networking.v1;
 const { ClusterRole, RoleBinding } = kinds.rbac.v1;
 const { StorageClass } = kinds.storage.v1;
@@ -829,6 +829,61 @@ describe('what points at an object', () => {
     ]);
     page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/alone');
     expect(related().map(([k]) => k)).toEqual(['Selector']);
+  });
+
+  it('says what controls it to the root (the root first), what it owns and what those own in turn — how many, a dot each, a link to them', () => {
+    const w = world();
+    const owner = (kind: string, apiVersion: string, name: string, uid: string) => ({ apiVersion, kind, name, uid, controller: true });
+    w.cluster.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'shop', uid: 'd1' }, spec: { selector: { matchLabels: { app: 'web' } } } }));
+    w.cluster.add(ReplicaSet, make(ReplicaSet, { metadata: { name: 'web-1', namespace: 'shop', uid: 'r1', ownerReferences: [owner('Deployment', 'apps/v1', 'web', 'd1')] } }));
+    const pod = (name: string, phase: 'Running' | 'Failed') =>
+      make(Pod, { metadata: { name, namespace: 'shop', uid: name, ownerReferences: [owner('ReplicaSet', 'apps/v1', 'web-1', 'r1')] }, status: { phase } });
+    w.cluster.add(Pod, pod('web-1-a', 'Running'));
+    w.cluster.add(Pod, pod('web-1-b', 'Failed'));
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web-1-a');
+    const chain = part('related')?.querySelector('.uk-chain');
+    expect([...(chain?.querySelectorAll('a') ?? [])].map((a) => a.textContent)).toEqual(['web', 'web-1']);
+    page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
+    const lines = Object.fromEntries(related().map(([k, v]) => [k, v]));
+    expect([lines.ReplicaSets, lines.Pods]).toEqual(['ReplicaSets1', 'Pods2by its ReplicaSets']);
+    const pods = [...(part('related')?.querySelectorAll('.uk-owned') ?? [])].at(-1) as HTMLElement;
+    expect([...pods.querySelectorAll('.uk-dot')].map((d) => d.getAttribute('data-level'))).toEqual(['error', 'ok']);
+    page.navigate((pods.querySelector('a')?.getAttribute('href') ?? '').replace(/^#/, ''));
+    expect(page.column('Name').sort()).toEqual(['web-1-a', 'web-1-b']);
+  });
+
+  it('says its controller apart from its other owners (as kubectl’s Controlled By)', () => {
+    const w = world();
+    w.cluster.add(Service, make(Service, { metadata: { name: 'web', namespace: 'shop', uid: 's1' } }));
+    w.cluster.add(
+      ConfigMap,
+      make(ConfigMap, {
+        metadata: {
+          name: 'web-routes',
+          namespace: 'shop',
+          ownerReferences: [
+            { apiVersion: 'v1', kind: 'Service', name: 'web', uid: 's1', controller: true },
+            { apiVersion: 'v1', kind: 'Service', name: 'api', uid: 's2' },
+          ],
+        },
+      }),
+    );
+    renderPage(w, '/k/configmaps.v1?open=configmaps.v1/shop/web-routes');
+    expect(related().filter(([k]) => k === 'Controlled by' || k === 'Owners')).toEqual([
+      ['Controlled by', 'Serviceweb'],
+      ['Owners', 'Serviceapi'],
+    ]);
+  });
+
+  it('says what it owns of kinds seen owned by its kind (an operator’s), not only Kubernetes’s own', () => {
+    const w = world();
+    w.cluster.add(Service, make(Service, { metadata: { name: 'web', namespace: 'shop', uid: 's1' } }));
+    w.cluster.add(
+      ConfigMap,
+      make(ConfigMap, { metadata: { name: 'web-routes', namespace: 'shop', ownerReferences: [{ apiVersion: 'v1', kind: 'Service', name: 'web', uid: 's1' }] } }),
+    );
+    renderPage(w, '/k/services.v1?open=services.v1/shop/web');
+    expect(related().find(([k]) => k === 'ConfigMaps')?.[1]).toBe('ConfigMaps1');
   });
 
   it('leads from a selector to the pods it picks (its namespace’s), from a label to its kind’s objects of it', () => {

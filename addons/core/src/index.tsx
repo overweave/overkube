@@ -21,6 +21,7 @@ import { CoreTable, TableEmpty } from './CoreTable.tsx';
 import { addColumns } from './columns.tsx';
 import {
   AllEvents,
+  CONTROLLER,
   ConditionChanged,
   ConditionMessage,
   ConditionReason,
@@ -73,6 +74,7 @@ import { addOverview } from './overview.tsx';
 import { KindMissing, Overview, PageTable } from './pages.tsx';
 import { Picker, PickerContent, PickerEmpty, PickerItem, PickerItemTitle, PickerSearch, PickerSection, PickerSectionTitle, PickerSide } from './picker.tsx';
 import { Actions, type Layout, LayoutSwitch, ResourceMissing, ResourceOverview, ResourceTitle, ResourceView, Yaml } from './ResourceView.tsx';
+import { Owned } from './relations.tsx';
 import { addStatusLooks } from './statuses.tsx';
 import { Toasts } from './Toasts.tsx';
 import { T } from './texts.ts';
@@ -251,7 +253,10 @@ export default defineAddon({
     c.add('Fill', 'core.resource.view.events.event.seen', fill(event.seen, { render: EventSeen }));
     c.add('Fill', 'core.resource.view.related', section({ order: 800, render: Related }));
     const related = slots.resource.view.related;
+    c.add('Fill', 'core.resource.view.related.controller', fill(related, { order: 90, render: CONTROLLER }));
     c.add('Fill', 'core.resource.view.related.owners', fill(related, { order: 100, render: OWNERS }));
+    // What it owns, a line for each kind (and what those own in turn): after what points at it.
+    c.add('Fill', 'core.resource.view.related.owned', fill(related, { order: 900, render: Owned }));
     c.add('Fill', 'core.resource.view.related.field', fill(related.field, { order: 1000, render: field(related.field.label, related.field.value) }));
     c.add('Fill', 'core.resource.view.related.field.label', fill(related.field.label, { render: FieldLabel }));
     c.add('Fill', 'core.resource.view.related.field.value', fill(related.field.value, { render: RelatedValue }));

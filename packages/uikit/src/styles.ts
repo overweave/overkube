@@ -300,6 +300,14 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 /* Some badges (ports), some refs (what a pod uses): side by side, wrapping. */
 .uk-badges { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .uk-refs { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+/* A chain (a controller's controllers, to the root): the root first, a › between, those after it quiet. */
+.uk-chain { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; min-width: 0; }
+.uk-chain-next { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; opacity: .65; }
+.uk-chain-sep { color: var(--uk-muted); }
+/* How many of a kind (a link), a dot for each one's state, whose they are — on one line, the dots by its middle. */
+.uk-owned { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.uk-dots { display: inline-flex; align-items: center; gap: 4px; }
+.uk-dots > .uk-dot { width: 7px; height: 7px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--uk-muted) 55%, transparent); }
 /* A list in a line opened (an accordion's): short, unruled, lined up with its line's title. */
 .uk-accordion-body .uk-kv { --uk-kv-names: 72px; }
 .uk-section .uk-accordion-body .uk-kv > :is(dt, dd) { padding: 3px 0; border-top: 0; }

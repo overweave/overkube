@@ -32,6 +32,7 @@ import { titleOf } from './kinds.ts';
 import { clock, useLive } from './live.ts';
 import { ObjectRef } from './refs.tsx';
 import { Refused, refused } from './refused.tsx';
+import { OwnerChain } from './relations.tsx';
 import { selectorFilter } from './selectors.ts';
 import { StatusOf } from './statuses.tsx';
 import { T } from './texts.ts';
@@ -379,11 +380,25 @@ export function Related(props: ResourceProps) {
   );
 }
 
-/** Its owners (the core's related field, where it has them). */
+/** What controls it (its owner that is its controller, as kubectl's Controlled By) — the core's related field, where it has one. */
+export const CONTROLLER = metadataField(
+  'controller',
+  T.resource.view.related.controller,
+  (m) => {
+    const controllers = (m.ownerReferences ?? []).filter((o) => o.controller);
+    return controllers.length ? [controllers, ''] : undefined;
+  },
+  slots.resource.view.related.field,
+);
+
+/** Its other owners (those not its controller: what it goes with when they go) — the core's related field, where it has them. */
 export const OWNERS = metadataField(
   'owners',
   T.resource.view.related.owners,
-  (m) => (m.ownerReferences?.length ? [m.ownerReferences, ''] : undefined),
+  (m) => {
+    const others = (m.ownerReferences ?? []).filter((o) => !o.controller);
+    return others.length ? [others, ''] : undefined;
+  },
   slots.resource.view.related.field,
 );
 
@@ -406,11 +421,13 @@ export function relatedField<O extends KubeObject>(name: string, label: Label, r
 /** A related field's value (the core's): what it draws; its owners, each its own slot's; else as text. */
 export function RelatedValue({ kind, object, field, value, display, drawn }: ResourceFieldProps) {
   if (drawn !== undefined) return <>{drawn}</>;
-  if (field.name !== 'owners') return <>{shownAs(display)}</>;
+  if (field.name !== 'owners' && field.name !== 'controller') return <>{shownAs(display)}</>;
   return (
     <ul class="uk-list">
       {(value as ResourceOwnerProps['owner'][]).map((owner) => (
-        <li key={owner.uid}>{slotElement(slots.resource.view.related.owner, { kind, object, owner }, { limit: 1 })}</li>
+        <li key={owner.uid}>
+          <OwnerChain kind={kind} object={object} owner={owner} />
+        </li>
       ))}
     </ul>
   );

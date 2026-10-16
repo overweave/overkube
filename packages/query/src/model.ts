@@ -308,4 +308,6 @@ export interface Source {
   count(query: CountQuery): Live<CountResult>;
   /** A kind's fields (by its ref): what its queries may ask by. */
   fields(kind: KindRef): Live<FieldsResult>;
+  /** The kinds (refs) whose objects were seen owned by an object of this kind (their ownerReferences), of those it has read: what it may own. */
+  owned(kind: KindRef): Live<readonly KindRef[]>;
 }

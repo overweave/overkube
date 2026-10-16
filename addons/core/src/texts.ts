@@ -270,7 +270,11 @@ export const T = {
       },
       related: {
         title: t('core.resource.view.related.title', 'Related'),
+        controller: t('core.resource.view.related.controller', 'Controlled by'),
         owners: t('core.resource.view.related.owners', 'Owners'),
+        /** Those owned by those it owns (a Deployment's pods): by whom. */
+        by: t('core.resource.view.related.by', 'by its {kind}'),
+        byFirst: t('core.resource.view.related.by-first', 'by its first {count} of {of} {kind}'),
       },
       /** A pod's own. */
       pod: {

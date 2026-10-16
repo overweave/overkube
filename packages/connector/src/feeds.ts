@@ -95,6 +95,12 @@ export class Feeds {
     return this.read(feedKey(spec))?.feed;
   }
 
+  /** The feeds there are now (read as a signal: again as one comes). */
+  all(): Feed[] {
+    this.added.value;
+    return [...this.entries.values()].map((e) => e.feed);
+  }
+
   /** How many hold the feed of this spec (none, or no such feed: 0). */
   holders(spec: FeedSpec): number {
     return this.read(feedKey(spec))?.refs ?? 0;

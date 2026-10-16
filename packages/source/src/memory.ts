@@ -24,6 +24,7 @@ import {
 import { computed, type ReadonlySignal } from '@preact/signals';
 import { capabilities, FieldsCache } from './fields.ts';
 import { filtered, isError, makeFilter, withTold } from './filter.ts';
+import { OwnedKinds } from './owned.ts';
 
 /*
  * Queries answered from objects in memory (a test's, a story's): the same
@@ -54,6 +55,7 @@ const CRDS = 'customresourcedefinitions.v1.apiextensions.k8s.io';
 /** A source of these objects, by their kind's ref (pods.v1): followed as the signal changes. */
 export function memorySource(objects: ReadonlySignal<Readonly<Record<KindRef, readonly KubeObject[]>>>, options: MemoryOptions = {}): Source {
   const cache = new FieldsCache();
+  const owning = new OwnedKinds();
   const kinds = new Map([...knownKinds, ...(options.kinds ?? [])].map((k) => [kindRef(k), k]));
   const all: Result = { state: 'live', coverage: { namespaces: 'all', denied: [] } };
 
@@ -118,6 +120,16 @@ export function memorySource(objects: ReadonlySignal<Readonly<Record<KindRef, re
         if (filter && isError(filter)) return failed(filter);
         const kept = filtered(inScope(query.kind, query.scope), filter);
         return { ...stateOf(query.kind).result, ...withTold(scanCount(kept.objects, query, f.made.fields), kept.told()) };
+      });
+    },
+    owned(kind: KindRef): Live<readonly KindRef[]> {
+      let last: readonly KindRef[] = [];
+      return computed(() => {
+        for (const [ref, of] of Object.entries(objects.value)) owning.learn(ref, ref, of, () => of);
+        const info = kinds.get(kind);
+        const now = info ? owning.of(info.group, info.kind) : [];
+        if (now.join() !== last.join()) last = now;
+        return last;
       });
     },
     fields(kind: KindRef): Live<FieldsResult> {

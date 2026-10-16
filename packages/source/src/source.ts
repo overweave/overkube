@@ -30,6 +30,7 @@ import {
 import { computed, effect, type ReadonlySignal, type Signal, signal, untracked } from '@preact/signals';
 import { capabilities, FieldsCache, type KindFields } from './fields.ts';
 import { filtered, isError, type MadeFilter, makeFilter, ticking, withTold } from './filter.ts';
+import { OwnedKinds } from './owned.ts';
 
 /*
  * Queries answered by the page, from the cluster's data as it watches it.
@@ -88,6 +89,9 @@ type Ask = { as: 'get'; query: GetQuery } | { as: 'list'; query: ListQuery } | {
 
 export function createSource(connector: Connector, options: SourceOptions = {}): Source {
   const fields = new FieldsCache();
+  // What kinds own what kinds, learned from the objects its feeds read.
+  const owning = new OwnedKinds();
+  const owners = new Map<KindRef, Live<readonly KindRef[]>>();
   /** The queries read now, by what they ask. */
   const lives = new Map<string, Live<unknown>>();
   /** Lists ordered whole, by query (its window aside) and what it read: windows of one query read of it while its objects are as they were. */
@@ -331,6 +335,23 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
 
   return {
     capabilities: caps,
+    owned(kind: KindRef): Live<readonly KindRef[]> {
+      // One for each kind, whoever asks: its kind (as discovery has it) found apart from what changes often.
+      const had = owners.get(kind);
+      if (had) return had;
+      const of = computed(() => [...(connector.discovery.kinds.value?.values() ?? [])].find((k) => kindRef(k) === kind));
+      let last: readonly KindRef[] = [];
+      const live = computed(() => {
+        // The feeds read: what their objects' owners are learned of (each again only as it changes, a while apart).
+        for (const feed of connector.feeds.all()) owning.learn(feed.key, kindRef(feed.spec.kind), feed.revision.value, () => feed.objects.values());
+        const k = of.value;
+        const now = k ? owning.of(k.group, k.kind) : [];
+        if (now.join() !== last.join()) last = now;
+        return last;
+      });
+      owners.set(kind, live);
+      return live;
+    },
     fields(kind: KindRef): Live<FieldsResult> {
       return live({ as: 'fields', query: { kind } }, (plan) => {
         const status = statusOf(plan);

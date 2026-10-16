@@ -56,5 +56,8 @@ export const useCount = (query: CountQuery): CountResult => useAnswer(query, (c,
 /** One object, by its kind, namespace and name. */
 export const useGet = <O = unknown>(query: GetQuery): GetResult<O> => useAnswer(query, (c, q) => c.source.get<O>(q));
 
+/** The kinds (refs) seen owned by objects of this kind: what one of it may own (learned from what the page has read). */
+export const useOwned = (kind: KindRef): readonly KindRef[] => useAnswer(kind, (c, k) => c.source.owned(k));
+
 /** A kind's fields (by its ref: pods.v1): what its queries may ask by, the columns its own definition says. */
 export const useFields = (kind: KindRef): FieldsResult => useAnswer(kind, (c, k) => c.source.fields(k));
