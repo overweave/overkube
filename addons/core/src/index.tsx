@@ -75,6 +75,7 @@ import { KindMissing, Overview, PageTable } from './pages.tsx';
 import { Picker, PickerContent, PickerEmpty, PickerItem, PickerItemTitle, PickerSearch, PickerSection, PickerSectionTitle, PickerSide } from './picker.tsx';
 import { Actions, type Layout, LayoutSwitch, ResourceMissing, ResourceOverview, ResourceTitle, ResourceView, Yaml } from './ResourceView.tsx';
 import { Owned } from './relations.tsx';
+import { HeaderSearch } from './search.tsx';
 import { addStatusLooks } from './statuses.tsx';
 import { Toasts } from './Toasts.tsx';
 import { T } from './texts.ts';
@@ -167,6 +168,8 @@ export default defineAddon({
     c.add('Fill', 'core.header.brand', fill(slots.header.start, { order: 0, render: Brand }));
     // The namespaces the tables show (none chosen: all), chosen at its end — kept while the page runs (the user's layer's, once there is one).
     const namespaces: Chosen = signal<readonly string[]>([]);
+    // A search of every kind (/, ⌘K), before the namespaces.
+    c.add('Fill', 'core.header.search', fill(slots.header.end, { order: 100, render: () => <HeaderSearch chosen={namespaces} /> }));
     c.add('Fill', 'core.header.namespaces', fill(slots.header.end, { render: () => <NamespacePicker chosen={namespaces} /> }));
     addOverview(c, namespaces);
     // A kind's header over its table: the last in its slot (another's for a kind in its place); its title, its group and version, how many, its columns.
@@ -336,7 +339,7 @@ export default defineAddon({
     c.add('Fill', 'core.nav.picker.section', fill(picker.section, { order: 1000, render: PickerSection }));
     c.add('Fill', 'core.nav.picker.section.title', fill(picker.section.content, { render: PickerSectionTitle }));
     c.add('Fill', 'core.nav.picker.content', fill(picker.content, { render: PickerContent }));
-    c.add('Fill', 'core.nav.picker.item', fill(picker.item, { order: 1000, render: PickerItem }));
+    c.add('Fill', 'core.nav.picker.item', fill(picker.item, { order: 1000, render: (p) => <PickerItem {...p} chosen={namespaces} /> }));
     c.add('Fill', 'core.nav.picker.item.title', fill(picker.item.content, { render: PickerItemTitle }));
     c.add('Fill', 'core.nav.picker.empty', fill(picker.empty, { order: 1000, render: PickerEmpty }));
     // A tab's menu: pinned or not, closed (an open one).

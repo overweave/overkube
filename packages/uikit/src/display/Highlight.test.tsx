@@ -7,7 +7,7 @@ import { Highlight } from './Highlight';
 afterEach(cleanup);
 
 /** The text as drawn, the marked part in brackets. */
-function drawn(text: string, query: string): string {
+function drawn(text: string, query: string | string[]): string {
   const { container } = render(<Highlight text={text} query={query} />);
   return [...container.childNodes].map((n) => (n.nodeName === 'MARK' ? `[${n.textContent}]` : n.textContent)).join('');
 }
@@ -47,5 +47,10 @@ describe('Highlight', () => {
   it('marks with the kit’s mark', () => {
     const { container } = render(<Highlight text="Pods" query="po" />);
     expect(container.querySelector('mark')?.getAttribute('class')).toBe('uk-mark');
+  });
+
+  it('marks every match of each of many words', () => {
+    expect(drawn('web-api-web', ['web', 'API'])).toBe('[web]-[api]-[web]');
+    expect(drawn('web', [])).toBe('web');
   });
 });

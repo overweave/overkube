@@ -39,7 +39,7 @@ function useOwnedKinds(kind: KindInfo): KindInfo[] {
   const { kinds } = useServedKinds();
   const ref = kindRef(kind);
   const seen = useOwned(ref);
-  return [...new Set([...(OWNED[ref] ?? []), ...seen])].flatMap((r) => kindOfRef(kinds.values(), r) ?? []);
+  return [...new Set([...(OWNED[ref] ?? []), ...seen])].flatMap((r) => kindOfRef(kinds, r) ?? []);
 }
 
 /** A state's tone as a dot's level (done as fine; on its way or waiting as to look at; gone, not known: none). */

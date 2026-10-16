@@ -48,6 +48,22 @@ export const T = {
       image: t('core.tip.container.image', 'Image'),
     },
   },
+  /** The search of every kind (/, ⌘K): its button, its field, what it says of what it found and how far it is. */
+  search: {
+    button: t('core.search.button', 'Search'),
+    open: t('core.search.open', 'Search every kind (/)'),
+    label: t('core.search.label', 'Search every kind'),
+    placeholder: t('core.search.placeholder', 'A name, app=web, or a kind first: po web'),
+    nothing: t('core.search.nothing', 'Nothing found'),
+    short: t('core.search.short', 'Type two letters or more'),
+    everywhere: t('core.search.everywhere', 'Only {kind} — search everywhere for “{text}”'),
+    all: t('core.search.all', 'All {count} {kind}'),
+    searched: t('core.search.searched', '{searched} of {kinds} kinds searched'),
+    denied: t('core.search.denied', '{count} not allowed'),
+    failed: t('core.search.failed', '{count} failed'),
+    partial: t('core.search.partial', '{count} in part'),
+    truncated: t('core.search.truncated', '{count} cut short'),
+  },
   nav: {
     kinds: t('core.nav.kinds', 'Kinds'),
     pages: t('core.nav.pages', 'Pages'),

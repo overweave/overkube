@@ -1,12 +1,14 @@
+import type { KindInfo } from '@overkube/kube-types';
 import type { NavPickerEntry, NavPickerItemProps, NavPickerPartProps, NavPickerProps, NavPickerSection, NavPickerSectionProps } from '@overkube/sdk';
-import { slots } from '@overkube/sdk';
-import { usePage, useSay } from '@overkube/sdk/preact';
+import { kindRef, slots } from '@overkube/sdk';
+import { usePage, useSay, useSize } from '@overkube/sdk/preact';
 import { CatalogBody, CatalogBox, CatalogHeading, CatalogPane, CatalogRow, CatalogSearch, CatalogSection, CatalogTop, EmptyState, Highlight, pinTab } from '@overkube/uikit';
 import { slotElement } from '@overweave/ui/preact';
 import { Fragment } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import { builtIn } from './kinds.ts';
 import { type TabsState, useTabs } from './Nav.tsx';
+import { type Chosen, scopeOf } from './namespaces.tsx';
 import { type NavEntry, type NavGroup, useNav } from './nav.ts';
 import { T } from './texts.ts';
 
@@ -189,8 +191,8 @@ function byHeading(entries: readonly NavPickerEntry[]): { heading?: string; entr
   return [...groups].map(([heading, list]) => ({ heading, entries: list }));
 }
 
-/** An entry as the core draws it (nav.picker.item's last): a link to it (gone to: the picker closed), its icon, what is in it the content slot's, its pin. */
-export function PickerItem(item: NavPickerItemProps) {
+/** An entry as the core draws it (nav.picker.item's last): a link to it (gone to: the picker closed), its icon, what is in it the content slot's, how many of its kind there are, its pin. */
+export function PickerItem(item: NavPickerItemProps & { chosen: Chosen }) {
   const page = usePage();
   const say = useSay();
   const { entry, pinned, pin, close, place } = item;
@@ -206,11 +208,24 @@ export function PickerItem(item: NavPickerItemProps) {
       }}
       icon={entry.icon}
       place={place}
+      extra={entry.kind ? <KindSize kind={entry.kind} chosen={item.chosen} /> : undefined}
       pin={{ on: pinned, label: say(pinned ? T.nav.picker.unpin : T.nav.picker.pin, { title: entry.title }), onToggle: pin }}
     >
       {slotElement(slots.nav.picker.item.content, item)}
     </CatalogRow>
   );
+}
+
+/** How many of a kind there are in the namespaces chosen (as cheaply as can be: as of a while ago where not watched): ~ where at least so many; — where it may not be listed. */
+function KindSize({ kind, chosen }: { kind: KindInfo; chosen: Chosen }) {
+  const scope = scopeOf(kind, undefined, chosen.value);
+  const { total, error } = useSize(kindRef(kind), scope);
+  const say = useSay();
+  if (error) return <span title={error.message}>—</span>;
+  if (!total) return null;
+  // As short as it reads in the page's language (1.2K, 48K): at least so many (1+); about so many as it is (an estimate: near enough for a picker).
+  const n = new Intl.NumberFormat(say.locale, { notation: 'compact', maximumFractionDigits: 1 }).format(total.count);
+  return <>{total.atLeast ? `${n}+` : n}</>;
 }
 
 /** What is in a section down the side (the core's): its title. */

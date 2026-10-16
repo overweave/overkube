@@ -17,7 +17,9 @@ export {
   filterParts,
   filterValue,
   filterVariables,
+  looseFilter,
   planFilter,
   resugar,
 } from './filter.ts';
 export { parseQuantity, pow10, Quantity } from './quantity.ts';
+export { looseCel, requirementCel, selectorCel } from './selector.ts';

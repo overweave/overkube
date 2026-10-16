@@ -172,6 +172,68 @@ describe('a feed', () => {
   });
 });
 
+describe('a list once', () => {
+  it('reads a kind in pages, nothing watched or kept: its metadata only (managedFields out), of labels, of a namespace, so many at most', async () => {
+    const pods = ['p1', 'p2', 'p3', 'p4', 'p5'].map((n, i) => pod(n, i < 3 ? 'a' : 'b', { tier: i % 2 ? 'odd' : 'even' }));
+    const { connector, kube } = await setup(pods);
+    const all = await connector.list(Pod, { projection: 'metadata', pageSize: 2 });
+    expect([all.items.map((o) => o.metadata?.name).sort(), all.truncated]).toEqual([['p1', 'p2', 'p3', 'p4', 'p5'], false]);
+    expect([all.items[0].metadata?.managedFields, (all.items[0] as { spec?: unknown }).spec]).toEqual([undefined, undefined]);
+    expect((await connector.list(Pod, { labelSelector: 'tier=odd' })).items.map((o) => o.metadata?.name).sort()).toEqual(['p2', 'p4']);
+    expect((await connector.list(Pod, { namespace: 'b' })).items.map((o) => o.metadata?.name).sort()).toEqual(['p4', 'p5']);
+    const few = await connector.list(Pod, { pageSize: 2, max: 3 });
+    expect([few.items.length, few.truncated]).toEqual([3, true]);
+    expect(kube.requests.some((r) => r.includes('/pods') && r.includes('watch'))).toBe(false);
+  });
+
+  it('counts a kind as cheaply as can be — a page of one, how many past it — of a namespace; a list of one or none: as it is', async () => {
+    const { connector, kube } = await setup(['p1', 'p2', 'p3', 'p4'].map((n, i) => pod(n, i < 3 ? 'a' : 'b')));
+    // Past a page: the server's estimate (not to be relied on as exact).
+    expect(await connector.count(Pod)).toEqual({ count: 4, exact: false });
+    expect(await connector.count(Pod, { namespace: 'b' })).toEqual({ count: 1, exact: true });
+    expect(await connector.count(Node)).toEqual({ count: 0, exact: true });
+    expect(kube.requests.filter((r) => r.includes('/pods?')).every((r) => r.includes('limit=1'))).toBe(true);
+    // No estimate said (a server that does not): at least the one read.
+    const original = connector.http.get.bind(connector.http);
+    connector.http.get = (async (...args: Parameters<typeof original>) => {
+      const page = (await original(...args)) as { metadata?: { remainingItemCount?: number } };
+      delete page.metadata?.remainingItemCount;
+      return page;
+    }) as typeof connector.http.get;
+    expect(await connector.count(Pod)).toEqual({ count: 1, exact: false, atLeast: true });
+  });
+
+  it('keeps to max whatever a server sends; asks nothing of a max of none, nor once closed', async () => {
+    const { connector, kube } = await setup(['p1', 'p2', 'p3', 'p4'].map((n) => pod(n)));
+    // A server that does not keep to limit: all of them on one page.
+    const original = connector.http.get.bind(connector.http);
+    connector.http.get = ((path: string, query: Record<string, string | undefined> = {}, ...rest: unknown[]) =>
+      (original as (...a: unknown[]) => Promise<unknown>)(path, { ...query, limit: undefined }, ...rest)) as typeof connector.http.get;
+    expect(await connector.list(Pod, { max: 2 }).then((l) => [l.items.length, l.truncated])).toEqual([2, true]);
+    const before = kube.requests.length;
+    expect(await connector.list(Pod, { max: 0 })).toEqual({ items: [], truncated: true });
+    expect(kube.requests.length).toBe(before);
+    connector.close();
+    await expect(connector.list(Pod)).rejects.toMatchObject({ code: 'closed' });
+    await expect(connector.count(Pod)).rejects.toMatchObject({ code: 'closed' });
+  });
+
+  it('begins again once when its continue goes stale (410); a kind it may not list: the API server’s error', async () => {
+    const { connector, kube } = await setup(['p1', 'p2', 'p3'].map((n) => pod(n)));
+    let pages = 0;
+    const original = connector.http.get.bind(connector.http);
+    connector.http.get = (async (...args: Parameters<typeof original>) => {
+      const page = await original(...args);
+      if (++pages === 1) kube.expire();
+      return page;
+    }) as typeof connector.http.get;
+    expect((await connector.list(Pod, { pageSize: 2 })).items).toHaveLength(3);
+    connector.http.get = original;
+    kube.forbidden.add('/api/v1/nodes');
+    await expect(connector.list(Node)).rejects.toMatchObject({ status: 403, code: 'Forbidden' });
+  });
+});
+
 describe('the stream', () => {
   it('waits for room: what nobody holds is let go first, one held waits until there is room', async () => {
     const { kube, feeds } = await setup([pod('x', 'a'), pod('x', 'b'), pod('x', 'c')], { stream: { maxSubscriptions: 3 }, feeds: { lingerMs: 10_000 } });

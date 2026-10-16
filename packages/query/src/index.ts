@@ -38,6 +38,11 @@ export type {
   QueryError,
   Result,
   Scope,
+  SearchGroup,
+  SearchItem,
+  SearchQuery,
+  SearchResult,
+  SizeResult,
   Sort,
   Source,
   State,
@@ -65,4 +70,17 @@ export {
   valuesReader,
   windowOf,
 } from './scan.ts';
+export {
+  holdsTo,
+  kindOfRef,
+  type LabelSelector,
+  type Loose,
+  lowerAscii,
+  parseLoose,
+  parseSelector,
+  type Requirement,
+  rankOf,
+  requirementsOf,
+  wordsOf,
+} from './selector.ts';
 export { byCodePoint } from './text.ts';

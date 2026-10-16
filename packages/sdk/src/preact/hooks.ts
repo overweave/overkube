@@ -9,6 +9,10 @@ import {
   type ListQuery,
   type ListResult,
   type Live,
+  type Scope,
+  type SearchQuery,
+  type SearchResult,
+  type SizeResult,
 } from '@overkube/query';
 import { type ComponentChildren, createContext, h } from 'preact';
 import { useContext, useMemo } from 'preact/hooks';
@@ -55,6 +59,12 @@ export const useCount = (query: CountQuery): CountResult => useAnswer(query, (c,
 
 /** One object, by its kind, namespace and name. */
 export const useGet = <O = unknown>(query: GetQuery): GetResult<O> => useAnswer(query, (c, q) => c.source.get<O>(q));
+
+/** Objects of every kind, by name or labels, as loosely as typed (Cmd+K's): as they come, kind by kind. */
+export const useSearch = (query: SearchQuery): SearchResult => useAnswer(query, (c, q) => c.source.search(q));
+
+/** How many of a kind there are (in a scope), asked as cheaply as can be (a picker's counts: not a query of each). */
+export const useSize = (kind: KindRef, scope?: Scope): SizeResult => useAnswer([kind, scope ?? 'all'] as const, (c, [k, sc]) => c.source.size(k, sc));
 
 /** The kinds (refs) seen owned by objects of this kind: what one of it may own (learned from what the page has read). */
 export const useOwned = (kind: KindRef): readonly KindRef[] => useAnswer(kind, (c, k) => c.source.owned(k));

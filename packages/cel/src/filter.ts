@@ -1,7 +1,8 @@
 import { serialize } from '@marcbachmann/cel-js';
-import type { FieldName, FieldType, KindRef, Where } from '@overkube/query';
+import { type FieldName, type FieldType, type KindRef, lowerAscii, parseLoose, parseSelector, wordsOf as typedWords, type Where } from '@overkube/query';
 import type { Cel } from './cel.ts';
 import { CelError } from './cel.ts';
+import { labelValue, looseCel, requirementCel } from './selector.ts';
 
 /*
  * A user's filter of a kind's objects: CEL over the kind's fields by short
@@ -157,9 +158,6 @@ export interface Desugared {
 const KEY = /[A-Za-z0-9._/-]/;
 const WORD_END = /[\s(),\]&|]/;
 const COMPARE = ['==', '!=', '<=', '>=', '<', '>'];
-
-/** A label's value, none where it has none: "" (labels[?"app"].orValue("")) — a label test on an object without it false (or, negated, true), not an error. */
-const labelValue = (key: string) => `labels[?${JSON.stringify(key)}].orValue("")`;
 
 /** A number as CEL has it (1, -2, 1.5, 1e3, 3u, 0x1f), nothing of a word after it (2nd-node: a word). */
 const NUMBER = /^-?(?:0x[0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)u?(?![\w.-])/;
@@ -383,72 +381,46 @@ export function desugar(text: string, given: readonly FilterVariable[]): Desugar
   return { cel, at };
 }
 
-/** ASCII's capitals small (CEL's lowerAscii: other letters as they are). */
-const lowerAscii = (s: string) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+/** A loose search's text (words: each in a name, as typed; a label selector as kubectl takes it) as a filter of any kind's: its CEL; nothing typed: none. */
+export function looseFilter(text: string): string | undefined {
+  const loose = parseLoose(text);
+  return loose && looseCel(loose);
+}
 
 /** Words alone (no operator, no call, no variable: web api, web.shop), each in an object's name, ASCII's case aside. */
 function alone(text: string, variables: ReadonlySet<string>): Desugared | undefined {
-  const words = [...text.matchAll(/"[^"]*"|'[^']*'|[^\s"']+/g)];
+  const words = typedWords(text);
   const own = (w: string) => {
     const head = w.split('.')[0];
     return variables.has(head) || variables.has(`${head}_`) || OWN.includes(head) || RESERVED.has(head) || head === 'now' || head === AGE;
   };
-  if (!words.length || words.some(([w]) => (!/^["']/.test(w) && (/[=<>!()[\]&|,]/.test(w) || /^[-+*/%?:]+$/.test(w) || own(w))) || /^(and|or|not|in)$/i.test(w))) return undefined;
+  if (!words.length || words.some(({ word, quoted }) => (!quoted && (/[=<>!()[\]&|,]/.test(word) || /^[-+*/%?:]+$/.test(word) || own(word))) || /^(and|or|not|in)$/i.test(word)))
+    return undefined;
   let cel = '';
   const at: number[] = [];
-  words.forEach((m, n) => {
-    const raw = m[0];
-    const part = `${n ? ' && ' : ''}name.lowerAscii().contains(${JSON.stringify(lowerAscii(/^["']/.test(raw) ? raw.slice(1, -1) : raw))})`;
+  words.forEach(({ word, at: from }, n) => {
+    const part = `${n ? ' && ' : ''}name.lowerAscii().contains(${JSON.stringify(lowerAscii(word))})`;
     cel += part;
-    for (let i = 0; i < part.length; i++) at.push(m.index ?? 0);
+    for (let i = 0; i < part.length; i++) at.push(from);
   });
   return { cel, at };
 }
 
-/** A label selector as kubectl takes it (key=value, key!=value, key in (a,b), key notin (a,b), key, !key — by commas), its keys none of the variables; else none. */
+/** A label selector as kubectl takes it (parseSelector's), its keys none of the variables: as CEL, each requirement where it was typed; else none. */
 function fromSelector(text: string, variables: ReadonlySet<string>): Desugared | undefined {
-  const parts: [string, number][] = [];
-  let depth = 0;
-  let from = 0;
-  for (let i = 0; i <= text.length; i++) {
-    const ch = text[i];
-    if (ch === '(') depth++;
-    if (ch === ')') depth--;
-    if (i === text.length || (ch === ',' && depth === 0)) {
-      parts.push([text.slice(from, i), from]);
-      from = i + 1;
-    }
-  }
-  const key = '([A-Za-z0-9][A-Za-z0-9._/-]*)';
-  const val = '([A-Za-z0-9._-]*)';
-  const one = '[A-Za-z0-9._-]+';
-  const list = `\\(\\s*(${one}(?:\\s*,\\s*${one})*)\\s*\\)`;
-  const values = (m: RegExpExecArray) => JSON.stringify(m[2].split(',').map((v) => v.trim()));
-  const forms: [RegExp, (m: RegExpExecArray) => string][] = [
-    [new RegExp(`^\\s*${key}\\s*==?\\s*${val}\\s*$`), (m) => `${labelValue(m[1])} == ${JSON.stringify(m[2])}`],
-    [new RegExp(`^\\s*${key}\\s*!=\\s*${val}\\s*$`), (m) => `${labelValue(m[1])} != ${JSON.stringify(m[2])}`],
-    [new RegExp(`^\\s*${key}\\s+in\\s*${list}\\s*$`), (m) => `${labelValue(m[1])} in ${values(m)}`],
-    [new RegExp(`^\\s*${key}\\s+notin\\s*${list}\\s*$`), (m) => `!(${labelValue(m[1])} in ${values(m)})`],
-    [new RegExp(`^\\s*!\\s*${key}\\s*$`), (m) => `!(${JSON.stringify(m[1])} in labels)`],
-    [new RegExp(`^\\s*${key}\\s*$`), (m) => `${JSON.stringify(m[1])} in labels`],
-  ];
+  const requirements = parseSelector(text);
+  if (!requirements) return undefined;
   let cel = '';
   const at: number[] = [];
-  let operated = false;
-  for (const [part, start] of parts) {
-    const hit = forms.findIndex(([re]) => re.test(part));
-    if (hit < 0) return undefined;
-    const m = forms[hit][0].exec(part) as RegExpExecArray;
+  for (const r of requirements) {
     // A variable's (status=Running, labels.app=web): CEL's, not a selector's — a key with a prefix (node.kubernetes.io/role) a label's.
-    const head = m[1].split('.')[0];
-    if (OWN.includes(head) || (!m[1].includes('/') && (variables.has(head) || variables.has(`${head}_`)))) return undefined;
-    // A word alone is a name's (web), not a label had: a selector says something more of one of its keys.
-    if (hit < 5) operated = true;
-    const said = `${cel ? ' && ' : ''}${forms[hit][1](m)}`;
+    const head = r.key.split('.')[0];
+    if (OWN.includes(head) || (!r.key.includes('/') && (variables.has(head) || variables.has(`${head}_`)))) return undefined;
+    const said = `${cel ? ' && ' : ''}${requirementCel(r)}`;
     cel += said;
-    for (let i = 0; i < said.length; i++) at.push(start);
+    for (let i = 0; i < said.length; i++) at.push(r.at);
   }
-  return operated ? { cel, at } : undefined;
+  return { cel, at };
 }
 
 // ── Plan: what a query asks, what is left ──────────────────────────────────

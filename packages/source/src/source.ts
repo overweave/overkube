@@ -1,5 +1,5 @@
 import type { Layer } from '@overkube/cel';
-import { type Connector, type Feed, type FeedHold, type FeedSpec, feedKey } from '@overkube/connector';
+import { type Connector, type Counted, type Feed, type FeedHold, type FeedSpec, feedKey } from '@overkube/connector';
 import type { CrdLike } from '@overkube/kube-fields';
 import { type KindInfo, type KubeObject, kinds as known } from '@overkube/kube-types';
 import {
@@ -21,6 +21,10 @@ import {
   type QueryError,
   type Result,
   type Scope,
+  type SearchItem,
+  type SearchQuery,
+  type SearchResult,
+  type SizeResult,
   type Source,
   scan,
   scanCount,
@@ -28,9 +32,16 @@ import {
   windowOf,
 } from '@overkube/query';
 import { computed, effect, type ReadonlySignal, type Signal, signal, untracked } from '@preact/signals';
+import { queryErrorOf, refusedBy } from './errors.ts';
 import { capabilities, FieldsCache, type KindFields } from './fields.ts';
 import { filtered, isError, type MadeFilter, makeFilter, ticking, withTold } from './filter.ts';
+import { type Held, Kept } from './kept.ts';
 import { OwnedKinds } from './owned.ts';
+import { Queue } from './queue.ts';
+import { answer, itemOf, SEARCH_MAX, SEARCH_MS, searchedKinds } from './search.ts';
+
+/** How long a kind's count (not watched) is kept fresh. */
+const SIZE_MS = 60_000;
 
 /*
  * Queries answered by the page, from the cluster's data as it watches it.
@@ -92,6 +103,10 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
   // What kinds own what kinds, learned from the objects its feeds read.
   const owning = new OwnedKinds();
   const owners = new Map<KindRef, Live<readonly KindRef[]>>();
+  // What is asked once of the cluster, a few at a time — counts (in sight) first, a search's lists after — and kept a while.
+  const queue = new Queue();
+  const counts = new Kept<Counted>({ queue, lane: 'now', ttl: SIZE_MS });
+  const lists = new Kept<{ items: readonly SearchItem[]; truncated: boolean }>({ queue, lane: 'later', ttl: SEARCH_MS });
   /** The queries read now, by what they ask. */
   const lives = new Map<string, Live<unknown>>();
   /** Lists ordered whole, by query (its window aside) and what it read: windows of one query read of it while its objects are as they were. */
@@ -119,7 +134,7 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
             if (into.peek().asked === generation) into.value = { asked: generation, generation, crd };
           })
           .catch((e: unknown) => {
-            if (into.peek().asked === generation) into.value = { ...into.peek(), error: errorOf(e as never) };
+            if (into.peek().asked === generation) into.value = { ...into.peek(), error: queryErrorOf(e as never) };
           });
       });
     }
@@ -223,7 +238,7 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     const kind = kindOf(query.kind);
     if (kind === null) {
       const failed = connector.discovery.state.value === 'error';
-      return failed ? { state: 'error', error: errorOf(connector.discovery.error.value) } : LOADING;
+      return failed ? { state: 'error', error: queryErrorOf(connector.discovery.error.value) } : LOADING;
     }
     if (!kind) return { state: 'error', error: { code: 'not_served', message: `the cluster does not serve ${query.kind}` } };
 
@@ -284,9 +299,9 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     const spaces = want({ kind: NAMESPACE, projection: 'metadata' });
     spaces.revision.value;
     if (spaces.state.value === 'loading') return LOADING;
-    if (spaces.state.value === 'error' && !forbidden(spaces)) return { state: 'error', error: errorOf(spaces.error.value) };
+    if (spaces.state.value === 'error' && !forbidden(spaces)) return { state: 'error', error: queryErrorOf(spaces.error.value) };
     const names = forbidden(spaces) ? [...new Set(options.namespaces ?? [])] : [...spaces.objects.values()].map((o) => o.metadata?.name ?? '').filter(Boolean);
-    if (forbidden(spaces) && names.length === 0) return { state: 'denied', error: errorOf(cluster.error.value) };
+    if (forbidden(spaces) && names.length === 0) return { state: 'denied', error: queryErrorOf(cluster.error.value) };
     // More than may be watched one by one: the first of them (by name), the rest not had — said so (partial).
     const asked = names.length > maxNamespaces ? [...names].sort().slice(0, maxNamespaces) : names;
     return {
@@ -333,13 +348,156 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     return made && !isError(made) ? made : undefined;
   }
 
+  /** What keeps every one-shot answer back: the page signed out (none asked till it is loaded again), what the cluster serves not known. */
+  function troubleOf(): QueryError | undefined {
+    if (connector.session.value === 'expired') return { code: 'unauthorized', message: 'signed out: sign in again and reload the page' };
+    if (connector.discovery.state.value === 'error') return queryErrorOf(connector.discovery.error.value);
+    return undefined;
+  }
+
+  /** A kind's objects as a feed already had has them (live or stale; whole or its metadata; of every namespace, or of this one): none, not watched. */
+  function watched(kind: KindInfo, namespace?: string): KubeObject[] | undefined {
+    const specs: FeedSpec[] = [
+      { kind },
+      { kind, projection: 'metadata' },
+      ...(namespace
+        ? [
+            { kind, namespace },
+            { kind, namespace, projection: 'metadata' as const },
+          ]
+        : []),
+    ];
+    for (const spec of specs) {
+      const feed = connector.feeds.find(spec);
+      const state = feed?.state.value;
+      if (!feed || (state !== 'live' && state !== 'stale')) continue;
+      feed.revision.value;
+      const all = [...feed.objects.values()];
+      return namespace && !spec.namespace ? all.filter((o) => o.metadata?.namespace === namespace) : all;
+    }
+    return undefined;
+  }
+
+  /** The namespaces one may ask of one by one (every one refused): those there are (as listed, kept), else those given (theirs refused); so many at most — those past them skipped. */
+  function namespacesAsked(): { names: string[]; skipped: number } | { error: QueryError } | undefined {
+    const spaces = watched(NAMESPACE);
+    const listed = spaces
+      ? { value: { items: spaces.map(itemOf), truncated: false } }
+      : lists.read(`${NAMESPACE.id}|names`, (signal) =>
+          connector.list(NAMESPACE, { projection: 'metadata', signal }).then((l) => ({ items: l.items.map(itemOf), truncated: l.truncated })),
+        );
+    if (!listed) return undefined;
+    // Not listed for another reason than a refusal: that is the trouble (not the kind's).
+    if ('error' in listed && !refusedBy(listed.error)) return { error: listed.error };
+    const all = [...new Set('error' in listed ? (options.namespaces ?? []) : listed.value.items.map((i) => i.name))].sort();
+    return { names: all.slice(0, maxNamespaces), skipped: Math.max(0, all.length - maxNamespaces) };
+  }
+
+  /** A kind's one-shot answers gathered: its items, whether there were more than read, whether some of it was not had (refused, skipped). */
+  type Gathered<T extends { items: readonly unknown[] }> = { items: T['items'][number][]; truncated: boolean; partial: boolean; parts: T[] };
+
+  /**
+   * A kind's one-shot answers gathered, as the planner asks feeds: of every
+   * namespace (refused: namespace by namespace — of the scope's, else of
+   * those there are; some refused or skipped: partial), or (each: a count,
+   * not to be filtered after) of the scope's namespaces each; none yet: on
+   * its way.
+   */
+  function gathered<T extends { items: readonly unknown[]; truncated: boolean }>(
+    kind: KindInfo,
+    scope: Scope | undefined,
+    one: (namespace: string | undefined) => Held<T> | undefined,
+    how: { each: boolean },
+  ): Gathered<T> | { error: QueryError } | undefined {
+    const merge = (parts: (Held<T> | undefined)[], skipped = 0): Gathered<T> | { error: QueryError } | undefined => {
+      if (parts.some((p) => !p)) return undefined;
+      const had = parts.filter((p): p is { value: T } => !!p && 'value' in p);
+      const refused = parts.filter((p) => p && 'error' in p && refusedBy(p.error));
+      const other = parts.find((p): p is { error: QueryError } => !!p && 'error' in p && !refusedBy(p.error));
+      if (other) return { error: other.error };
+      if (!had.length) return { error: (parts[0] as { error: QueryError }).error };
+      return {
+        items: had.flatMap((p) => p.value.items),
+        truncated: had.some((p) => p.value.truncated),
+        partial: refused.length > 0 || skipped > 0,
+        parts: had.map((p) => p.value),
+      };
+    };
+    const scoped = kind.namespaced && scope && scope !== 'all' ? [...new Set(scope.namespaces)] : undefined;
+    if (scoped && how.each) return merge(scoped.map((ns) => one(ns)));
+    const whole = one(undefined);
+    if (!whole || !kind.namespaced || !('error' in whole) || !refusedBy(whole.error)) return merge([whole]);
+    // Refused of every namespace: of each one may be allowed (the scope's, else those there are).
+    if (scoped) return merge(scoped.map((ns) => one(ns)));
+    const asked = namespacesAsked();
+    if (!asked) return undefined;
+    if ('error' in asked) return asked;
+    if (!asked.names.length) return { error: whole.error };
+    return merge(
+      asked.names.map((ns) => one(ns)),
+      asked.skipped,
+    );
+  }
+
   return {
     capabilities: caps,
+    search(query: SearchQuery): Live<SearchResult> {
+      return computed((): SearchResult => {
+        const kinds = connector.discovery.kinds.value;
+        const trouble = troubleOf();
+        if (!kinds || trouble) return { ...answer(query, [], kindRef, () => undefined), ...(trouble ? { error: trouble } : { loading: true }) };
+        return answer(query, searchedKinds(kinds.values(), kindRef), kindRef, (kind) => {
+          const list = (namespace?: string) =>
+            lists.read(`${kind.id}|${namespace ?? ''}`, (signal) =>
+              connector
+                .list(kind, { projection: 'metadata', max: SEARCH_MAX, ...(namespace ? { namespace } : {}), signal })
+                .then((l) => ({ items: l.items.map(itemOf), truncated: l.truncated })),
+            );
+          // Of every namespace first (the scope's filtered after, as found): namespace by namespace only where refused.
+          return gathered(
+            kind,
+            query.scope,
+            (namespace) => {
+              const feed = watched(kind, namespace);
+              if (feed) return { value: { items: feed.map(itemOf), truncated: false } };
+              return list(namespace);
+            },
+            { each: false },
+          );
+        });
+      });
+    },
+    size(kind: KindRef, scope?: Scope): Live<SizeResult> {
+      return computed((): SizeResult => {
+        // Not to be asked (signed out, what the cluster serves not known): said so — not on its way for ever.
+        const trouble = troubleOf();
+        if (trouble) return { error: trouble };
+        const info = kindOf(kind);
+        if (info === null) return {};
+        if (!info) return { error: { code: 'not_served', message: `the cluster does not serve ${kind}` } };
+        const got = gathered(
+          info,
+          scope,
+          (namespace) => {
+            const feed = watched(info, namespace);
+            if (feed) return { value: { items: feed, truncated: false, counted: { count: feed.length, exact: true } } };
+            const counted = counts.read(`${info.id}|${namespace ?? ''}`, (signal) => connector.count(info, { ...(namespace ? { namespace } : {}), signal }));
+            return counted && ('error' in counted ? counted : { value: { items: [], truncated: false, counted: counted.value } });
+          },
+          { each: true },
+        );
+        if (!got) return {};
+        if ('error' in got) return { error: got.error };
+        const all = got.parts.map((p) => p.counted as Counted);
+        const count = all.reduce((n, c) => n + c.count, 0);
+        return { total: { count, exact: !got.partial && all.every((c) => c.exact), ...(got.partial || all.some((c) => c.atLeast) ? { atLeast: true } : {}) } };
+      });
+    },
     owned(kind: KindRef): Live<readonly KindRef[]> {
       // One for each kind, whoever asks: its kind (as discovery has it) found apart from what changes often.
       const had = owners.get(kind);
       if (had) return had;
-      const of = computed(() => [...(connector.discovery.kinds.value?.values() ?? [])].find((k) => kindRef(k) === kind));
+      const of = computed(() => kindOf(kind) ?? undefined);
       let last: readonly KindRef[] = [];
       const live = computed(() => {
         // The feeds read: what their objects' owners are learned of (each again only as it changes, a while apart).
@@ -423,9 +581,6 @@ function same(a: Plan, b: Plan): boolean {
 /** Refused: the user may not (403). */
 const forbidden = (feed: Feed) => feed.state.value === 'error' && feed.error.value?.status === 403;
 
-const errorOf = (e: { status: number; code: string; message: string } | null | undefined): QueryError =>
-  e ? { status: e.status, code: e.code, message: e.message } : { code: 'unknown', message: 'something went wrong' };
-
 /** How a plan's answer is doing: its feeds' states (read: the answer follows them), what of the cluster it covers. */
 function statusOf(plan: Plan): Result {
   if (!plan.parts) return { state: plan.state, coverage: { namespaces: [], denied: [] }, revision: `${plan.n ?? 0}`, ...(plan.error ? { error: plan.error } : {}) };
@@ -444,11 +599,11 @@ function statusOf(plan: Plan): Result {
     const why = part.feed.error.value;
     if (state === 'error') {
       if (part.namespace !== undefined && forbidden(part.feed)) denied.push(part.namespace);
-      else error ??= errorOf(why);
+      else error ??= queryErrorOf(why);
     } else {
       if (state === 'loading') loading = true;
       else if (state === 'stale') stale = true;
-      if (why && !behind) behind = { ...errorOf(why), ...(part.namespace !== undefined ? { message: `${part.namespace}: ${why.message}` } : {}) };
+      if (why && !behind) behind = { ...queryErrorOf(why), ...(part.namespace !== undefined ? { message: `${part.namespace}: ${why.message}` } : {}) };
     }
   }
   const namespaces = plan.namespaces === 'all' ? 'all' : plan.namespaces.filter((n) => !denied.includes(n));

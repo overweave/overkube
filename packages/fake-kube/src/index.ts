@@ -16,6 +16,7 @@ import type { KindInfo, KubeObject } from '@overkube/kube-types';
  *   from before compact() gets ERROR 410), from none: the objects there are
  *   as ADDED; then every change;
  * - only metadata, asked as PartialObjectMetadata(List);
+ * - how many past a page (remainingItemCount), of a list not selected;
  * - 403 for the paths forbidden (a collection in every namespace, or one namespace's).
  */
 
@@ -178,7 +179,12 @@ export class FakeKube {
     const version = id.split('-')[0];
     json(w.res, 200, {
       kind: w.meta ? 'PartialObjectMetadataList' : 'List',
-      metadata: { resourceVersion: version, ...(more ? { continue: `${id}:${offset + limit}` } : {}) },
+      // How many past this page, as the API server says it — not of a selected list (labels, fields).
+      metadata: {
+        resourceVersion: version,
+        ...(more ? { continue: `${id}:${offset + limit}` } : {}),
+        ...(more && !w.name && !w.labels.length ? { remainingItemCount: snapshot.length - offset - limit } : {}),
+      },
       items: page.map((o) => (w.meta ? metaOf(o) : o)),
     });
   }

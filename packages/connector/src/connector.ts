@@ -1,8 +1,9 @@
-import { kinds } from '@overkube/kube-types';
+import { type KindInfo, kinds } from '@overkube/kube-types';
 import { effect, type ReadonlySignal } from '@preact/signals';
 import { Discovery } from './discovery.ts';
 import { Feeds, type FeedsOptions } from './feeds.ts';
-import { Http, type HttpOptions, type Session } from './http.ts';
+import { ApiError, Http, type HttpOptions, type Session } from './http.ts';
+import { type Counted, countOnce, type Listed, type ListOnce, listOnce } from './lists.ts';
 import { type StreamOptions, WatchStream } from './stream.ts';
 
 /*
@@ -29,6 +30,10 @@ export interface Connector {
   readonly stream: WatchStream;
   readonly discovery: Discovery;
   readonly feeds: Feeds;
+  /** A kind's objects listed once: no watch, nothing kept (a search over every kind). */
+  list(kind: Pick<KindInfo, 'group' | 'version' | 'plural' | 'namespaced'>, options?: ListOnce): Promise<Listed>;
+  /** How many of a kind there are (of a namespace), asked once as cheaply as can be: a page of one and how many past it. */
+  count(kind: Pick<KindInfo, 'group' | 'version' | 'plural' | 'namespaced'>, options?: Pick<ListOnce, 'namespace' | 'signal'>): Promise<Counted>;
   /** expired once the host turns the page away: the user signs in again and reloads it. */
   readonly session: ReadonlySignal<Session>;
   /** Stop everything: the stream, the timers, the feeds. */
@@ -65,14 +70,20 @@ export function createConnector(options: ConnectorOptions = {}): Connector {
     timer = setTimeout(() => void discovery.load(), options.rediscoverMs ?? 1000);
   });
   void discovery.load();
+  // Closed: nothing more asked once (a list, a count).
+  let closed = false;
+  const gone = () => new ApiError(0, 'closed', 'the connector is closed');
 
   return {
     http,
     stream,
     discovery,
     feeds,
+    list: (kind, how) => (closed ? Promise.reject(gone()) : listOnce(http, kind, how)),
+    count: (kind, how) => (closed ? Promise.reject(gone()) : countOnce(http, kind, how)),
     session: http.session,
     close() {
+      closed = true;
       stop();
       clearTimeout(timer);
       for (const a of apis) a.release();

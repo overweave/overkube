@@ -126,6 +126,36 @@ describe('a kind’s table', () => {
     expect(page.container.querySelector<HTMLInputElement>('input[aria-label="Filter"]')?.value).toBe('');
   });
 
+  it('searches every kind (/, ⌘K; not where something is typed): by kind, each opened over the page; all of them, its kind’s page filtered so', async () => {
+    const w = world(...Array.from({ length: 7 }, (_, i) => `web-${i}`), 'db');
+    w.cluster.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'shop' } }));
+    const page = renderPage(w, '/k/namespaces.v1');
+    const spot = () => document.querySelector('.uk-spot') as HTMLElement | null;
+    // Typed in a field: not the page's.
+    const filter = page.container.querySelector<HTMLInputElement>('input[aria-label="Filter"]') as HTMLInputElement;
+    page.act(() => void fireEvent.keyDown(filter, { key: '/' }));
+    expect(spot()).toBeNull();
+    page.act(() => void fireEvent.keyDown(document.body, { key: '/' }));
+    const field = spot()?.querySelector('input') as HTMLInputElement;
+    page.act(() => void fireEvent.input(field, { target: { value: 'web' } }));
+    await vi.waitFor(() => expect(spot()?.querySelectorAll('.uk-spot-group').length).toBe(2));
+    expect([...(spot()?.querySelectorAll('.uk-spot-group') ?? [])].map((g) => g.textContent)).toEqual(['Deployments · 1', 'Pods · 7']);
+    expect(spot()?.querySelector('.uk-spot-footer')?.textContent).toMatch(/^\d+ of \d+ kinds searched$/);
+    // Its first: opened over the page.
+    page.act(() => void fireEvent.keyDown(field, { key: 'Enter' }));
+    expect(page.path).toBe('/k/namespaces.v1?open=deployments.v1.apps/shop/web');
+    // All of a kind: its page filtered so.
+    page.act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }));
+    const again = spot()?.querySelector('input') as HTMLInputElement;
+    page.act(() => void fireEvent.input(again, { target: { value: 'po web' } }));
+    await vi.waitFor(() => expect(spot()?.textContent).toContain('All 7 Pods'));
+    // Of one kind only (its name first): said so, everywhere a choice away.
+    expect([...(spot()?.querySelectorAll('.uk-spot-item') ?? [])].at(-1)?.textContent).toContain('Only Pods — search everywhere for “web”');
+    page.act(() => void ([...(spot()?.querySelectorAll('.uk-spot-item') ?? [])].find((i) => i.textContent?.includes('All 7 Pods')) as HTMLElement).click());
+    expect(page.path).toBe(`/k/pods.v1?filter=${encodeURIComponent('name.lowerAscii().contains("web")')}`);
+    expect(page.column('Name')).toHaveLength(7);
+  });
+
   it('has a row’s menu (the object’s): open it, copy its name, its YAML — and another’s items', async () => {
     const w = world('web');
     w.addon(
@@ -1576,7 +1606,7 @@ describe('the navigation', () => {
   it('draws the picker through its slots: beside its search, down its side, above what a section shows, after a section’s and an entry’s title (for some kinds), nothing to show; or another’s picker whole', () => {
     const open = (page: ReturnType<typeof renderPage>) => page.act(() => (page.container.querySelector('button[aria-label="All kinds"]') as HTMLButtonElement).click());
     const picker = () => document.querySelector('[role="dialog"][aria-label="All kinds"]') as HTMLElement;
-    const added = world();
+    const added = world('web', 'db');
     added.addon(
       addon('more', ({ contributor }) => {
         contributor.add('Fill', 'more.toggle', { slot: slots.nav.picker.header.name, after: 'core.nav.picker.search', render: () => <button type="button">only served</button> });
@@ -1602,6 +1632,9 @@ describe('the navigation', () => {
     expect(pane().textContent?.indexOf('Recent')).toBe(0);
     expect(pane().querySelector('a[href="#/k/pods.v1"]')?.textContent).toBe('Pods 3');
     expect(pane().querySelector('a[href="#/k/deployments.v1.apps"]')?.textContent).toBe('Deployments');
+    // How many of each kind there are, beside it.
+    const sizeOf = (href: string) => pane().querySelector(`a[href="${href}"]`)?.closest('.uk-catalog-row')?.querySelector('.uk-catalog-count')?.textContent;
+    expect([sizeOf('#/k/pods.v1'), sizeOf('#/k/deployments.v1.apps')]).toEqual(['2', '0']);
     // A section with nothing in it: another's word for it in the core's place.
     page.act(() => ([...picker().querySelectorAll('.uk-catalog-section')].find((b) => b.textContent?.startsWith('Custom resources')) as HTMLButtonElement).click());
     expect(pane().querySelector('.empty')?.textContent).toBe('none in custom');

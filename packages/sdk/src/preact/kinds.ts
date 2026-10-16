@@ -19,5 +19,5 @@ export function useServedKinds(): { kinds: ReadonlyMap<string, KindInfo>; known:
 /** The kind a ref names (pods.v1): served, or (until discovery answers) known; undefined: none (or not served). */
 export function useKind(ref: string): KindInfo | undefined {
   const { kinds } = useServedKinds();
-  return kindOfRef(kinds.values(), ref);
+  return kindOfRef(kinds, ref);
 }

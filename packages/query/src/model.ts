@@ -204,6 +204,8 @@ export interface QueryError {
 export interface Total {
   readonly count: number;
   readonly exact: boolean;
+  /** At least so many (more past them, how many not said). */
+  readonly atLeast?: boolean;
 }
 
 /** What every result says: how it is doing, what of the cluster it covers (the rest: denied), as of which revision of it. */
@@ -310,4 +312,66 @@ export interface Source {
   fields(kind: KindRef): Live<FieldsResult>;
   /** The kinds (refs) whose objects were seen owned by an object of this kind (their ownerReferences), of those it has read: what it may own. */
   owned(kind: KindRef): Live<readonly KindRef[]>;
+  /** How many of a kind there are (in a scope), asked as cheaply as can be: as it is where it is watched, else as of a while ago — none yet: on its way. */
+  size(kind: KindRef, scope?: Scope): Live<SizeResult>;
+  /** Objects of every kind, by name or labels, as loosely as typed: of every kind there is (their metadata, as of a while ago where not watched), as they come. */
+  search(query: SearchQuery): Live<SearchResult>;
+}
+
+/**
+ * A search of every kind: words (each in a name, ASCII's case aside), or a
+ * label selector as kubectl takes it (app=web,tier in (a,b),!canary); a
+ * kind's name first (po web, deploy web: as kubectl's names, short ones
+ * too), of that kind only. Of a scope (none: every namespace); per: so many
+ * of each kind (default 5).
+ */
+export interface SearchQuery {
+  text: string;
+  scope?: Scope;
+  per?: number;
+}
+
+/** One found: its kind's, its name, its namespace (none: the kind's of none), its labels. */
+export interface SearchItem {
+  name: string;
+  namespace?: string;
+  labels?: Readonly<Record<string, string>>;
+}
+
+/** Those found of a kind: how many in all, the first of them (the best first: a name as typed, one it starts with, one it is in). */
+export interface SearchGroup {
+  kind: KindRef;
+  total: number;
+  items: readonly SearchItem[];
+}
+
+/**
+ * What is found, the best kinds first; what was matched (the text, a kind's
+ * name first taken off: only that kind's then) and its words (none of a
+ * selector); how far it is: kinds looked through of those there are, those
+ * that may not be listed (denied), those that failed otherwise, those read
+ * only in part (namespace by namespace: some not allowed), those of more
+ * than were read. Its error: of the whole search (what the cluster serves
+ * not to be known, the page signed out); loading: what it serves not known yet.
+ */
+export interface SearchResult {
+  groups: readonly SearchGroup[];
+  matched: string;
+  words: readonly string[];
+  only?: KindRef;
+  searched: number;
+  kinds: number;
+  denied: readonly KindRef[];
+  failed: readonly KindRef[];
+  partial: readonly KindRef[];
+  truncated: readonly KindRef[];
+  error?: QueryError;
+  /** What the cluster serves not known yet: a search on its way, nothing to say of it. */
+  loading?: boolean;
+}
+
+/** How many of a kind there are, or why it is not known (a kind not served, one not to be listed). */
+export interface SizeResult {
+  total?: Total;
+  error?: QueryError;
 }

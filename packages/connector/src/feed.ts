@@ -1,7 +1,7 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { keyOf } from '@overkube/query';
 import { batch, type ReadonlySignal, type Signal, signal } from '@preact/signals';
-import { ApiError, collectionPath, type Http, type Status } from './http.ts';
+import { ApiError, collectionPath, type Http, METADATA_LIST, pagesOf, type Status } from './http.ts';
 import type { Subscriber, WatchEvent, WatchStream } from './stream.ts';
 
 /*
@@ -59,14 +59,8 @@ export interface FeedOptions {
   pollMs?: number;
 }
 
-const METADATA_LIST = 'application/json;as=PartialObjectMetadataList;g=meta.k8s.io;v=v1,application/json';
 /** How many times a list is begun again when its pages expire (410) on the way. */
 const LIST_ATTEMPTS = 3;
-
-interface Page {
-  items?: KubeObject[];
-  metadata?: { resourceVersion?: string; continue?: string };
-}
 
 export class Feed implements Subscriber {
   readonly spec: FeedSpec;
@@ -320,27 +314,23 @@ export class Feed implements Subscriber {
 
   private async listing(going: () => boolean, signal: AbortSignal): Promise<boolean> {
     const fresh = !this.listed;
-    const query = { labelSelector: this.labelSelector, fieldSelector: this.fieldSelector, limit: String(this.options.pageSize) };
+    const query = { labelSelector: this.labelSelector, fieldSelector: this.fieldSelector };
     const accept = this.projection === 'metadata' ? METADATA_LIST : undefined;
     for (let attempt = 1; ; attempt++) {
       // The first list fills what there is as it goes (it is empty); begun again, it fills a new map, what came so far shown till it is whole.
       const into = fresh && this.data.size === 0 ? this.data : new Map<string, KubeObject>();
       try {
-        let next: string | undefined;
         let version = '';
-        do {
-          const page = await this.http.get<Page>(this.path, { ...query, continue: next }, signal, accept);
+        for await (const page of pagesOf(this.http, this.path, query, { accept, signal, limit: () => this.options.pageSize ?? 500 })) {
           if (!going()) return false;
-          for (const o of page.items ?? []) {
-            if (o.metadata?.managedFields) delete o.metadata.managedFields;
+          for (const o of page.items) {
             if (into === this.data) this.add(keyOf(o), o);
             else into.set(keyOf(o), o);
           }
           // Its first page told; the rest, once it is whole (not each: whoever reads it reads it all again).
           if (into === this.data) this.quiet = true;
-          next = page.metadata?.continue || undefined;
-          version = page.metadata?.resourceVersion ?? '';
-        } while (next);
+          version = page.resourceVersion;
+        }
         // A list again (or a first one begun again): what there is, replaced at once.
         if (into !== this.data) this.replace(into);
         this.version = version;

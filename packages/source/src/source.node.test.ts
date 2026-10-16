@@ -138,6 +138,76 @@ describe('a list', () => {
     expect(asked().size).toBe(before);
   });
 
+  it('says how many of a kind as cheaply as can be: as it is where it is watched, else asked once (a page of one) and kept a while; one not to be listed, why', async () => {
+    const { kube, source, read } = await setup([...spread(9), ...namespaces]);
+    const size = read(source.size('pods.v1'));
+    await until(() => size.value.total !== undefined);
+    // Past a page of one: the server's estimate.
+    expect(size.value.total).toEqual({ count: 9, exact: false });
+    expect(kube.requests.some((r) => r.includes('/pods?') && r.includes('limit=1'))).toBe(true);
+    expect(kube.requests.some((r) => r.includes('/pods') && r.includes('watch'))).toBe(false);
+    const some = read(source.size('pods.v1', { namespaces: ['a', 'b'] }));
+    await until(() => some.value.total !== undefined);
+    expect(some.value.total?.count).toBe(6);
+    // Watched now: as it is, live.
+    const list = read(source.list({ kind: 'pods.v1', page: { limit: 1 } }));
+    await until(() => list.value.state === 'live');
+    kube.put(Pod, pod('p99', 'a'));
+    await until(() => size.value.total?.count === 10);
+    kube.forbidden.add('/api/v1/nodes');
+    const nodes = read(source.size('nodes.v1'));
+    await until(() => nodes.value.error !== undefined);
+    expect(nodes.value.error?.status).toBe(403);
+  });
+
+  it('searches every kind: one watched as it is, the rest listed once (their metadata, nothing watched), one not to be listed said so', async () => {
+    const { kube, source, read } = await setup([...spread(6), ...namespaces, [Node, { metadata: { name: 'p-node' } } as KubeObject]]);
+    // Things refused of every namespace, of a also: asked namespace by namespace, those allowed — in part.
+    kube.forbidden.add('/apis/example.com/v1/things');
+    kube.forbidden.add('/apis/example.com/v1/namespaces/a/things');
+    kube.put(Thing, { metadata: { name: 'p1-thing', namespace: 'b' } } as KubeObject);
+    const found = read(source.search({ text: 'p1' }));
+    await until(() => found.value.searched === found.value.kinds && found.value.kinds > 0);
+    expect(found.value.groups.map((g) => [g.kind, g.items.map((i) => i.name)])).toEqual([
+      ['pods.v1', ['p1']],
+      ['things.v1.example.com', ['p1-thing']],
+    ]);
+    expect([found.value.denied, found.value.partial]).toEqual([[], ['things.v1.example.com']]);
+    expect(kube.requests.some((r) => r.includes('/pods') && r.includes('watch'))).toBe(false);
+    // Watched now: as it is.
+    const list = read(source.list({ kind: 'pods.v1', page: { limit: 1 } }));
+    await until(() => list.value.state === 'live');
+    kube.put(Pod, pod('p10', 'a'));
+    await until(() => found.value.groups[0]?.items.some((i) => i.name === 'p10') === true);
+  });
+
+  it('asks every namespace once for a search in a scope (filtered after), each namespace only where refused; past maxNamespaces, said partial', async () => {
+    const { kube, source, read } = await setup([...spread(9), ...namespaces], { maxNamespaces: 1 });
+    const scoped = read(source.search({ text: 'p1', scope: { namespaces: ['a', 'b'] } }));
+    await until(() => scoped.value.kinds > 0 && scoped.value.searched === scoped.value.kinds);
+    expect(kube.requests.filter((r) => r.includes('/pods?')).map((r) => r.split('?')[0])).toEqual(['GET /api/v1/pods']);
+    // Refused of every namespace, one namespace asked at most: what it found in a, the kind said partial; its count at least so many.
+    const other = await setup([...spread(9), ...namespaces], { maxNamespaces: 1 });
+    other.kube.forbidden.add('/api/v1/pods');
+    const found = other.read(other.source.search({ text: 'p3' }));
+    await until(() => found.value.kinds > 0 && found.value.searched === found.value.kinds);
+    expect([found.value.groups[0]?.items.every((i) => i.namespace === 'a'), found.value.partial]).toEqual([true, ['pods.v1']]);
+    const size = other.read(other.source.size('pods.v1'));
+    await until(() => size.value.total !== undefined);
+    expect(size.value.total?.atLeast).toBe(true);
+  });
+
+  it('says why it cannot count, nor search, when what the cluster serves cannot be known — not on its way for ever', () => {
+    // A connector whose discovery failed at once: nothing else of it asked.
+    const connector = {
+      discovery: { kinds: signal(null), state: signal('error'), error: signal({ status: 500, code: 'InternalError', message: 'down' }) },
+      session: signal('ok'),
+      feeds: { find: () => undefined, all: () => [] },
+    } as unknown as Parameters<typeof createSource>[0];
+    const source = createSource(connector);
+    expect([source.size('pods.v1').value.error?.code, source.search({ text: 'web' }).value.error?.code]).toEqual(['InternalError', 'InternalError']);
+  });
+
   it('of a CRD’s kind is asked by its columns, its CRD as it is now', async () => {
     const things = Array.from({ length: 3 }, (_, i) => [Thing, { metadata: { name: `t${i}`, namespace: 'a' }, spec: { size: i, owner: `o${2 - i}` } }] as [typeof Pod, KubeObject]);
     const { kube, source, read } = await setup([[CRD, thingsCrd([{ name: 'Size', type: 'integer', jsonPath: '.spec.size' }])], ...things]);

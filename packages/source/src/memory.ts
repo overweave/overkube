@@ -16,6 +16,9 @@ import {
   type QueryError,
   type Result,
   type Scope,
+  type SearchQuery,
+  type SearchResult,
+  type SizeResult,
   type Source,
   type State,
   scan,
@@ -25,6 +28,7 @@ import { computed, type ReadonlySignal } from '@preact/signals';
 import { capabilities, FieldsCache } from './fields.ts';
 import { filtered, isError, makeFilter, withTold } from './filter.ts';
 import { OwnedKinds } from './owned.ts';
+import { answer, itemOf, searchedKinds } from './search.ts';
 
 /*
  * Queries answered from objects in memory (a test's, a story's): the same
@@ -120,6 +124,28 @@ export function memorySource(objects: ReadonlySignal<Readonly<Record<KindRef, re
         if (filter && isError(filter)) return failed(filter);
         const kept = filtered(inScope(query.kind, query.scope), filter);
         return { ...stateOf(query.kind).result, ...withTold(scanCount(kept.objects, query, f.made.fields), kept.told()) };
+      });
+    },
+    search(query: SearchQuery): Live<SearchResult> {
+      return computed(() =>
+        answer(query, searchedKinds(kinds.values(), kindRef), kindRef, (kind) => {
+          const ref = kindRef(kind);
+          const f = fieldsOf(ref);
+          if (!f.made) return f.loading ? undefined : { error: f.error };
+          // As its state says: on its way, refused, failed — none of it as none there.
+          const { result, answers } = stateOf(ref);
+          if (!answers) return result.state === 'loading' ? undefined : { error: result.error ?? { code: result.state, message: `${ref} is ${result.state}` } };
+          return { items: inScope(ref, undefined).map(itemOf) };
+        }),
+      );
+    },
+    size(kind: KindRef, scope?: Scope): Live<SizeResult> {
+      return computed((): SizeResult => {
+        const f = fieldsOf(kind);
+        if (!f.made) return f.loading ? {} : { error: f.error };
+        const { result, answers } = stateOf(kind);
+        if (!answers) return result.state === 'loading' ? {} : { error: result.error ?? { code: result.state, message: `${kind} is ${result.state}` } };
+        return { total: { count: inScope(kind, scope).length, exact: true } };
       });
     },
     owned(kind: KindRef): Live<readonly KindRef[]> {

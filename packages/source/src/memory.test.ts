@@ -67,6 +67,25 @@ describe('a source in memory', () => {
     vi.useRealTimers();
   });
 
+  it('searches every kind it has, by name or labels', () => {
+    const objects = signal<Record<string, KubeObject[]>>({ 'pods.v1': [pod('web-1', 'x', 0), pod('db', 'x', 0)], 'nodes.v1': [{ metadata: { name: 'web-node' } } as KubeObject] });
+    const found = memorySource(objects).search({ text: 'web' }).value;
+    expect(found.groups.map((g) => [g.kind, g.items.map((i) => i.name)])).toEqual([
+      ['pods.v1', ['web-1']],
+      ['nodes.v1', ['web-node']],
+    ]);
+  });
+
+  it('says how many of a kind (in a scope); one not served, why', () => {
+    const objects = signal<Record<string, KubeObject[]>>({ 'pods.v1': [pod('a', 'x', 0), pod('b', 'y', 0), pod('c', 'y', 0)] });
+    const source = memorySource(objects);
+    expect([source.size('pods.v1').value.total, source.size('pods.v1', { namespaces: ['y'] }).value.total]).toEqual([
+      { count: 3, exact: true },
+      { count: 2, exact: true },
+    ]);
+    expect(source.size('widgets.v1.nowhere.io').value.error?.code).toBe('not_served');
+  });
+
   it('learns what kinds own what kinds from the objects it has (their owners)', () => {
     const owned = (name: string, kind: string, apiVersion: string) =>
       ({ metadata: { name, namespace: 'x', uid: name, ownerReferences: [{ apiVersion, kind, name: 'o', uid: 'o' }] } }) as KubeObject;

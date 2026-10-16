@@ -164,6 +164,19 @@ function kindsOf(lists: DiscoveryList[]): Map<string, KindInfo> {
   return kinds;
 }
 
+/** Each kind once, in its version preferred (discovery's first of its group and plural): what is shown of every kind, searched, counted — not one for each version. */
+export function preferredKinds(kinds: Iterable<KindInfo>): KindInfo[] {
+  const seen = new Set<string>();
+  const out: KindInfo[] = [];
+  for (const k of kinds) {
+    const key = `${k.group}/${k.plural}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(k);
+  }
+  return out;
+}
+
 /** Whether two discoveries found the same kinds, alike, in the same order (the first version of a kind is the one preferred). */
 function sameKinds(a: ReadonlyMap<string, KindInfo> | null, b: ReadonlyMap<string, KindInfo>): boolean {
   if (!a || a.size !== b.size) return false;

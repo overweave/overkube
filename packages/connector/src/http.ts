@@ -226,3 +226,38 @@ export function collectionPath(kind: Pick<KindInfo, 'group' | 'version' | 'plura
 export function objectPath(kind: Pick<KindInfo, 'group' | 'version' | 'plural'>, name: string, namespace?: string): string {
   return `${collectionPath(kind, namespace)}/${name}`;
 }
+
+/** What a list asks for when only its objects' metadata is wanted (the API server's PartialObjectMetadataList). */
+export const METADATA_LIST = 'application/json;as=PartialObjectMetadataList;g=meta.k8s.io;v=v1,application/json';
+
+/** A page of a list: its objects (their managedFields dropped), where the next begins, its version, how many past it (the API server's say: none, not said). */
+export interface ListPage {
+  items: KubeObject[];
+  continue?: string;
+  resourceVersion: string;
+  remaining?: number;
+}
+
+/** A list's pages, read one after another (limit and continue, as asked); whoever reads them says when to stop, and what to do of a 410. */
+export async function* pagesOf(http: Http, path: string, query: Query, how: { accept?: string; signal?: AbortSignal; limit: (read: number) => number }): AsyncGenerator<ListPage> {
+  let next: string | undefined;
+  let read = 0;
+  do {
+    const page = await http.get<{ items?: KubeObject[]; metadata?: { continue?: string; resourceVersion?: string; remainingItemCount?: number } }>(
+      path,
+      { ...query, limit: String(how.limit(read)), continue: next },
+      how.signal,
+      how.accept,
+    );
+    const items = page.items ?? [];
+    for (const o of items) if (o.metadata?.managedFields) delete o.metadata.managedFields;
+    read += items.length;
+    next = page.metadata?.continue || undefined;
+    yield {
+      items,
+      ...(next ? { continue: next } : {}),
+      resourceVersion: page.metadata?.resourceVersion ?? '',
+      ...(page.metadata?.remainingItemCount !== undefined ? { remaining: page.metadata.remainingItemCount } : {}),
+    };
+  } while (next);
+}
