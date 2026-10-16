@@ -316,6 +316,49 @@ export interface Source {
   size(kind: KindRef, scope?: Scope): Live<SizeResult>;
   /** Objects of every kind, by name or labels, as loosely as typed: of every kind there is (their metadata, as of a while ago where not watched), as they come. */
   search(query: SearchQuery): Live<SearchResult>;
+  /** A log: its newest lines (and, followed, each written after), or a window further back. */
+  log(query: LogQuery): Live<LogResult>;
+}
+
+/**
+ * A log asked of: whose (a pod's container: none, its only one; its last
+ * run's), which of its lines — the newest (followed: each written after
+ * too, run after run), or the window just before one had (its older) — at
+ * most so many lines. Lines in the order written, each with its time.
+ */
+export interface LogQuery {
+  /** Whose: a pod (pods.v1). */
+  kind: KindRef;
+  namespace: string;
+  name: string;
+  container?: string;
+  previous?: boolean;
+  follow?: boolean;
+  before?: LogCursor;
+  limit: number;
+}
+
+/** Where a window of a log begins, to ask for the one before it: the source's own (a page's: a time, how many of that time; a server's: its own). */
+export type LogCursor = string;
+
+/** A line of a log: when it was written (RFC 3339, to the nanosecond), what it says; no time: it goes on the line before (a piece of a long one). */
+export interface LogLine {
+  time?: string;
+  text: string;
+}
+
+/**
+ * A window of a log: its lines; where the one before it begins (none:
+ * none before it). How it is doing: on its way; live (followed, more to
+ * come); done (all of it there is: not followed, or the run ended — a run
+ * after it followed again as it starts); denied; error (a container not
+ * started yet: said so, followed as it starts).
+ */
+export interface LogResult {
+  state: 'loading' | 'live' | 'done' | 'denied' | 'error';
+  lines: readonly LogLine[];
+  older?: LogCursor;
+  error?: QueryError;
 }
 
 /**

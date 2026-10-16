@@ -42,6 +42,10 @@ export const ICONS = {
   check: 'check',
   gear: 'settings',
   columns: 'layout-columns',
+  download: 'download',
+  'file-text': 'file-text',
+  wrap: 'text-wrap',
+  'arrow-down': 'arrow-down',
   // States
   'circle-play': 'circle-caret-right',
   'circle-check': 'circle-check',

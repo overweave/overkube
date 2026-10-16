@@ -1124,7 +1124,7 @@ describe('an object', () => {
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     expect(page.text()).toContain('Pod web shop');
     expect(page.text()).not.toContain('name: web');
-    page.act(() => (document.querySelector('.uk-modal [role="tab"]:last-child') as HTMLButtonElement).click());
+    page.act(() => ([...document.querySelectorAll<HTMLButtonElement>('.uk-modal [role="tab"]')].find((t) => t.textContent === 'YAML') as HTMLButtonElement).click());
     expect(page.text()).toContain('name: web');
     // Its buttons (not the table's headers: Restarts).
     const button = (text: string) =>
@@ -1196,23 +1196,23 @@ describe('an object’s view', () => {
     expect(opened().querySelector('h2')?.textContent).toBe('Pod gone shop');
   });
 
-  it('has its tabs in order — the core’s Overview first, YAML last, another’s between them for its kinds — each showing its own slot', () => {
+  it('has its tabs in order — the core’s Overview first, a log’s (a pod’s, a workload’s), its YAML last, another’s between them for its kinds — each showing its own slot', () => {
     const w = world('web');
     w.cluster.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'shop' } }));
     w.addon(
-      addon('logs', ({ contributor }) => {
-        contributor.add('ResourceTab', 'logs.logs', { target: forKinds(Pod), title: 'Logs', icon: 'file', order: 500 });
-        contributor.add('Fill', 'logs.logs', fill(slots.resource.view.tab('logs.logs'), { render: ({ object }) => <p class="logs">{object.metadata?.name} said hello</p> }));
+      addon('shell', ({ contributor }) => {
+        contributor.add('ResourceTab', 'shell.shell', { target: forKinds(Pod), title: 'Shell', icon: 'enter', order: 500 });
+        contributor.add('Fill', 'shell.shell', fill(slots.resource.view.tab('shell.shell'), { render: ({ object }) => <p class="shell">{object.metadata?.name} said hello</p> }));
       }),
     );
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
-    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'Logs', 'YAML'], 'core.overview']);
+    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'Shell', 'Logs', 'YAML'], 'core.overview']);
     page.act(() => tabs()[2]?.click());
-    expect([shown(), opened().querySelector('.logs')?.textContent]).toEqual(['logs.logs', 'web said hello']);
-    page.act(() => tabs()[3]?.click());
+    expect([shown(), opened().querySelector('.shell')?.textContent]).toEqual(['shell.shell', 'web said hello']);
+    page.act(() => tabs()[4]?.click());
     expect([shown(), opened().querySelector('[role="tabpanel"]')?.textContent?.includes('name: web')]).toEqual(['core.yaml', true]);
     page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
-    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'YAML'], 'core.overview']);
+    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'Logs', 'YAML'], 'core.overview']);
   });
 
   it('shows a tab only for the objects it is for (its when), one whose when fails not at all — said to its owner', async () => {
@@ -1230,15 +1230,19 @@ describe('an object’s view', () => {
       }),
     );
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
-    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'Web', 'YAML']);
+    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'Web', 'Logs', 'YAML']);
     page.navigate('/k/pods.v1?open=pods.v1/shop/db');
-    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'YAML']);
+    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'Logs', 'YAML']);
     await expect.poll(() => page.failures.map((f) => `${f.definition.kind}/${f.definition.name}`)).toContain('ResourceTab/more.broken');
   });
 
   it('shows the first tab of another opened, the one chosen kept while it is the same', () => {
     const page = renderPage(world('web', 'db'), '/k/pods.v1?open=pods.v1/shop/web');
-    page.act(() => tabs()[2]?.click());
+    page.act(() =>
+      tabs()
+        .find((t) => t.textContent === 'YAML')
+        ?.click(),
+    );
     expect(shown()).toBe('core.yaml');
     page.navigate('/k/pods.v1?open=pods.v1/shop/db');
     expect(shown()).toBe('core.overview');
@@ -1246,7 +1250,7 @@ describe('an object’s view', () => {
 
   it('draws no tabs when there is one (the user hid the rest), and none when there are none', () => {
     const w = world('web');
-    for (const tab of ['core.events', 'core.yaml']) w.user.patch('ResourceTab', tab, { hidden: true });
+    for (const tab of ['core.events', 'core.yaml', 'core.logs']) w.user.patch('ResourceTab', tab, { hidden: true });
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     expect([tabs().length, shown()]).toEqual([0, 'core.overview']);
     page.act(() => void w.user.patch('ResourceTab', 'core.overview', { hidden: true }));

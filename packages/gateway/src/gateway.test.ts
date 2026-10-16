@@ -214,12 +214,12 @@ describe('createGateway: methods, bodies, answers', () => {
     expect(seen).toEqual([]);
   });
 
-  it('passes on no watch (/stream is its way), and counts a followed log in its budget of watches', async () => {
-    const base = await host({ stream: { maxChannels: 0 } });
-    const watching = await fetch(`${base}/api/v1/pods?watch=1`);
-    expect([watching.status, (await watching.json()).error.code]).toEqual([400, 'bad_stream']);
-    const following = await fetch(`${base}/api/v1/namespaces/a/pods/b/log?follow=true`);
-    expect([following.status, (await following.json()).error.code]).toEqual([503, 'too_many_watches']);
+  it('passes on no watch, no followed log (/stream is their way)', async () => {
+    const base = await host();
+    for (const query of ['watch=1', 'follow=true', 'follow=t']) {
+      const answer = await fetch(`${base}/api/v1/namespaces/a/pods/b/log?${query}`);
+      expect([answer.status, (await answer.json()).error.code], query).toEqual([400, 'bad_stream']);
+    }
     expect(seen).toEqual([]);
   });
 

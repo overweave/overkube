@@ -1,10 +1,13 @@
 import type { Layer } from '@overkube/cel';
+import { compareLogTimes } from '@overkube/connector';
 import type { CrdLike } from '@overkube/kube-fields';
 import { type KindInfo, type KubeObject, knownKinds } from '@overkube/kube-types';
 import {
   type CountQuery,
   type CountResult,
   checkQuery,
+  entriesBefore,
+  entriesOf,
   type FieldsResult,
   type GetQuery,
   type GetResult,
@@ -13,8 +16,13 @@ import {
   type ListQuery,
   type ListResult,
   type Live,
+  type LogLine,
+  type LogQuery,
+  type LogResult,
+  logWindow,
   type QueryError,
   type Result,
+  readCursor,
   type Scope,
   type SearchQuery,
   type SearchResult,
@@ -27,6 +35,7 @@ import {
 import { computed, type ReadonlySignal } from '@preact/signals';
 import { capabilities, FieldsCache } from './fields.ts';
 import { filtered, isError, makeFilter, withTold } from './filter.ts';
+import { MAX_FOLLOWED } from './log.ts';
 import { OwnedKinds } from './owned.ts';
 import { answer, itemOf, searchedKinds } from './search.ts';
 
@@ -35,6 +44,8 @@ import { answer, itemOf, searchedKinds } from './search.ts';
  * fields (a CRD's columns of a CRD among the objects), the same answers as
  * the page's own — live and whole, as they are now, unless a kind's state
  * is said otherwise (on its way, behind, refused: as the page would see it).
+ * Containers' logs as given (followed, as the page's: its newest lines,
+ * then every one written after).
  */
 
 /** A kind's answers' state, said (with its error): loading, error and denied answer no objects; stale, those there are. */
@@ -51,7 +62,12 @@ export interface MemoryOptions {
   states?: ReadonlySignal<Readonly<Record<KindRef, MemoryState>>>;
   /** Whether the cluster serves a kind, as its discovery says (undefined: not known yet — answers on their way); none: every one. */
   serves?: (kind: KindInfo) => boolean | undefined;
+  /** Containers' logs, by logKey: followed as the signal changes. */
+  logs?: ReadonlySignal<Readonly<Record<string, readonly LogLine[]>>>;
 }
+
+/** A container's log's key, of a memory source's logs: namespace/pod/container (none: its only one, ''), :previous for its last run's. */
+export const logKey = (q: Pick<LogQuery, 'namespace' | 'name' | 'container' | 'previous'>) => `${q.namespace}/${q.name}/${q.container ?? ''}${q.previous ? ':previous' : ''}`;
 
 const NO_LAYERS: readonly Layer[] = [];
 const CRDS = 'customresourcedefinitions.v1.apiextensions.k8s.io';
@@ -156,6 +172,24 @@ export function memorySource(objects: ReadonlySignal<Readonly<Record<KindRef, re
         const now = info ? owning.of(info.group, info.kind) : [];
         if (now.join() !== last.join()) last = now;
         return last;
+      });
+    },
+    log(query: LogQuery): Live<LogResult> {
+      // Followed, as the page's: its newest lines when first read, then every one written after (MAX_FOLLOWED at most).
+      const follow = query.follow && !query.before && !query.previous;
+      let from: number | undefined;
+      return computed((): LogResult => {
+        const lines = options.logs?.value[logKey(query)];
+        if (!lines) return { state: 'error', lines: [], error: { code: 'not_found', message: `no log of ${logKey(query)}` } };
+        const entries = entriesOf(lines);
+        if (follow) {
+          from ??= Math.max(0, entries.length - query.limit);
+          const kept = Math.max(from, entries.length - MAX_FOLLOWED);
+          return { state: 'live', ...logWindow(entries.slice(kept), MAX_FOLLOWED, kept > 0) };
+        }
+        const at = query.before ? readCursor(query.before) : undefined;
+        const of = at ? entriesBefore(entries, at, compareLogTimes) : entries;
+        return { state: 'done', ...logWindow(of, query.limit) };
       });
     },
     fields(kind: KindRef): Live<FieldsResult> {

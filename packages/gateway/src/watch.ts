@@ -3,7 +3,7 @@ import { isDown, openUpstream, type UpstreamSource } from './upstream.ts';
 
 /*
  * Watches kept open against the API server, for a stream of them (the
- * changing stream: stream.ts): each from the last resourceVersion it saw —
+ * changing stream: stream.ts; its logs are log.ts's): each from the last resourceVersion it saw —
  * when the API server ends a watch (it does every few minutes) or the
  * cluster comes back, it goes on from there; tried again after a wait that
  * grows while it fails; its events passed on as one JSON per line, tagged
@@ -34,7 +34,7 @@ export interface WatchOptions {
   maxLineBytes?: number;
   maxErrorBytes?: number;
   connectTimeoutMs?: number;
-  /** Watches open at once, over every stream of the process (a followed log through the proxy counts as one). */
+  /** Watches open at once, over every stream of the process (a log counts as one). */
   maxChannels?: number;
   /** Streams open at once, over the process. */
   maxStreams?: number;
@@ -99,13 +99,8 @@ export function resetWatchState(): void {
   summary = null;
 }
 
-/**
- * A place in the budget of watches for something streamed outside a /stream
- * (a followed log through the proxy): its release, or null when the budget
- * is spent.
- */
-export function reserveChannel(maxChannels = DEFAULTS.maxChannels): (() => void) | null {
-  if (totals.channels >= maxChannels) return null;
+/** One more watch (or log) counted in the budget: its release, once. */
+export function countChannel(): () => void {
   totals.channels++;
   let done = false;
   return () => {
@@ -113,6 +108,11 @@ export function reserveChannel(maxChannels = DEFAULTS.maxChannels): (() => void)
     done = true;
     totals.channels--;
   };
+}
+
+/** Something that went wrong, for the minutely summary: tried again, or ended in an error. */
+export function tally(what: 'retries' | 'errors'): void {
+  totals[what]++;
 }
 
 /** What is open now, and what went wrong since the last summary. */
@@ -140,7 +140,66 @@ function serverWait(seconds: unknown): number | undefined {
   return typeof seconds === 'number' && seconds > 0 ? Math.min(seconds, 600) * 1000 : undefined;
 }
 
+/** How long before trying again: its own wait, growing with each attempt, or at least as long as the API server asked for. */
+export function retryWait(settings: Settings, attempt: number, serverWaitMs?: number): number {
+  const { retryMs, maxRetryMs, jitter } = settings;
+  const own = Math.min(retryMs * 2 ** attempt, maxRetryMs);
+  return serverWaitMs ? Math.max(serverWaitMs, own) * (1 + Math.random() * jitter) : Math.min(Math.max(0, own * (1 + (Math.random() * 2 - 1) * jitter)), maxRetryMs);
+}
+
+/** What the API server says went wrong. */
+export interface Status {
+  kind?: string;
+  code?: number;
+  message?: string;
+  details?: { retryAfterSeconds?: number };
+}
+
+/**
+ * An answer other than 200, read: a Status (its body; not JSON, its text as
+ * the message) — passing (a server's trouble, 429: try again, after the
+ * wait it asks for) or not; broken off: broke.
+ */
+export function refusal(
+  answer: IncomingMessage,
+  settings: Settings,
+  current: () => boolean,
+  told: { passing(message: string, serverWaitMs?: number): void; over(status: Status): void; broke(): void },
+): void {
+  let body = '';
+  answer.setEncoding('utf8');
+  answer.on('data', (chunk: string) => {
+    if (body.length < settings.maxErrorBytes) body += chunk.slice(0, settings.maxErrorBytes - body.length);
+  });
+  answer.on('end', () => {
+    if (!current()) return;
+    const code = answer.statusCode ?? 502;
+    let status: Status = { kind: 'Status', code, message: body };
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed === 'object') status = parsed;
+    } catch {
+      // not JSON: its text as the message
+    }
+    if (code >= 500 || code === 429) told.passing(`the API server answered ${code}`, serverWait(Number(answer.headers['retry-after']) || status.details?.retryAfterSeconds));
+    else told.over(status);
+  });
+  answer.on('close', () => {
+    if (current() && !answer.complete) told.broke();
+  });
+}
+
 // ── A stream: one client ──────────────────────────────────────────────────
+
+/** What a stream carries for its client: a watch, a log — each started, held back while the client does not read, stopped. */
+export interface Feed {
+  readonly id: string;
+  readonly stopped: boolean;
+  start(): void;
+  stop(): void;
+  pause(): void;
+  resume(): void;
+}
 
 /** Whether the stream has the budget for this many more watches: if not, why. */
 export function overBudget(settings: Settings, more: number): string | undefined {
@@ -158,7 +217,7 @@ export class Stream {
   protected open = true;
   private paused = false;
   private slowSince = 0;
-  protected readonly channels = new Set<Channel>();
+  protected readonly channels = new Set<Feed>();
   private readonly ping: ReturnType<typeof setInterval>;
   private readonly res: ServerResponse;
   protected readonly settings: Settings;
@@ -177,7 +236,7 @@ export class Stream {
   }
 
   /** Its watches, started (each counted in the budget as it is made). */
-  begin(channels: Channel[]): void {
+  begin(channels: Feed[]): void {
     // Closed already: they give their places in the budget back at once.
     if (!this.open) for (const c of channels) c.stop();
     else {
@@ -253,13 +312,6 @@ export class Stream {
 
 // ── A channel: one watch ──────────────────────────────────────────────────
 
-interface Status {
-  kind?: string;
-  code?: number;
-  message?: string;
-  details?: { retryAfterSeconds?: number };
-}
-
 interface Event {
   type: string;
   object: Status & { metadata?: { resourceVersion?: string; managedFields?: unknown } };
@@ -273,7 +325,7 @@ interface Event {
  * finish (ERROR, stopped); each request is a generation, and one given up on
  * can no longer move the channel.
  */
-export class Channel {
+export class Channel implements Feed {
   private state: 'idle' | 'opening' | 'open' | 'backoff' | 'stopped' = 'idle';
   private resourceVersion: string;
   private attempt = 0;
@@ -281,8 +333,8 @@ export class Channel {
   private request: ClientRequest | null = null;
   private answer: IncomingMessage | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  /** Whether it is counted in the budget of watches (until it stops). */
-  private counted = true;
+  /** Its place in the budget of watches, given back as it stops. */
+  private readonly release = countChannel();
   private readonly spec: Spec;
   /** What each of its lines is told by: its subscription's id ({ f }).*/
   private readonly tag: object;
@@ -295,7 +347,6 @@ export class Channel {
     this.stream = stream;
     this.settings = settings;
     this.resourceVersion = spec.resourceVersion;
-    totals.channels++;
   }
 
   start(): void {
@@ -346,8 +397,7 @@ export class Channel {
   stop(): void {
     this.state = 'stopped';
     this.drop();
-    if (this.counted) totals.channels--;
-    this.counted = false;
+    this.release();
   }
 
   pause(): void {
@@ -385,9 +435,7 @@ export class Channel {
     this.state = 'backoff';
     totals.retries++;
     this.stream.send({ ...this.tag, type: 'RETRY', error: { code, message } });
-    const { retryMs, maxRetryMs, jitter } = this.settings;
-    const own = Math.min(retryMs * 2 ** this.attempt, maxRetryMs);
-    const wait = serverWaitMs ? Math.max(serverWaitMs, own) * (1 + Math.random() * jitter) : Math.min(Math.max(0, own * (1 + (Math.random() * 2 - 1) * jitter)), maxRetryMs);
+    const wait = retryWait(this.settings, this.attempt, serverWaitMs);
     this.attempt++;
     this.timer = setTimeout(() => this.start(), wait);
   }
@@ -482,29 +530,10 @@ export class Channel {
 
   /** An answer other than 200: a Status. A server's trouble is tried again; the rest ends the watch. */
   private refused(answer: IncomingMessage, current: () => boolean): void {
-    let body = '';
-    answer.setEncoding('utf8');
-    answer.on('data', (chunk: string) => {
-      if (body.length < this.settings.maxErrorBytes) body += chunk.slice(0, this.settings.maxErrorBytes - body.length);
-    });
-    answer.on('end', () => {
-      if (!current()) return;
-      const code = answer.statusCode ?? 502;
-      let status: Status = { kind: 'Status', code, message: body };
-      try {
-        const parsed = JSON.parse(body);
-        if (parsed && typeof parsed === 'object') status = parsed;
-      } catch {
-        // not JSON: its text as the message
-      }
-      if (code >= 500 || code === 429) {
-        this.fail('kube_error', `the API server answered ${code}`, serverWait(Number(answer.headers['retry-after']) || status.details?.retryAfterSeconds));
-        return;
-      }
-      this.finish(status);
-    });
-    answer.on('close', () => {
-      if (current() && !answer.complete) this.fail('kube_error', 'the API server broke its answer off');
+    refusal(answer, this.settings, current, {
+      passing: (message, wait) => this.fail('kube_error', message, wait),
+      over: (status) => this.finish(status),
+      broke: () => this.fail('kube_error', 'the API server broke its answer off'),
     });
   }
 }

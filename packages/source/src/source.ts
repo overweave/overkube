@@ -16,6 +16,8 @@ import {
   type ListQuery,
   type ListResult,
   type Live,
+  type LogQuery,
+  type LogResult,
   type Ordered,
   ordered,
   type QueryError,
@@ -36,6 +38,7 @@ import { queryErrorOf, refusedBy } from './errors.ts';
 import { capabilities, FieldsCache, type KindFields } from './fields.ts';
 import { filtered, isError, type MadeFilter, makeFilter, ticking, withTold } from './filter.ts';
 import { type Held, Kept } from './kept.ts';
+import { pageLog } from './log.ts';
 import { OwnedKinds } from './owned.ts';
 import { Queue } from './queue.ts';
 import { answer, itemOf, SEARCH_MAX, SEARCH_MS, searchedKinds } from './search.ts';
@@ -65,7 +68,7 @@ const SIZE_MS = 60_000;
  * (its feeds held meanwhile) — no gap, no list shown empty. Held while it
  * is read (subscribed to), its feeds let go after; answered by a scan
  * whenever it is read after its plan or its feeds changed — not before (a
- * page reading it once a frame scans once).
+ * page reading it once a frame scans once). A pod's log: log.ts.
  */
 
 export interface SourceOptions {
@@ -466,6 +469,10 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
           );
         });
       });
+    },
+    log(query: LogQuery): Live<LogResult> {
+      // The pod it is of, as the page watches it: its runs, its start.
+      return pageLog(connector, () => this.get({ kind: 'pods.v1', namespace: query.namespace, name: query.name }), query, troubleOf);
     },
     size(kind: KindRef, scope?: Scope): Live<SizeResult> {
       return computed((): SizeResult => {

@@ -1,9 +1,9 @@
-import { STREAM, type StreamLine, type Subscription } from '@overkube/gateway/protocol';
+import { type LogQuery, type LogSubscription, STREAM, type StreamLine, type Subscription } from '@overkube/gateway/protocol';
 import { ApiError, type Http, type Status } from './http.ts';
 
 /*
- * The page's watches over one /stream, changed while it is open: a watch
- * wanted is added to it, one let go removed — the others' go on as they
+ * The page's watches — and logs (logs.ts) — over one /stream, changed
+ * while it is open: a watch wanted is added to it, one let go removed — the others' go on as they
  * are. Opened when the first is wanted, closed when the last is let go;
  * opened again — every watch from the last resourceVersion its owner saw —
  * when the gateway lets it go (CLOSE), when it breaks, does not open in
@@ -54,6 +54,28 @@ export interface Subscriber {
   waiting(): void;
 }
 
+/** Who owns a log on the stream: which, from where it got to, and what it is told. */
+export interface LogSubscriber {
+  /** A pod's log: /api/v1/namespaces/<namespace>/pods/<name>/log. */
+  readonly path: string;
+  /** What it asks for — whenever it is put on again, from where it got to. */
+  log(): LogQuery;
+  opened(): void;
+  /** Its lines as the gateway tells them: "<time> <text>" each. */
+  lines(lines: readonly string[]): void;
+  /** All of it told, or its container stopped writing: it is off the stream. */
+  end(): void;
+  retrying(error: { code: string; message: string }): void;
+  /** Refused (its container not there, not started): it is off the stream. */
+  ended(status: Status): void;
+  disconnected(error: ApiError): void;
+  waiting(): void;
+}
+
+/** What is on the stream: a watch, or a log. */
+type Wire = Subscriber | LogSubscriber;
+const isLog = (s: Wire): s is LogSubscriber => 'log' in s;
+
 export interface StreamOptions {
   /** How long a change waits for others. */
   debounceMs?: number;
@@ -101,12 +123,12 @@ export class WatchStream {
   private readonly http: Http;
   private readonly settings: typeof DEFAULTS & Pick<StreamOptions, 'onRetry'>;
   /** On the stream, or to be put on it. */
-  private readonly subs = new Set<Subscriber>();
-  private waiting: Subscriber[] = [];
+  private readonly subs = new Set<Wire>();
+  private waiting: Wire[] = [];
   /** Of the stream open now: who each id is, each one's id. */
-  private readonly wires = new Map<string, Subscriber>();
-  private readonly wireOf = new Map<Subscriber, string>();
-  private readonly toAdd = new Set<Subscriber>();
+  private readonly wires = new Map<string, Wire>();
+  private readonly wireOf = new Map<Wire, string>();
+  private readonly toAdd = new Set<Wire>();
   private readonly toRemove = new Set<string>();
   private seq = 0;
   /** The stream's name, once it said HELLO. */
@@ -137,8 +159,8 @@ export class WatchStream {
     this.settings = { ...DEFAULTS, ...options };
   }
 
-  /** Watch (put on the stream a moment later, or as soon as there is room); its end: the function given back. */
-  subscribe(s: Subscriber): () => void {
+  /** Watch, or read a log (put on the stream a moment later, or as soon as there is room); its end: the function given back. */
+  subscribe(s: Wire): () => void {
     let on = true;
     const off = () => {
       if (!on) return;
@@ -174,16 +196,18 @@ export class WatchStream {
     return this.controller !== null;
   }
 
-  /** Stop everything: the stream, its timers, its watches (not told). */
+  /** Stop everything: the stream, its timers, its watches (not told: their feeds go with it) — its logs told they are over. */
   close(): void {
     this.closed = true;
     this.drop();
     clearTimeout(this.openTimer);
+    const all = [...this.subs, ...this.waiting];
     this.subs.clear();
     this.waiting = [];
+    for (const s of all) if (isLog(s)) s.ended({ kind: 'Status', code: 0, reason: 'closed', message: 'the connector is closed' });
   }
 
-  private put(s: Subscriber): void {
+  private put(s: Wire): void {
     this.subs.add(s);
     this.toAdd.add(s);
     // The stream down, waiting to be opened again: told at once why (not a bare wait).
@@ -192,7 +216,7 @@ export class WatchStream {
     else if (!this.openTimer) this.openTimer = setTimeout(() => this.start(), Math.max(0, this.notBefore - Date.now()));
   }
 
-  private unsubscribe(s: Subscriber): void {
+  private unsubscribe(s: Wire): void {
     this.waiting = this.waiting.filter((w) => w !== s);
     if (!this.subs.delete(s)) return;
     this.off(s);
@@ -201,7 +225,7 @@ export class WatchStream {
   }
 
   /** Off the stream open now: its lines reach it no more; the gateway is told. */
-  private off(s: Subscriber): void {
+  private off(s: Wire): void {
     this.toAdd.delete(s);
     const wire = this.wireOf.get(s);
     if (wire === undefined) return;
@@ -212,7 +236,7 @@ export class WatchStream {
 
   /** Those waiting, on, as long as there is room. */
   private promote(): void {
-    while (this.waiting.length && this.subs.size < this.settings.maxSubscriptions) this.put(this.waiting.shift() as Subscriber);
+    while (this.waiting.length && this.subs.size < this.settings.maxSubscriptions) this.put(this.waiting.shift() as Wire);
   }
 
   /** A change, a moment later (others may come; after a change turned away, not before its wait is over). */
@@ -236,7 +260,7 @@ export class WatchStream {
     this.toAdd.clear();
     this.toRemove.clear();
     /** Who each id of this change is, till it is answered (one let go meanwhile still told apart). */
-    const sent = new Map<string, Subscriber>();
+    const sent = new Map<string, Wire>();
     const add = adds.map((s) => {
       const id = String(++this.seq);
       this.wires.set(id, s);
@@ -276,7 +300,7 @@ export class WatchStream {
    * spent, or its trouble: all of it again after a wait, the stream kept;
    * anything else (no answer, the stream gone): the stream opened again.
    */
-  private refused(error: ApiError, sent: Map<string, Subscriber>, remove: string[]): void {
+  private refused(error: ApiError, sent: Map<string, Wire>, remove: string[]): void {
     const fault = error.code === 'bad_stream' && error.subscription ? sent.get(error.subscription) : undefined;
     const again = error.code === 'too_many_watches' || (error.passing && error.status !== 0);
     if (!fault && !(error.code === 'bad_stream' && error.subscription) && !again) {
@@ -370,17 +394,22 @@ export class WatchStream {
         s.retrying(line.error);
         return;
       case 'ERROR':
+      case 'END':
         // The gateway stopped it: it goes off (its place given back), its owner decides what next.
         this.subs.delete(s);
         this.off(s);
         this.promote();
         this.later();
-        s.ended(line.object as Status);
+        if (line.type === 'END' && isLog(s)) s.end();
+        else s.ended(line.type === 'ERROR' ? (line.object as Status) : { kind: 'Status', code: 0, reason: 'ended', message: 'the gateway ended the watch' });
+        return;
+      case 'LOG':
+        if (isLog(s)) s.lines(line.lines);
         return;
       case 'REMOVED':
         return;
       default:
-        if (EVENTS.has(line.type) && line.object && typeof line.object === 'object') s.event(line as WatchEvent);
+        if (!isLog(s) && EVENTS.has(line.type) && line.object && typeof line.object === 'object') s.event(line as WatchEvent);
     }
   }
 
@@ -441,7 +470,8 @@ export class WatchStream {
   }
 }
 
-function subscription(id: string, s: Subscriber): Subscription {
+function subscription(id: string, s: Wire): Subscription | LogSubscription {
+  if (isLog(s)) return { id, path: s.path, log: s.log() };
   const rv = sendable(s.resourceVersion());
   return {
     id,

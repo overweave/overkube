@@ -17,5 +17,8 @@
   "devDependencies": {
     "@overkube/kube-types": "0.1.0",
     "@types/node": "24.10.1"
+  },
+  "dependencies": {
+    "@overkube/query": "0.1.0"
   }
 }

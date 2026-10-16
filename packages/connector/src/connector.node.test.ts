@@ -5,12 +5,14 @@ import { createGateway, fromKubeconfig, type Gateway, resetWatchState } from '@o
 import type { KubeObject } from '@overkube/kube-types';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type Connector, type ConnectorOptions, createConnector } from './connector.ts';
+import type { ApiError } from './http.ts';
 
 /*
  * The connector against the real gateway, over a fake API server: feeds
  * listed in pages and watched over one changing stream, shared, let go of;
  * a watch too far behind listed again; the stream lost and found again;
- * what the gateway refuses; discovery following the APIs.
+ * what the gateway refuses; discovery following the APIs; a container's
+ * log followed, read a window at a time.
  */
 
 const Pod = kindOf('', 'v1', 'Pod', 'pods');
@@ -381,5 +383,90 @@ describe('discovery', () => {
     const asked = kube.requests.filter((r) => r === 'GET /apis').length;
     kube.put(CRD, { apiVersion: 'apiextensions.k8s.io/v1', kind: 'CustomResourceDefinition', metadata: { name: 'things.example.com' } } as KubeObject);
     await until(() => kube.requests.filter((r) => r === 'GET /apis').length > asked);
+  });
+});
+
+describe('a log', () => {
+  const target = { namespace: 'a', pod: 'web', container: 'app' };
+  /** A log followed: its lines' texts as they come, how it is, its end, why not. */
+  const following = (connector: Connector, from: { tailLines?: number; sinceTime?: string }, of = target) => {
+    const seen = { texts: [] as string[], states: [] as string[], end: false, error: undefined as ApiError | undefined };
+    const off = connector.followLog(of, from, {
+      lines: (lines) => seen.texts.push(...lines.map((l) => l.text)),
+      state: (state) => seen.states.push(state),
+      end: () => {
+        seen.end = true;
+      },
+      ended: (error) => {
+        seen.error = error;
+      },
+    });
+    return { seen, off };
+  };
+
+  it('followed: its last lines, each with its time, then each as it is written, until its container stops', async () => {
+    const { kube, connector } = await setup();
+    for (const t of ['one', 'two', 'three']) kube.writeLog('a', 'web', 'app', t);
+    const { seen } = following(connector, { tailLines: 2 });
+    await until(() => seen.texts.length === 2);
+    kube.writeLog('a', 'web', 'app', 'four');
+    await until(() => seen.texts.length === 3);
+    kube.endLog('a', 'web', 'app');
+    await until(() => seen.end);
+    expect([seen.texts, seen.states[0], connector.stream.size]).toEqual([['two', 'three', 'four'], 'open', 2]);
+  });
+
+  it('goes on from its last line when the stream comes back — those of its time left out, none missed', async () => {
+    const { kube, connector } = await setup();
+    const T = '2026-10-17T08:00:00.5Z';
+    kube.writeLog('a', 'web', 'app', 'one', { time: T });
+    kube.writeLog('a', 'web', 'app', 'one again', { time: T });
+    const { seen } = following(connector, {});
+    await until(() => seen.texts.length === 2);
+    opened[0].gateway.close();
+    await until(() => seen.states.includes('disconnected'));
+    kube.writeLog('a', 'web', 'app', 'meanwhile');
+    await until(() => seen.texts.length === 3);
+    expect(seen.texts).toEqual(['one', 'one again', 'meanwhile']);
+    expect(kube.requests.at(-1)).toContain(`sinceTime=${encodeURIComponent(T)}`);
+  });
+
+  it('goes on from where it got to when the kubelet breaks it off: none told twice', async () => {
+    const { kube, connector } = await setup();
+    kube.writeLog('a', 'web', 'app', 'one');
+    const { seen } = following(connector, {});
+    await until(() => seen.texts.length === 1);
+    kube.breakLogs();
+    kube.writeLog('a', 'web', 'app', 'two');
+    await until(() => seen.texts.length === 2);
+    expect(seen.texts).toEqual(['one', 'two']);
+  });
+
+  it('read a window at a time (a GET): from a time, so many bytes — a line cut short left for the next; refused, the API server’s error; its last run’s', async () => {
+    const { kube, connector } = await setup();
+    for (const t of ['one', 'two', 'three']) kube.writeLog('a', 'web', 'app', t);
+    kube.writeLog('a', 'web', 'app', 'before', { previous: true });
+    const all = await connector.readLog(target, {});
+    expect([all.lines.map((l) => l.text), all.more]).toEqual([['one', 'two', 'three'], false]);
+    const from = all.lines[1].time as string;
+    expect((await connector.readLog(target, { sinceTime: from })).lines.map((l) => l.text)).toEqual(['two', 'three']);
+    const line = from.length + ' one\n'.length;
+    expect(await connector.readLog(target, { limitBytes: line })).toEqual({ lines: [{ time: all.lines[0].time, text: 'one' }], more: true });
+    expect(await connector.readLog(target, { limitBytes: line + 3 })).toEqual({ lines: [{ time: all.lines[0].time, text: 'one' }], more: true });
+    expect((await connector.readLog({ ...target, previous: true }, {})).lines.map((l) => l.text)).toEqual(['before']);
+    await expect(connector.readLog({ ...target, container: 'other' }, {})).rejects.toMatchObject({ status: 400, message: expect.stringContaining('waiting to start') });
+    // None of them on the stream.
+    expect(connector.stream.size).toBe(2);
+  });
+
+  it('closed with the connector: a window on its way given up, a log followed told it is over', async () => {
+    const { kube, connector } = await setup();
+    kube.writeLog('a', 'web', 'app', 'one');
+    const { seen } = following(connector, {});
+    await until(() => seen.texts.length === 1);
+    const window = connector.readLog(target, {});
+    connector.close();
+    await expect(window).rejects.toMatchObject({ code: 'closed' });
+    expect(seen.error?.code).toBe('closed');
   });
 });

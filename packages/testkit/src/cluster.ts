@@ -1,8 +1,8 @@
 import type { StatusAnswer } from '@overkube/gateway/protocol';
 import { type KindInfo, type KubeObject, knownKinds } from '@overkube/kube-types';
-import { keyOf, type QueryError, type State } from '@overkube/query';
+import { keyOf, type LogLine, type QueryError, type State } from '@overkube/query';
 import { type Cluster, type FieldLayer, fieldLayers, kindRef, type ObjectChange, type ObjectOfKind } from '@overkube/sdk';
-import { type MemoryState, memorySource } from '@overkube/source';
+import { logKey, type MemoryState, memorySource } from '@overkube/source';
 import { batch, computed, type ReadonlySignal, signal } from '@preact/signals';
 
 /*
@@ -13,7 +13,7 @@ import { batch, computed, type ReadonlySignal, signal } from '@preact/signals';
  * served and available said; what the addon writes kept, applied (a merge
  * patch, a delete), or refused once, as the API server would — a delete of
  * an object not seen as it is now (another uid under its name, or none)
- * refused too.
+ * refused too. Containers' logs written by the test.
  */
 
 /** What an addon wrote. */
@@ -53,6 +53,8 @@ export interface FakeCluster extends Cluster {
   follow(registry: Parameters<typeof fieldLayers>[0]): void;
   /** Discovery as the page would see it: not answered yet, or failed (what the cluster said); ready again with none. */
   discover(state: 'loading' | 'ready' | 'error', error?: Refusal): void;
+  /** Lines written to a pod's container's log (its time: as given, else a second after its last). */
+  log(namespace: string, pod: string, container: string, ...lines: (string | LogLine)[]): void;
 }
 
 export interface FakeClusterOptions {
@@ -92,7 +94,10 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
   const objects = signal<Readonly<Record<string, readonly KubeObject[]>>>({});
   const states = signal<Readonly<Record<string, MemoryState>>>({});
   const followed = signal<ReadonlySignal<readonly FieldLayer[]> | null>(null);
+  const logs = signal<Readonly<Record<string, readonly LogLine[]>>>({});
+  let clock = Date.parse('2026-10-17T09:00:00Z');
   const source = memorySource(objects, {
+    logs,
     kinds: options.kinds,
     states,
     layers: computed(() => followed.value?.value ?? []),
@@ -159,6 +164,16 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
         discoveryState.value = state;
         discoveryError.value = error ? { ...error, message: error.message ?? error.code } : null;
       });
+    },
+
+    log(namespace, pod, container, ...lines) {
+      const key = logKey({ namespace, name: pod, container });
+      const written = lines.map((l) => {
+        if (typeof l !== 'string') return l;
+        clock += 1000;
+        return { time: new Date(clock).toISOString(), text: l };
+      });
+      logs.value = { ...logs.value, [key]: [...(logs.value[key] ?? []), ...written] };
     },
 
     // ── The SDK's Cluster ──

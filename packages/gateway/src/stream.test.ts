@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createGateway, type Gateway, type GatewayOptions } from './gateway.ts';
-import type { StreamLine } from './protocol.ts';
+import { compareLogTimes, type StreamLine } from './protocol.ts';
 import { fromKubeconfig } from './upstream.ts';
 import { resetWatchState, watchTotals } from './watch.ts';
 
@@ -38,6 +38,9 @@ const until = async (ok: () => boolean) => {
   expect(ok()).toBe(true);
 };
 
+/** How the fake API server answers a log (the URL asked, the answer, which time this log was asked for: 1, 2…); a test's own. */
+let serveLog: (url: URL, res: ServerResponse, nth: number) => void = (_url, res) => res.writeHead(404).end();
+
 /** A fake API server (a watch: one ADDED, kept open; in namespace gone: a 410; in evil: an event with a tag of its own) and a gateway in front of it. */
 async function setup(options: Partial<GatewayOptions> = {}) {
   const asked: { path: string; query: URLSearchParams; accept?: string; closed: boolean }[] = [];
@@ -49,6 +52,7 @@ async function setup(options: Partial<GatewayOptions> = {}) {
       seen.closed = true;
     });
     if (req.method === 'POST') return res.writeHead(201).end('{"kind":"SelfSubjectRulesReview"}');
+    if (url.pathname.endsWith('/log')) return serveLog(url, res, asked.filter((a) => a.path.endsWith('/log')).length);
     res.writeHead(200, { 'content-type': 'application/json' });
     if (url.pathname.includes('/namespaces/gone/')) return res.end(`${JSON.stringify({ type: 'ERROR', object: { kind: 'Status', code: 410 } })}\n`);
     if (url.pathname.includes('/namespaces/evil/')) return void res.write(`${JSON.stringify({ type: 'ADDED', object: { metadata: { name: 'e' } }, f: 'victim', w: 'other' })}\n`);
@@ -250,5 +254,114 @@ describe('a read-only gateway', () => {
     expect((await post('/apis/authorization.k8s.io/v1/selfsubjectaccessreviews', {})).status).toBe(201);
     expect((await post('/apis/authorization.k8s.io/v1/subjectaccessreviews', {})).status).toBe(403);
     expect((await post('/api/v1/namespaces/a/pods', {})).status).toBe(403);
+  });
+});
+
+describe('a log in a stream', () => {
+  const T1 = '2026-10-17T09:00:01Z';
+  const T2 = '2026-10-17T09:00:02.5Z';
+  const T3 = '2026-10-17T09:00:02.51Z';
+
+  it('asks for a container’s lines with their times, tells them in batches, then END; refused, ERROR', async () => {
+    serveLog = (url, res) => {
+      if (url.pathname.includes('/namespaces/waiting/')) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ kind: 'Status', code: 400, message: 'container "web" in pod "w" is waiting to start: ContainerCreating' }));
+      }
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end(`${T1} hello\n${T2} world\n`);
+    };
+    const { asked, open } = await setup();
+    const s = await open();
+    await s.change({
+      add: [
+        { id: 'web', path: '/api/v1/namespaces/a/pods/w/log', log: { container: 'web', previous: true, tailLines: 100 } },
+        { id: 'waiting', path: '/api/v1/namespaces/waiting/pods/w/log', log: {} },
+      ],
+    });
+    await until(() => s.lines.some((l) => l.type === 'END') && s.lines.some((l) => l.type === 'ERROR'));
+    expect(s.lines.filter((l) => 'f' in l && l.f === 'web')).toEqual([
+      { f: 'web', type: 'OPEN' },
+      { f: 'web', type: 'LOG', lines: [`${T1} hello`, `${T2} world`] },
+      { f: 'web', type: 'END' },
+    ]);
+    expect(s.lines).toContainEqual({ f: 'waiting', type: 'ERROR', object: expect.objectContaining({ code: 400 }) });
+    expect(Object.fromEntries(asked[0].query)).toEqual({ timestamps: 'true', container: 'web', previous: 'true', tailLines: '100' });
+    // Over, they hold no place in the budget.
+    expect(watchTotals().channels).toBe(0);
+  });
+
+  it('followed and broken off, goes on from where it got to (asked from the start of that second, as the API server does): none told twice, none left out', async () => {
+    const T21 = '2026-10-17T09:00:02.1Z';
+    serveLog = (_url, res, nth) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      // At first: four lines (two of one time), then broken off; again, from the start of that second: three of them again, then one more, kept open.
+      if (nth === 1) {
+        res.write(`${T1} one\n${T21} two\n${T2} three\n${T2} three again\n`);
+        setTimeout(() => res.destroy(), 20);
+      } else res.write(`${T21} two\n${T2} three\n${T2} three again\n${T3} four\n`);
+    };
+    const { asked, open } = await setup({ stream: { retryMs: 1 } });
+    const s = await open();
+    await s.change({ add: [{ id: 'web', path: '/api/v1/namespaces/a/pods/w/log', log: { follow: true, tailLines: 10 } }] });
+    await until(() => s.lines.some((l) => l.type === 'LOG' && l.lines.some((x) => x.endsWith('four'))));
+    const told = s.lines.flatMap((l) => (l.type === 'LOG' ? l.lines : []));
+    expect(told).toEqual([`${T1} one`, `${T21} two`, `${T2} three`, `${T2} three again`, `${T3} four`]);
+    expect(s.lines.map((l) => l.type)).toContain('RETRY');
+    // Again from where it got to, no tail.
+    expect(Object.fromEntries(asked[1].query)).toEqual({ timestamps: 'true', follow: 'true', sinceTime: T2 });
+    expect(watchTotals().channels).toBe(1);
+  });
+
+  it('tells a line too long in pieces (the rest: no time) — told again after a break, none of its pieces twice', async () => {
+    const long = 'x'.repeat(300 * 1024);
+    serveLog = (_url, res, nth) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      if (nth === 1) {
+        res.write(`${T1} ${long}\n`);
+        setTimeout(() => res.destroy(), 20);
+      } else res.write(`${T1} ${long}\n${T3} after\n`);
+    };
+    const { open } = await setup({ stream: { retryMs: 1 } });
+    const s = await open();
+    await s.change({ add: [{ id: 'web', path: '/api/v1/namespaces/a/pods/w/log', log: { follow: true } }] });
+    await until(() => s.lines.some((l) => l.type === 'LOG' && l.lines.some((x) => x.endsWith('after'))));
+    const told = s.lines.flatMap((l) => (l.type === 'LOG' ? l.lines : []));
+    expect([told.length, told[0].startsWith(`${T1} xxx`), told[0].length + told[1].length, /^x+$/.test(told[1]), told[2]]).toEqual([
+      3,
+      true,
+      T1.length + 1 + long.length,
+      true,
+      `${T3} after`,
+    ]);
+  });
+
+  it.each<[string, unknown, string]>([
+    [
+      'a path not a pod’s log',
+      { id: 'x', path: '/api/v1/namespaces/a/pods/w', log: {} },
+      "a log's path is a pod's log, without a query (/api/v1/namespaces/<namespace>/pods/<name>/log)",
+    ],
+    ['a log of every namespace', { id: 'x', path: '/api/v1/pods/w/log', log: {} }, "a log's path is a pod's log, without a query (/api/v1/namespaces/<namespace>/pods/<name>/log)"],
+    ['a part it has not', { id: 'x', path: '/api/v1/namespaces/a/pods/w/log', log: { grep: 'x' } }, 'a log has no grep'],
+    ['a container not a name', { id: 'x', path: '/api/v1/namespaces/a/pods/w/log', log: { container: 'Web App' } }, "a container's name is a DNS label"],
+    ['a time not one', { id: 'x', path: '/api/v1/namespaces/a/pods/w/log', log: { sinceTime: 'yesterday' } }, 'a sinceTime is RFC 3339 (2026-10-17T09:30:00Z)'],
+    ['a window (a GET is)', { id: 'x', path: '/api/v1/namespaces/a/pods/w/log', log: { limitBytes: 10 } }, 'a log has no limitBytes'],
+  ])('refuses %s', async (_, sub, message) => {
+    const { asked, open } = await setup();
+    const s = await open();
+    const answer = await s.change({ add: [sub] });
+    expect([answer.status, JSON.parse(answer.body).error.message]).toEqual([400, message]);
+    expect(asked).toEqual([]);
+  });
+});
+
+describe('times in a log', () => {
+  it('are in order as times, not as strings (zeros at the end left out)', () => {
+    expect([
+      compareLogTimes('2026-10-17T09:00:02Z', '2026-10-17T09:00:02.1Z') < 0,
+      compareLogTimes('2026-10-17T09:00:02.5Z', '2026-10-17T09:00:02.49Z') > 0,
+      compareLogTimes('2026-10-17T09:00:02.50Z', '2026-10-17T09:00:02.5Z'),
+    ]).toEqual([true, true, 0]);
   });
 });

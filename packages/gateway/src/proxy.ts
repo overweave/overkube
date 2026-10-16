@@ -1,7 +1,6 @@
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http';
 import { classify, splitQuery } from './paths.ts';
 import { fail, isDown, openUpstream, type UpstreamRequest, type UpstreamSource } from './upstream.ts';
-import { reserveChannel } from './watch.ts';
 
 /** PATCH has a place of its own (patch.ts): the page sends JSON only. HEAD is answered as GET without the body. */
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE']);
@@ -20,7 +19,7 @@ const PASS_RESPONSE = ['content-type', 'cache-control', 'content-length', 'retry
  */
 const HARDENING = { 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' };
 
-/** An answer with nothing coming for this long is given up (not a stream's: a watch, a followed log). */
+/** An answer with nothing coming for this long is given up. */
 const IDLE_TIMEOUT_MS = 60_000;
 
 export interface ProxyRequest {
@@ -34,16 +33,14 @@ export interface ProxyRequest {
 
 export interface ProxyOptions {
   upstream: UpstreamSource;
-  /** The budget of watches a followed log counts in (watch.ts's). */
-  maxChannels?: number;
   connectTimeoutMs?: number;
   idleTimeoutMs?: number;
 }
 
 /**
  * Forward one request to the Kubernetes API server and stream its answer
- * back unchanged — status, headers, body; a watch or a followed log simply
- * goes on.
+ * back unchanged — status, headers, body. What streams for as long as it
+ * is read (a watch, a followed log) goes through /stream instead.
  */
 export function proxy(req: ProxyRequest, res: ServerResponse, options: ProxyOptions): void {
   const method = req.method.toUpperCase();
@@ -64,21 +61,14 @@ export function proxy(req: ProxyRequest, res: ServerResponse, options: ProxyOpti
     if (typeof v === 'string') headers[name] = v;
   }
   const params = new URLSearchParams(query);
-  // A watch goes through /stream (its limits, its slow-client rules), never as it is.
+  // A watch, a followed log go through /stream (its limits, its slow-client rules), never as they are.
   if (truthy(params.get('watch'))) {
     fail(res, 400, 'bad_stream', 'a watch goes through /stream');
     return;
   }
-  // A followed log streams for as long as it is read: one place in the budget of watches while it does.
-  const streaming = truthy(params.get('follow'));
-  let release: (() => void) | null = null;
-  if (streaming) {
-    release = reserveChannel(options.maxChannels);
-    if (!release) {
-      fail(res, 503, 'too_many_watches', 'too many streams are open');
-      return;
-    }
-    res.on('close', release);
+  if (truthy(params.get('follow'))) {
+    fail(res, 400, 'bad_stream', 'a followed log goes through /stream');
+    return;
   }
   relay(
     {
@@ -87,10 +77,10 @@ export function proxy(req: ProxyRequest, res: ServerResponse, options: ProxyOpti
       headers,
       body: method === 'GET' || method === 'HEAD' ? undefined : encodeBody(req.body),
       connectTimeoutMs: options.connectTimeoutMs,
-      idleTimeoutMs: streaming ? undefined : (options.idleTimeoutMs ?? IDLE_TIMEOUT_MS),
+      idleTimeoutMs: options.idleTimeoutMs ?? IDLE_TIMEOUT_MS,
     },
     res,
-    { upstream: options.upstream, head: method === 'HEAD', streaming },
+    { upstream: options.upstream, head: method === 'HEAD' },
   );
 }
 
@@ -105,7 +95,7 @@ function truthy(value: string | null): boolean {
  * the client goes away the upstream request is dropped too; when the API
  * server breaks off, so is the client's answer, rather than hang half-done.
  */
-export function relay(request: UpstreamRequest, res: ServerResponse, options: { upstream: UpstreamSource; head?: boolean; streaming?: boolean }): void {
+export function relay(request: UpstreamRequest, res: ServerResponse, options: { upstream: UpstreamSource; head?: boolean }): void {
   let out: ReturnType<typeof openUpstream>;
   try {
     out = openUpstream(request, options.upstream, (answer: IncomingMessage) => {
@@ -114,8 +104,6 @@ export function relay(request: UpstreamRequest, res: ServerResponse, options: { 
         const v = answer.headers[name];
         if (typeof v === 'string') back[name] = v;
       }
-      // A stream (a followed log): an nginx in front passes each piece on at once.
-      if (options.streaming) back['x-accel-buffering'] = 'no';
       res.writeHead(answer.statusCode ?? 502, { ...HARDENING, 'cache-control': 'no-store', ...back });
       if (options.head) {
         answer.resume();

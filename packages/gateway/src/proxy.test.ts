@@ -108,27 +108,6 @@ describe('proxy', () => {
     expect((await res.json()).reason).toBe('NotFound');
   });
 
-  it('streams a followed log as it is written', async () => {
-    let release!: () => void;
-    const config = await fakeApiServer((_req, _body, res) => {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.write('{"type":"ADDED"}\n');
-      release = () => res.end('{"type":"DELETED"}\n');
-    });
-    const res = await fetch(`${await gateway(config)}/api/v1/namespaces/a/pods/b/log?follow=true`);
-    const reader = res.body!.getReader();
-    const first = new TextDecoder().decode((await reader.read()).value);
-    expect(first).toContain('ADDED'); // arrived before the API server finished
-    release();
-    let rest = '';
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      rest += new TextDecoder().decode(value);
-    }
-    expect(rest).toContain('DELETED');
-  });
-
   it('drops the upstream request when the client leaves', async () => {
     let upstreamClosed = false;
     const config = await fakeApiServer((req, _body, res) => {
@@ -137,7 +116,7 @@ describe('proxy', () => {
       req.socket.on('close', () => (upstreamClosed = true));
     });
     const controller = new AbortController();
-    const res = await fetch(`${await gateway(config)}/api/v1/namespaces/a/pods/b/log?follow=true`, { signal: controller.signal });
+    const res = await fetch(`${await gateway(config)}/api/v1/namespaces/a/pods/b/log`, { signal: controller.signal });
     await res.body!.getReader().read();
     controller.abort();
     await expect.poll(() => upstreamClosed, { timeout: 2000 }).toBe(true);
@@ -221,26 +200,13 @@ describe('proxy', () => {
     expect((await res.json()).error.code).toBe('kube_timeout');
   });
 
-  it('cuts an answer that stops coming, but not a followed log', async () => {
+  it('cuts an answer that stops coming', async () => {
     const config = await fakeApiServer((_req, _body, res) => {
       res.writeHead(200);
       res.write('{"kind":');
     });
-    const base = await gateway(config, { idleTimeoutMs: 100 });
-    const plain = await fetch(`${base}/api/v1/pods`);
-    expect(plain.headers.get('x-accel-buffering')).toBeNull();
+    const plain = await fetch(`${await gateway(config, { idleTimeoutMs: 100 })}/api/v1/pods`);
     await expect(plain.text()).rejects.toThrow();
-    // Each way the API server takes the flag.
-    for (const query of ['follow=true', 'follow=1', 'follow=True', 'follow=t']) {
-      const stream = await fetch(`${base}/api/v1/namespaces/a/pods/b/log?${query}`);
-      expect(stream.headers.get('x-accel-buffering'), query).toBe('no');
-      const reader = stream.body?.getReader();
-      const first = await reader?.read();
-      const later = await Promise.race([reader?.read(), new Promise((r) => setTimeout(() => r('still open'), 200))]);
-      expect(new TextDecoder().decode(first?.value)).toBe('{"kind":');
-      expect(later, query).toBe('still open');
-      await reader?.cancel();
-    }
   });
 
   it("breaks the client's answer off when the API server breaks off", async () => {

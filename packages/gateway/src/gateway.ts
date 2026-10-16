@@ -199,7 +199,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         jsonOf(req, res, given, '/patch', (body) => patch({ body }, res, { upstream, fieldManager: options.fieldManager }));
         return true;
       }
-      const pass = (body?: unknown) => proxy({ method, url: rest, headers: req.headers, body }, res, { upstream, maxChannels: options.stream?.maxChannels });
+      const pass = (body?: unknown) => proxy({ method, url: rest, headers: req.headers, body }, res, { upstream });
       if (reading) pass();
       else bodyOf(req, res, given, pass);
       return true;

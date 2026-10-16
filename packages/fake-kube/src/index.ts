@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import { logTimeKey } from '@overkube/query';
 
 /*
  * A fake Kubernetes API server for overkube's tests, behaving as the real
@@ -17,7 +18,14 @@ import type { KindInfo, KubeObject } from '@overkube/kube-types';
  *   as ADDED; then every change;
  * - only metadata, asked as PartialObjectMetadata(List);
  * - how many past a page (remainingItemCount), of a list not selected;
- * - 403 for the paths forbidden (a collection in every namespace, or one namespace's).
+ * - 403 for the paths forbidden (a collection in every namespace, or one namespace's);
+ * - a container's log (written by the test: writeLog), as the kubelet gives
+ *   it: from a time (to the second, as the API server passes it on), its
+ *   last lines, so many bytes, each line's time before
+ *   it; followed, each line as it is written until the container stops
+ *   (endLog) or the connection breaks (breakLogs); its last run's
+ *   (previous); one never written: 400, waiting to start; asked as a type
+ *   the API server does not serve (text/plain): 406.
  */
 
 export function kindOf(group: string, version: string, kind: string, plural: string, namespaced = true, verbs = ['get', 'list', 'watch']): KindInfo {
@@ -28,6 +36,17 @@ interface Logged {
   version: number;
   type: 'ADDED' | 'MODIFIED' | 'DELETED';
   object: KubeObject;
+}
+
+interface LogLine {
+  time: string;
+  text: string;
+}
+
+interface Follow {
+  key: string;
+  timestamps: boolean;
+  res: ServerResponse;
 }
 
 interface Watch {
@@ -52,6 +71,11 @@ export class FakeKube {
   private readonly snapshots = new Map<string, KubeObject[]>();
   private version = 100;
   private compacted = 0;
+  /** Containers' logs, by namespace/pod/container (and :previous). */
+  private readonly logs = new Map<string, LogLine[]>();
+  private readonly follows = new Set<Follow>();
+  /** Lines written with no time given: a second apart from here. */
+  private clock = Date.parse('2026-10-17T09:00:00Z');
 
   constructor(served: KindInfo[]) {
     this.served = served;
@@ -112,6 +136,30 @@ export class FakeKube {
     this.compacted = this.version;
   }
 
+  /** A line written to a container's log (its time: as given, else a second after the last); told to those following it. */
+  writeLog(namespace: string, pod: string, container: string, text: string, options: { time?: string; previous?: boolean } = {}): void {
+    const key = `${namespace}/${pod}/${container}${options.previous ? ':previous' : ''}`;
+    if (!options.time) this.clock += 1000;
+    const line = { time: options.time ?? new Date(this.clock).toISOString(), text };
+    this.logs.set(key, [...(this.logs.get(key) ?? []), line]);
+    for (const f of this.follows) if (f.key === key) f.res.write(`${f.timestamps ? `${line.time} ` : ''}${text}\n`);
+  }
+
+  /** A container stops writing: those following its log are done. */
+  endLog(namespace: string, pod: string, container: string): void {
+    for (const f of this.follows)
+      if (f.key === `${namespace}/${pod}/${container}`) {
+        this.follows.delete(f);
+        f.res.end();
+      }
+  }
+
+  /** Every followed log's connection breaks (the kubelet, the network). */
+  breakLogs(): void {
+    for (const f of this.follows) f.res.destroy();
+    this.follows.clear();
+  }
+
   /** Every watch open ends (as the API server ends them now and then). */
   endWatches(): void {
     for (const w of this.watches) w.res.end();
@@ -128,6 +176,8 @@ export class FakeKube {
     this.requests.push(`${req.method} ${req.url}`);
     const url = new URL(req.url ?? '', 'http://kube');
     if (url.pathname === '/api' || url.pathname === '/apis') return json(res, 200, this.discovery(url.pathname === '/api'));
+    const log = /^\/api\/v1\/namespaces\/([^/]+)\/pods\/([^/]+)\/log$/.exec(url.pathname);
+    if (log) return this.answerLog(log[1], log[2], url.searchParams, req.headers.accept ?? '', res);
     const at = this.locate(url.pathname);
     if (!at) {
       // One object, by its name (its collection's path and its name).
@@ -146,6 +196,43 @@ export class FakeKube {
     const watch: Watch = { root: at.root, namespace: at.namespace, name, labels, meta: /PartialObjectMetadata/.test(req.headers.accept ?? ''), res };
     if (url.searchParams.get('watch') === '1') return this.watch(watch, url.searchParams.get('resourceVersion') ?? '');
     this.list(watch, url.searchParams);
+  }
+
+  /** A container's log, as the kubelet gives it. */
+  private answerLog(namespace: string, pod: string, query: URLSearchParams, accept: string, res: ServerResponse): void {
+    // As the API server: an Accept it does not serve (text/plain among them) refused.
+    if (accept && !/\*\/\*|application\/(json|yaml|vnd\.kubernetes\.protobuf)/.test(accept)) {
+      json(res, 406, {
+        kind: 'Status',
+        code: 406,
+        reason: 'NotAcceptable',
+        message: 'only the following media types are accepted: application/json, application/yaml, application/vnd.kubernetes.protobuf',
+      });
+      return;
+    }
+    const container = query.get('container') ?? '';
+    const key = `${namespace}/${pod}/${container}${query.get('previous') === 'true' ? ':previous' : ''}`;
+    const all = this.logs.get(key);
+    if (!all) {
+      json(res, 400, { kind: 'Status', code: 400, reason: 'BadRequest', message: `container "${container}" in pod "${pod}" is waiting to start: ContainerCreating` });
+      return;
+    }
+    const since = query.get('sinceTime');
+    // From the start of its second: the API server passes sinceTime on to the kubelet to the second.
+    const from = since && logTimeKey(since.replace(/\.\d+/, ''));
+    let lines = from ? all.filter((l) => logTimeKey(l.time) >= from) : all;
+    const tail = query.get('tailLines');
+    if (tail !== null) lines = lines.slice(Math.max(0, lines.length - Number(tail)));
+    const timestamps = query.get('timestamps') === 'true';
+    let text = lines.map((l) => `${timestamps ? `${l.time} ` : ''}${l.text}\n`).join('');
+    const limit = query.get('limitBytes');
+    if (limit !== null) text = Buffer.from(text).subarray(0, Number(limit)).toString();
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    if (query.get('follow') !== 'true' || limit !== null) return void res.end(text);
+    res.write(text);
+    const follow = { key, timestamps, res };
+    this.follows.add(follow);
+    res.on('close', () => this.follows.delete(follow));
   }
 
   private locate(path: string): { root: string; namespace?: string } | undefined {

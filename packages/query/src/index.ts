@@ -1,14 +1,16 @@
 /*
  * @overkube/query: what overkube asks of a cluster's data, as data — fields
  * (a path, or worked out of an object alone), queries (get one, list a
- * window, count by a field), their results (live while read) — and kubectl's
- * JSONPath; a query answered by a scan of the objects given. Pure: the
+ * window, count by a field; a log's window), their results (live while
+ * read) — and kubectl's JSONPath; a query answered by a scan of the
+ * objects given, a log's window picked out of its lines. Pure: the
  * page answers them from what it watches, a server could from its indexes,
  * and nothing that asks has to know which.
  */
 
 export { type CompileCel, checkFieldDef, defineField, FIELD_LIMITS, fieldsOf, fieldVersion } from './def.ts';
 export { canonical, fnv1a, fnv1a64 } from './hash.ts';
+export { cursorOf, entriesBefore, entriesOf, type LogEntry, logTimeKey, logWindow, readCursor } from './logs.ts';
 export type {
   Bounds,
   Capabilities,
@@ -31,6 +33,10 @@ export type {
   ListQuery,
   ListResult,
   Live,
+  LogCursor,
+  LogLine,
+  LogQuery,
+  LogResult,
   Op,
   Page,
   Path,

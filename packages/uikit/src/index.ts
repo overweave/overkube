@@ -12,6 +12,7 @@ export { CONFIG_LABELS, ConfigViewer, type ConfigViewerLabels, type ConfigViewer
 export { FILE_LABELS, FILE_LINES, File, type FileLabels } from './data/File';
 export { Gauge } from './data/Gauge';
 export { KeyValue } from './data/KeyValue';
+export { type LogRow, LogView, type LogViewLabels } from './data/LogView';
 export { Meter } from './data/Meter';
 export { Ratio, ratioTone } from './data/Ratio';
 export { Split, type SplitPart } from './data/Split';
@@ -26,6 +27,7 @@ export { PageHeader } from './display/PageHeader';
 export { Ref } from './display/Ref';
 export { Skeleton, type SkeletonProps } from './display/Skeleton';
 export { CHECKLIST_LABELS, Checklist, type ChecklistGroup, type ChecklistItem, type ChecklistLabels } from './forms/Checklist';
+export { GroupPicker, type GroupPickerLabels, type PickGroup, type PickItem } from './forms/GroupPicker';
 export { MultiSelect, type MultiSelectProps, type Option } from './forms/MultiSelect';
 export {
   QUERY_FIELD_LABELS,

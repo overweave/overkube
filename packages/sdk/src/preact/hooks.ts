@@ -9,6 +9,8 @@ import {
   type ListQuery,
   type ListResult,
   type Live,
+  type LogQuery,
+  type LogResult,
   type Scope,
   type SearchQuery,
   type SearchResult,
@@ -71,3 +73,6 @@ export const useOwned = (kind: KindRef): readonly KindRef[] => useAnswer(kind, (
 
 /** A kind's fields (by its ref: pods.v1): what its queries may ask by, the columns its own definition says. */
 export const useFields = (kind: KindRef): FieldsResult => useAnswer(kind, (c, k) => c.source.fields(k));
+
+/** A pod's log: its newest lines (followed: each written after, run after run), or a window further back (before a window's older). */
+export const useLog = (query: LogQuery): LogResult => useAnswer(query, (c, q) => c.source.log(q));

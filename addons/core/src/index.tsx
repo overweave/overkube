@@ -2,6 +2,7 @@ import { type KindInfo, kinds } from '@overkube/kube-types';
 import {
   action,
   defineAddon,
+  forKinds,
   KIND_PAGE,
   type KindTableProps,
   type KindViewSpec,
@@ -67,6 +68,7 @@ import { addService } from './kinds/service.tsx';
 import { addStorage } from './kinds/storage.tsx';
 import { addWorkloads } from './kinds/workloads.tsx';
 import { titleOf } from './kinds.ts';
+import { LOGGED, PodLogs, WorkloadLogs } from './logs.tsx';
 import { Menu } from './Menu.tsx';
 import { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, type TabsState } from './Nav.tsx';
 import { type Chosen, KindNamespaces, NamespacePicker } from './namespaces.tsx';
@@ -232,6 +234,13 @@ export default defineAddon({
     c.add('Fill', 'core.resource.view.events', fill(slots.resource.view.tab('core.events'), { render: AllEvents }));
     c.add('ResourceTab', 'core.yaml', { target: {}, title: T.resource.view.tabs.yaml, icon: 'file', order: 1000 });
     c.add('Fill', 'core.resource.view.yaml', fill(slots.resource.view.tab('core.yaml'), { render: Yaml }));
+    // A log's: a pod's (its containers), a workload's (its pods') — before the YAML.
+    c.add('ResourceTab', 'core.logs', { target: forKinds(LOGGED.pod, ...LOGGED.workloads), title: T.resource.view.tabs.logs, icon: 'file-text', order: 900 });
+    c.add(
+      'Fill',
+      'core.resource.view.logs',
+      fill(slots.resource.view.tab('core.logs'), { render: (p) => (p.kind.id === LOGGED.pod.id ? <PodLogs {...p} /> : <WorkloadLogs {...p} />) }),
+    );
     // Its parts: its title, its footer's Actions, what is said when it is not there (another's in its place).
     c.add('Fill', 'core.resource.view.title', fill(slots.resource.view.title, { render: ResourceTitle }));
     c.add('Fill', 'core.resource.view.actions', fill(slots.resource.view.footer, { render: Actions }));
@@ -313,7 +322,7 @@ export default defineAddon({
       slots.page('overview').name,
       slots.page('settings').name,
       slots.page('kind').name,
-      ...['core.overview', 'core.events', 'core.yaml'].map((t) => slots.resource.view.tab(t).name),
+      ...['core.overview', 'core.events', 'core.yaml', 'core.logs'].map((t) => slots.resource.view.tab(t).name),
     ])
       c.add('Slot', name, {}, fallback);
 

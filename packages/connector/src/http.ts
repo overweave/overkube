@@ -117,6 +117,17 @@ export class Http {
     return this.request<T>('GET', path, { query, signal, accept });
   }
 
+  /** A GET answered with text (a log: asked as kubectl asks — the API server refuses an Accept it does not serve, text/plain among them), or an ApiError. */
+  async text(path: string, query?: Query, signal?: AbortSignal): Promise<string> {
+    const res = await this.answer('GET', path, { query, signal, accept: 'application/json, */*' });
+    try {
+      return await res.text();
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      throw new ApiError(0, 'network', `the answer broke off: ${(err as Error).message}`);
+    }
+  }
+
   /**
    * Delete an object; what the API server says (the object being deleted, or
    * a Status). With a uid, only that object: one made anew under the same

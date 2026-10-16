@@ -304,6 +304,34 @@ export const T = {
     },
   },
   /** A resource: its menu's, and opened. */
+  /** A log's tab (a pod's, a workload's): its sources, its level, what is looked for, how it is. */
+  logs: {
+    sources: t('core.logs.sources', 'Containers'),
+    all: t('core.logs.all', 'All containers'),
+    allPods: t('core.logs.all-pods', 'All pods, all containers'),
+    podsShort: t('core.logs.pods-short', { one: 'All · {count} pod', other: 'All · {count} pods' }),
+    some: t('core.logs.some', '{picked} of {all} containers'),
+    containers: t('core.logs.containers', { one: '{count} container', other: '{count} containers' }),
+    restarts: t('core.logs.restarts', { one: '{count} restart', other: '{count} restarts' }),
+    findSource: t('core.logs.find-source', 'Find a container'),
+    findPodSource: t('core.logs.find-pod-source', 'Find a pod or container'),
+    level: t('core.logs.level', 'Level'),
+    allLevels: t('core.logs.all-levels', 'All'),
+    warnings: t('core.logs.warnings', 'Warnings'),
+    errors: t('core.logs.errors', 'Errors'),
+    find: t('core.logs.find', 'Find in the log'),
+    found: t('core.logs.found', '{count} of {all}'),
+    live: t('core.logs.live', { one: 'Live · {count} line', other: 'Live · {count} lines' }),
+    held: t('core.logs.held', { one: 'Held · {count} line', other: 'Held · {count} lines' }),
+    ended: t('core.logs.ended', { one: 'Ended · {count} line', other: 'Ended · {count} lines' }),
+    time: t('core.logs.time', 'Time'),
+    wrap: t('core.logs.wrap', 'Wrap lines'),
+    download: t('core.logs.download', 'Download'),
+    newLines: t('core.logs.new-lines', { one: '{count} new line', other: '{count} new lines' }),
+    older: t('core.logs.older', 'Reading further back'),
+    none: t('core.logs.none', 'Nothing written yet.'),
+    noPods: t('core.logs.no-pods', 'No pods: nothing to read.'),
+  },
   resource: {
     context: {
       open: t('core.resource.context.open', 'Open'),
@@ -328,6 +356,7 @@ export const T = {
         overview: t('core.resource.view.tabs.overview', 'Overview'),
         events: t('core.resource.view.tabs.events', 'Events'),
         yaml: t('core.resource.view.tabs.yaml', 'YAML'),
+        logs: t('core.resource.view.tabs.logs', 'Logs'),
       },
       actions: {
         sure: t('core.resource.view.actions.sure', 'Confirm {action}?'),

@@ -2,7 +2,7 @@ import type { KubeObject } from '@overkube/kube-types';
 import { signal } from '@preact/signals';
 import { describe, expect, it, vi } from 'vitest';
 import { TICK_MS } from './filter.ts';
-import { memorySource } from './memory.ts';
+import { logKey, memorySource } from './memory.ts';
 import { OWNED_EVERY_MS } from './owned.ts';
 
 /*
@@ -119,5 +119,15 @@ describe('a source in memory', () => {
     expect(nodes.value.total?.count).toBe(1);
     served.value = false;
     expect(nodes.value.error?.code).toBe('not_served');
+  });
+
+  it('answers a container’s log as given: the newest so many, the window before by its older; followed, live', () => {
+    const lines = ['a', 'b', 'c', 'd', 'e'].map((text, i) => ({ time: `2026-10-17T09:00:0${i}Z`, text }));
+    const source = memorySource(signal({}), { logs: signal({ [logKey({ namespace: 'x', name: 'web', container: 'c' })]: lines }) });
+    const newest = source.log({ kind: 'pods.v1', namespace: 'x', name: 'web', container: 'c', follow: true, limit: 2 }).value;
+    expect([newest.state, newest.lines.map((l) => l.text), newest.older]).toEqual(['live', ['d', 'e'], '2026-10-17T09:00:03Z 1']);
+    const before = source.log({ kind: 'pods.v1', namespace: 'x', name: 'web', container: 'c', before: newest.older, limit: 2 }).value;
+    expect([before.state, before.lines.map((l) => l.text)]).toEqual(['done', ['b', 'c']]);
+    expect(source.log({ kind: 'pods.v1', namespace: 'x', name: 'other', limit: 2 }).value.error?.code).toBe('not_found');
   });
 });

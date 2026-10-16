@@ -5,7 +5,7 @@ import { type Connector, createConnector } from '@overkube/connector';
 import { FakeKube, kindOf } from '@overkube/fake-kube';
 import { createGateway, fromKubeconfig, type Gateway, resetWatchState } from '@overkube/gateway';
 import type { KubeObject } from '@overkube/kube-types';
-import type { Live } from '@overkube/query';
+import type { Live, LogResult } from '@overkube/query';
 import { signal } from '@preact/signals';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSource, type SourceOptions } from './source.ts';
@@ -437,5 +437,73 @@ describe('a plan', () => {
     await until(() => list.value.state === 'live' && kube.watching === 3);
     for (const off of offs.splice(0)) off();
     await until(() => kube.watching === 2);
+  });
+});
+
+describe('a pod’s log', () => {
+  const running = (restarts: number, state: Record<string, unknown> = { running: {} }) =>
+    ({ ...pod('web', 'a', 'Running', restarts), status: { phase: 'Running', containerStatuses: [{ name: 'c', restartCount: restarts, state }] } }) as KubeObject;
+  const texts = (live: Live<LogResult>) => live.value.lines.map((l) => l.text);
+
+  it('is its newest lines, then each written after; the run over, done — read on as the pod says another run began', async () => {
+    const { kube, source, read } = await setup([[Pod, running(0)]]);
+    for (const t of ['one', 'two', 'three']) kube.writeLog('a', 'web', 'c', t);
+    const log = read(source.log({ kind: 'pods.v1', namespace: 'a', name: 'web', container: 'c', follow: true, limit: 2 }));
+    await until(() => log.value.state === 'live' && texts(log).length === 2);
+    expect([texts(log), log.value.older?.split(' ')[1]]).toEqual([['two', 'three'], '1']);
+    kube.writeLog('a', 'web', 'c', 'four');
+    await until(() => texts(log).length === 3);
+    // Its run over, as the pod says, then its log ends.
+    const seen = read(source.get<KubeObject>({ kind: 'pods.v1', namespace: 'a', name: 'web' }));
+    kube.put(Pod, running(0, { terminated: { exitCode: 1 } }));
+    await until(() => JSON.stringify(seen.value.object).includes('terminated'));
+    kube.endLog('a', 'web', 'c');
+    await until(() => log.value.state === 'done');
+    // Restarted: the next run's lines, after the last.
+    kube.writeLog('a', 'web', 'c', 'five');
+    kube.put(Pod, running(1));
+    await until(() => texts(log).includes('five') && log.value.state === 'live');
+    expect(texts(log)).toEqual(['two', 'three', 'four', 'five']);
+  });
+
+  it('let go of by the kubelet, its run still going (a quiet stream), reads on a while after', async () => {
+    const { kube, source, read } = await setup([[Pod, running(0)]]);
+    kube.writeLog('a', 'web', 'c', 'one');
+    const log = read(source.log({ kind: 'pods.v1', namespace: 'a', name: 'web', container: 'c', follow: true, limit: 10 }));
+    await until(() => texts(log).length === 1);
+    kube.endLog('a', 'web', 'c');
+    kube.writeLog('a', 'web', 'c', 'two');
+    await until(() => texts(log).includes('two'));
+    expect([texts(log), log.value.state]).toEqual([['one', 'two'], 'live']);
+  });
+
+  it('of a container not started yet, says so — and is read once the pod says it is', async () => {
+    const { kube, source, read } = await setup([
+      [Pod, { ...pod('web', 'a'), status: { phase: 'Pending', containerStatuses: [{ name: 'c', state: { waiting: {} } }] } } as KubeObject],
+    ]);
+    const log = read(source.log({ kind: 'pods.v1', namespace: 'a', name: 'web', container: 'c', follow: true, limit: 10 }));
+    await until(() => log.value.state === 'error');
+    expect(log.value.error?.message).toContain('waiting to start');
+    kube.writeLog('a', 'web', 'c', 'up');
+    kube.put(Pod, running(0));
+    await until(() => texts(log).includes('up'));
+  });
+
+  it('pages back, a window before another — lines of one time told apart — to its first line', async () => {
+    const T = '2026-10-17T09:00:30.5Z';
+    const { kube, source, read } = await setup([[Pod, running(0)]]);
+    for (const t of ['a', 'b']) kube.writeLog('a', 'web', 'c', t);
+    for (const t of ['c', 'd', 'e']) kube.writeLog('a', 'web', 'c', t, { time: T });
+    kube.writeLog('a', 'web', 'c', 'f', { time: '2026-10-17T09:00:31Z' });
+    const q = { kind: 'pods.v1', namespace: 'a', name: 'web', container: 'c', limit: 3 };
+    const newest = read(source.log(q));
+    await until(() => newest.value.state === 'done');
+    expect([texts(newest), newest.value.older]).toEqual([['d', 'e', 'f'], `${T} 2`]);
+    const before = read(source.log({ ...q, before: newest.value.older }));
+    await until(() => before.value.state === 'done');
+    expect(texts(before)).toEqual(['a', 'b', 'c']);
+    const first = read(source.log({ ...q, before: before.value.older }));
+    await until(() => first.value.state === 'done');
+    expect([texts(first), first.value.older]).toEqual([[], undefined]);
   });
 });

@@ -1,63 +1,15 @@
 import { Badge, Button, Icon, Ratio, Section, Segmented } from '@overkube/uikit';
 import { useState } from 'preact/hooks';
-import { Chart, Containers, Ext, FLUX, LAYOUTS, link, mono, Pairs, ResourceSketch, Route, Row, RUNNING, ref, Stage, series, state, Table, type Vuln } from './resource.sketch.tsx';
+import { Chart, Ext, FLUX, LAYOUTS, link, mono, Pairs, ResourceSketch, Route, Row, ref, Stage, series, state, Table, type Vuln } from './resource.sketch.tsx';
 
 /*
  * What addons would add to a resource opened (a sketch: marked, not
  * connected) — each in the core's slots: its tab, its mark in the header,
- * its buttons, its sections. Logs and a shell, metrics from Prometheus,
+ * its buttons, its sections. A shell, metrics from Prometheus,
  * Flux, Traefik, cert-manager, Trivy.
  */
 
 export default { title: 'core/resource/Addons', parameters: { controls: { disable: true } } };
-
-/** The logs addon's: a pod's log (its tab: which container, follow, time, wrap, search; its lines numbered, a warning's and an error's in their colours); a shell in its header; on each container, its logs and a shell (Overview). */
-export const Logs = () => (
-  <Stage>
-    <ResourceSketch
-      view={{
-        kind: 'Pod',
-        name: 'coredns-75c7b7f4-b9mgn',
-        namespace: 'kube-system',
-        at: 'logs',
-        header: [['Shell', 'enter']],
-        tabs: [['Logs', 'file', 'logs addon']],
-        summary: [
-          ['Status', RUNNING],
-          ['Ready', <Ratio value={1} of={1} />],
-        ],
-        own: (
-          <Containers
-            actions
-            list={[
-              {
-                name: 'wait-for-api',
-                role: 'init',
-                image: 'busybox:1.37',
-                state: ['done', 'circle-check', 'Completed'],
-                ready: false,
-                restarts: 0,
-                ports: [],
-                cpu: [],
-                memory: ['16Mi'],
-              },
-              {
-                name: 'coredns',
-                image: 'registry.k8s.io/coredns/coredns:v1.12.0',
-                state: ['ok', 'circle-play', 'Running'],
-                ready: true,
-                restarts: 5,
-                ports: ['53/UDP', '53/TCP', '9153/TCP'],
-                cpu: ['100m'],
-                memory: ['70Mi', '170Mi'],
-              },
-            ]}
-          />
-        ),
-      }}
-    />
-  </Stage>
-);
 
 /** The Flux addon's on what it manages (any kind): which Kustomization, its revision applied. */
 export const FluxManaged = () => (
@@ -410,7 +362,6 @@ export const Trivy = () => (
   </Stage>
 );
 
-Logs.storyName = 'Addons - Logs';
 Metrics.storyName = 'Addons - Metrics';
 Flux.storyName = 'Addons - Flux';
 FluxManaged.storyName = 'Addons - Flux (what it manages)';

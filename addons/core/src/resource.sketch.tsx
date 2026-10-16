@@ -98,17 +98,6 @@ const SKETCH = `
 .rv-chart-axis { display: flex; justify-content: space-between; color: var(--uk-muted); font-size: 11px; }
 .rv-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px 20px; }
 /* A log: its tools over it; its lines, numbered, its time quiet, a warning's and an error's in their colours — on the page's ground. */
-.rv-log-tools { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
-.rv-log-tools .uk-input { flex: 1; min-width: 160px; height: 28px; }
-.rv-log { max-height: 52vh; overflow: auto; padding: 8px 0; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); background: var(--uk-bg); font: 12px/1.6 var(--uk-mono); }
-.rv-log-line { display: grid; grid-template-columns: 32px max-content minmax(0, 1fr); gap: 12px; padding-right: 12px; }
-.rv-log-line:hover { background: var(--uk-panel-2); }
-.rv-log-line > span:first-child { color: var(--uk-muted); text-align: right; user-select: none; opacity: .6; }
-.rv-log-line > time { color: var(--uk-muted); }
-.rv-log-line[data-level='warn'] > span:last-child { color: var(--uk-warn); }
-.rv-log-line[data-level='error'] > span:last-child { color: var(--uk-error); }
-.rv-log[data-wrap] .rv-log-line > span:last-child { white-space: pre-wrap; overflow-wrap: anywhere; }
-.rv-log:not([data-wrap]) .rv-log-line > span:last-child { white-space: pre; }
 /* An addon's place: outlined, its slot and whose in its corner (shown or not). */
 .rv-stage[data-ext] .rv-ext { position: relative; outline: 1px dashed color-mix(in srgb, var(--uk-accent) 60%, transparent); outline-offset: 4px; border-radius: var(--uk-radius-lg); }
 .rv-stage[data-ext] .rv-ext::before { content: attr(data-slot); position: absolute; z-index: 1; top: -13px; right: 8px; padding: 0 6px; background: var(--uk-panel); color: var(--uk-accent); font: 10.5px/16px var(--uk-mono); border-radius: 4px; white-space: nowrap; }
@@ -391,7 +380,6 @@ export function ResourceSketch({ view }: { view: View }) {
             <Events events={view.events ?? []} />
           </Section>
         )}
-        {tab === 'logs' && <Logs />}
         {tab === 'metrics' && (
           <Ext slot="resource.view.tabs" by="metrics addon">
             <Section title="Usage, last hour">
@@ -486,54 +474,6 @@ export function Events({ events }: { events: Event[] }) {
     </div>
   );
 }
-
-/** A log, as the logs addon could show one: which container, following it or not, its times, its lines wrapped or not, what is looked for. */
-export function Logs() {
-  const [follow, setFollow] = useState(true);
-  const [times, setTimes] = useState(true);
-  const [wrap, setWrap] = useState(false);
-  const [container, setContainer] = useState('coredns');
-  return (
-    <Ext slot="resource.view.tabs" by="logs addon">
-      <Section title="Logs">
-        <div class="rv-log-tools">
-          <Segmented
-            label="Container"
-            value={container}
-            onChange={setContainer}
-            options={[
-              { value: 'coredns', label: 'coredns' },
-              { value: 'previous', label: 'previous run' },
-            ]}
-          />
-          <input class="uk-input" placeholder="Search…" aria-label="Search the log" />
-          <Switch checked={follow} onChange={setFollow} label="Follow" />
-          <Switch checked={times} onChange={setTimes} label="Time" />
-          <Switch checked={wrap} onChange={setWrap} label="Wrap" />
-        </div>
-        <div class="rv-log" data-wrap={wrap ? '' : undefined}>
-          {LOG.map(([time, level, text], i) => (
-            <div key={time} class="rv-log-line" data-level={level}>
-              <span>{i + 1}</span>
-              {times ? <time>{time}</time> : <span />}
-              <span>{text}</span>
-            </div>
-          ))}
-        </div>
-      </Section>
-    </Ext>
-  );
-}
-
-export const LOG: [time: string, level: 'info' | 'warn' | 'error', text: string][] = [
-  ['10:42:01.112', 'info', '[INFO] plugin/reload: Running configuration SHA512 = 591cf328cccc12bc490481273e738df59329c62c0b729d94e8b61db9961c2fa5'],
-  ['10:42:01.113', 'info', 'CoreDNS-1.12.0'],
-  ['10:42:01.114', 'info', 'linux/arm64, go1.23.3, 51e11f1'],
-  ['10:42:07.501', 'info', '[INFO] 10.42.0.1:41871 - 17482 "A IN kubernetes.default.svc.cluster.local. udp 54 false 512" NOERROR qr,aa,rd 106 0.0001s'],
-  ['10:43:12.044', 'warn', '[WARNING] plugin/kubernetes: starting server with unsynced Kubernetes API'],
-  ['10:43:15.870', 'error', '[ERROR] plugin/errors: 2 example.com. A: read udp 10.42.0.4:53622->1.1.1.1:53: i/o timeout'],
-  ['10:43:16.002', 'info', '[INFO] 10.42.0.9:50311 - 2210 "AAAA IN api.shop.svc.cluster.local. udp 44 false 512" NOERROR qr,aa,rd 137 0.0002s'],
-];
 
 export const YAML = `apiVersion: v1
 kind: Pod
