@@ -5,7 +5,7 @@ import { KeyValue, Nothing, Ref, Section, Status, Table } from '@overkube/uikit'
 import type { ComponentChildren } from 'preact';
 import { ObjectRef } from '../refs.tsx';
 import { T } from '../texts.ts';
-import { addRelated, type Selector, shown } from './shared.tsx';
+import { addRelated, pickingLink, type Selector, shown } from './shared.tsx';
 
 /*
  * An ingress's and a network policy's own, in their views: an ingress's
@@ -207,5 +207,12 @@ export function addNetwork(c: KubeContributor): void {
     o.spec?.defaultBackend ? [<BackendOf backend={o.spec.defaultBackend} namespace={o.metadata?.namespace} />, o.spec.defaultBackend.service?.name ?? ''] : undefined,
   );
   c.add('Fill', 'core.resource.view.networkpolicy.rules', section({ kinds: [NetworkPolicy], order: 10, render: PolicyRules }));
-  addRelated<PolicyObject>(c, ['networkpolicy', NetworkPolicy], 'selector', 200, T.resource.view.workload.selector, (o) => shown(o.spec?.podSelector) ?? [<AllPods />, '']);
+  addRelated<PolicyObject>(
+    c,
+    ['networkpolicy', NetworkPolicy],
+    'selector',
+    200,
+    T.resource.view.workload.selector,
+    (o) => pickingLink(o.spec?.podSelector, o.metadata?.namespace) ?? [<AllPods />, ''],
+  );
 }

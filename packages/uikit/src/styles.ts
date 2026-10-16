@@ -74,6 +74,9 @@ export const css = `
 /* A chip: its key quieter, its value plain, a hairline between; cut short when long. */
 .uk-chip { all: unset; position: relative; display: inline-flex; align-items: stretch; max-width: min(420px, 100%); height: 22px; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); overflow: hidden; background: var(--uk-panel-2); font-family: var(--uk-mono); font-size: 11px; line-height: 20px; cursor: pointer; transition: border-color .12s, background .12s; }
 .uk-chip:hover { border-color: color-mix(in srgb, var(--uk-border), var(--uk-text) 20%); }
+/* One leading somewhere (a label: its kind's page, those of it): its name the link's colour under the pointer. */
+a.uk-chip:hover .uk-chip-name, .uk-badge-link:hover .uk-badge { color: var(--uk-accent); }
+.uk-badge-link { text-decoration: none; color: inherit; }
 .uk-chip:focus-visible { outline: 2px solid var(--uk-focus); outline-offset: 1px; }
 .uk-chip-key { color: var(--uk-muted); white-space: nowrap; }
 .uk-chip-value[data-long] { flex: 0 1 auto; min-width: 6ch; }
@@ -582,6 +585,44 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-select-trigger[aria-expanded='true'] { border-color: var(--uk-muted); }
 .uk-select-trigger[aria-expanded='true'] > .uk-icon:last-child { transform: rotate(180deg); }
 .uk-select-popup { max-width: 360px; padding: 0; overflow: hidden; }
+
+/* A query: its text an input's, over a copy of it coloured (both one font, one padding: the copy scrolls as the input does). */
+.uk-query { display: flex; align-items: center; gap: 4px; height: 32px; padding: 0 4px 0 10px; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); background: var(--uk-bg); transition: border-color .12s; }
+.uk-query:focus-within { border-color: color-mix(in srgb, var(--uk-accent) 70%, var(--uk-border)); }
+.uk-query > .uk-icon { width: 15px; height: 15px; color: var(--uk-muted); }
+.uk-query-line { position: relative; flex: 1; min-width: 0; height: 100%; overflow: hidden; }
+.uk-query-copy, .uk-query-input { padding: 0 4px; font: inherit; font-size: 13px; letter-spacing: normal; white-space: pre; line-height: 30px; }
+.uk-query[data-code] .uk-query-copy, .uk-query[data-code] .uk-query-input { font-family: var(--uk-mono); font-size: 12px; }
+.uk-query-copy { position: absolute; inset: 0 auto 0 0; color: var(--uk-text); pointer-events: none; }
+.uk-query-input { position: relative; width: 100%; height: 100%; border: 0; outline: 0; background: transparent; color: transparent; caret-color: var(--uk-text); }
+.uk-query-input::placeholder { color: var(--uk-muted); }
+.uk-query-input::selection { background: color-mix(in srgb, var(--uk-accent) 35%, transparent); color: transparent; }
+.uk-query-at { display: inline-block; width: 0; height: 30px; vertical-align: top; }
+/* One colour: what joins and compares dim; what is wrong, a straight line under it (no frame of the whole: the card under it says what). */
+.uk-query-copy [data-kind='op'], .uk-query-copy [data-kind='keyword'], .uk-query-copy [data-kind='punct'] { color: var(--uk-muted); }
+.uk-query-copy [data-current] { border-radius: 3px; background: color-mix(in srgb, var(--uk-text) 8%, transparent); }
+.uk-query-copy [data-problem] { text-decoration: underline solid var(--uk-error) 2px; text-decoration-skip-ink: none; text-underline-offset: 5px; }
+.uk-query-copy [data-problem='warn'] { text-decoration-color: var(--uk-warn); }
+.uk-query-tool { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; padding: 0; border: 0; border-radius: var(--uk-radius-sm); background: none; color: var(--uk-muted); cursor: pointer; }
+.uk-query-tool:hover { background: var(--uk-panel-2); color: var(--uk-text); }
+.uk-query-tool .uk-icon { width: 14px; height: 14px; }
+
+/* Under the part being typed: what is wrong with it, what may go there — small, as wide as what it says. */
+.uk-layers > .uk-query-card { position: absolute; visibility: hidden; }
+.uk-query-card { display: flex; flex-direction: column; width: max-content; min-width: 180px; max-width: 360px; max-height: min(260px, var(--uk-placed-room, 260px)); background: var(--uk-panel); border: 1px solid var(--uk-border); border-radius: var(--uk-radius); box-shadow: 0 8px 24px color-mix(in srgb, var(--uk-shadow) 40%, transparent); overflow: hidden; font-size: 12px; animation: uk-pop-in .12s cubic-bezier(.2, .8, .2, 1); transform-origin: top left; }
+.uk-query-card[data-side='top'] { transform-origin: bottom left; }
+.uk-query-note { display: flex; align-items: flex-start; gap: 6px; padding: 6px 10px; color: var(--uk-error); line-height: 1.35; }
+.uk-query-note[data-tone='warn'] { color: var(--uk-warn); }
+.uk-query-note .uk-icon { width: 14px; height: 14px; margin-top: 1px; }
+.uk-query-note + .uk-query-list { border-top: 1px solid var(--uk-border); }
+.uk-query-list { overflow: auto; padding: 3px; }
+.uk-query-option { display: flex; align-items: baseline; gap: 12px; padding: 4px 8px; border-radius: var(--uk-radius-sm); cursor: pointer; white-space: nowrap; }
+.uk-query-option:hover { background: var(--uk-panel-2); }
+/* The one Tab takes: plainly so (the accent's tint). */
+.uk-query-option[aria-selected='true'] { background: color-mix(in srgb, var(--uk-accent) 16%, transparent); }
+.uk-query-option[aria-selected='true'] .uk-query-option-title { color: var(--uk-text); }
+.uk-query-option-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--uk-mono); }
+.uk-query-option-hint { color: var(--uk-muted); font-variant-numeric: tabular-nums; }
 .uk-select-list { position: relative; max-height: 320px; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px; outline: none; }
 .uk-select-option { display: flex; align-items: center; gap: 12px; min-height: var(--uk-row); padding: 0 10px 0 12px; border-radius: var(--uk-radius-sm); cursor: pointer; color: var(--uk-text); }
 .uk-select-option[data-active] { background: var(--uk-panel-2); }
@@ -755,6 +796,8 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 /* What is said beside it, one thing after another: a dot between. */
 .uk-page-header-sub > * + *::before { content: '·'; margin-right: 8px; opacity: .6; }
 .uk-page-header-end { margin-left: auto; align-self: center; display: flex; align-items: center; gap: 8px; }
+/* A query at its end (a kind's filter): room to type in, not all of it. */
+.uk-page-header-end > .uk-query { width: min(440px, 50vw); }
 .uk-popover { animation: uk-pop-in .14s cubic-bezier(.2, .8, .2, 1); transform-origin: top; }
 .uk-popover[data-side='top'] { transform-origin: bottom; }
 .uk-popover[data-state='closing'] { animation: uk-pop-out .13s ease-in forwards; pointer-events: none; }
@@ -795,7 +838,7 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 @keyframes uk-status-fade { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .uk-status, .uk-status > .uk-icon { animation: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .uk-popover, .uk-popover[data-state='closing'] { animation: none !important; }
+  .uk-popover, .uk-popover[data-state='closing'], .uk-query-card { animation: none !important; }
   .uk-switch-thumb, .uk-switch-track, .uk-tab-bar { transition: none; }
 }
 /* A context menu: a pane of glass over everything, growing from where it was asked for; its items as a system's. */

@@ -23,6 +23,7 @@ import {
 } from '@overkube/query';
 import { computed, type ReadonlySignal } from '@preact/signals';
 import { capabilities, FieldsCache } from './fields.ts';
+import { filtered, isError, makeFilter, withTold } from './filter.ts';
 
 /*
  * Queries answered from objects in memory (a test's, a story's): the same
@@ -101,7 +102,10 @@ export function memorySource(objects: ReadonlySignal<Readonly<Record<KindRef, re
         if (!f.made) return { ...notHad(f), items: [] };
         const wrong = checkQuery(query, f.made.fields, 'list');
         if (wrong) return { ...failed(wrong), items: [] };
-        return { ...stateOf(query.kind).result, ...scan(inScope(query.kind, query.scope) as readonly O[], query, f.made.fields) };
+        const filter = query.filter ? makeFilter(f.made, query.filter) : undefined;
+        if (filter && isError(filter)) return { ...failed(filter), items: [] };
+        const kept = filtered(inScope(query.kind, query.scope) as readonly O[], filter);
+        return { ...stateOf(query.kind).result, ...withTold(scan(kept.objects, query, f.made.fields), kept.told()) };
       });
     },
     count(query: CountQuery): Live<CountResult> {
@@ -110,7 +114,10 @@ export function memorySource(objects: ReadonlySignal<Readonly<Record<KindRef, re
         if (!f.made) return notHad(f);
         const wrong = checkQuery(query, f.made.fields, 'count');
         if (wrong) return failed(wrong);
-        return { ...stateOf(query.kind).result, ...scanCount(inScope(query.kind, query.scope), query, f.made.fields) };
+        const filter = query.filter ? makeFilter(f.made, query.filter) : undefined;
+        if (filter && isError(filter)) return failed(filter);
+        const kept = filtered(inScope(query.kind, query.scope), filter);
+        return { ...stateOf(query.kind).result, ...withTold(scanCount(kept.objects, query, f.made.fields), kept.told()) };
       });
     },
     fields(kind: KindRef): Live<FieldsResult> {

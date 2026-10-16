@@ -1,6 +1,6 @@
 import { kinds } from '@overkube/kube-types';
 import { describe, expect, it } from 'vitest';
-import { closeIn, KIND_PAGE, kindPath, kindRefIn, openedIn, openIn } from './links.ts';
+import { closeIn, filteredIn, filterIn, KIND_PAGE, kindPath, kindRefIn, openedIn, openIn } from './links.ts';
 
 /* Where things are, as paths: a kind's page, and a resource opened over any page (?open=) — its other parameters kept as they are. */
 
@@ -43,5 +43,16 @@ describe('links', () => {
       undefined,
       undefined,
     ]);
+  });
+
+  it('filters a page by CEL (encoded: & # = and quotes its own), what is opened kept; none, not filtered', () => {
+    const cel = 'status == "a&b#c" && x = 1';
+    const path = filterIn('/k/pods.v1?open=pods.v1/shop/web', cel);
+    expect(path).toBe(`/k/pods.v1?filter=${encodeURIComponent(cel)}&open=pods.v1/shop/web`);
+    expect(filteredIn(path)).toBe(cel);
+    expect(openedIn(path)).toEqual({ kind: 'pods.v1', namespace: 'shop', name: 'web' });
+    expect(filterIn(path, undefined)).toBe('/k/pods.v1?open=pods.v1/shop/web');
+    expect(filterIn('/k/pods.v1?filter=a', '')).toBe('/k/pods.v1');
+    expect([filteredIn('/k/pods.v1'), filteredIn('/k/pods.v1?filter=%E0%A4%A')]).toEqual([undefined, undefined]);
   });
 });

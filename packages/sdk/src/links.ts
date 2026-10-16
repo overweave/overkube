@@ -6,7 +6,8 @@ import { kindRef } from '@overkube/query';
  * (<plural>.<version>[.<group>]: pods.v1, deployments.v1.apps) — one part of
  * a path, read back unambiguously — its page at /k/<kind> (KIND_PAGE: the
  * core's Page 'kind'); a resource opened over any page,
- * ?open=<kind>/<namespace>/<name> (<kind>/<name>: one of the whole cluster).
+ * ?open=<kind>/<namespace>/<name> (<kind>/<name>: one of the whole cluster);
+ * a kind's page filtered, ?filter=<CEL> (its objects those it holds).
  */
 
 type KindLike = Pick<KindInfo, 'plural' | 'version' | 'group'>;
@@ -77,4 +78,26 @@ export function openedIn(path: string): { kind: string; namespace?: string; name
     // Not one to be read: nothing opened.
   }
   return undefined;
+}
+
+/** A path with its page filtered by this CEL (none, or empty: not filtered); what is opened over it kept. */
+export function filterIn(path: string, filter: string | undefined): string {
+  const [where, query] = split(path);
+  const rest = query.split('&').filter((p) => p && !p.startsWith('filter='));
+  const all = [...(filter ? [`filter=${encodeURIComponent(filter)}`] : []), ...rest];
+  return all.length ? `${where}?${all.join('&')}` : where;
+}
+
+/** The CEL a path's page is filtered by; none: not filtered. */
+export function filteredIn(path: string): string | undefined {
+  const raw = split(path)[1]
+    .split('&')
+    .find((p) => p.startsWith('filter='));
+  if (!raw) return undefined;
+  try {
+    return decodeURIComponent(raw.slice('filter='.length)) || undefined;
+  } catch {
+    // Not one to be read: not filtered.
+    return undefined;
+  }
 }

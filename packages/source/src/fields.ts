@@ -1,4 +1,4 @@
-import { type Layer, layer, prepareCatalog } from '@overkube/cel';
+import { type Cel, type Layer, layer, prepareCatalog } from '@overkube/cel';
 import { BUILT_IN, baseFields, COMMON, type CrdColumn, type CrdLike } from '@overkube/kube-fields';
 import type { KindInfo } from '@overkube/kube-types';
 import { type Capabilities, type FieldCatalog, type FieldName, type Fields, fieldsOf, type KindRef, kindRef } from '@overkube/query';
@@ -14,7 +14,11 @@ import { type Capabilities, type FieldCatalog, type FieldName, type Fields, fiel
 
 /** A kind's fields made: what a scan takes, their definitions, what was left out (why); a CRD's columns, and those of them left out (why). */
 export interface KindFields {
+  /** The kind's ref (pods.v1): its fields' short names, a filter's. */
+  ref: KindRef;
   fields: Fields;
+  /** The CEL its fields are made with (their functions): a filter's too. */
+  cel: Cel;
   catalog: FieldCatalog;
   rejected: Readonly<Record<FieldName, string>>;
   columns: readonly CrdColumn[];
@@ -27,7 +31,7 @@ function make(ref: KindRef, crd: CrdLike | undefined, layers: readonly Layer[]):
   const theirs = new Set(layers.flatMap((l) => Object.keys(l.fields ?? {})));
   const { catalog, cel, rejected } = prepareCatalog(layer(base, ...layers), { trusted: Object.keys(base.fields).filter((name) => !theirs.has(name)) });
   const made = fieldsOf(catalog.fields, (expression) => cel.compile(expression, { trusted: true }));
-  return { fields: made.fields, catalog, rejected: { ...rejected, ...made.rejected }, columns: base.columns, skipped: base.skipped };
+  return { ref, fields: made.fields, cel, catalog, rejected: { ...rejected, ...made.rejected }, columns: base.columns, skipped: base.skipped };
 }
 
 export class FieldsCache {

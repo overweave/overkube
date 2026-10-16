@@ -27,6 +27,17 @@ export { Ref } from './display/Ref';
 export { Skeleton, type SkeletonProps } from './display/Skeleton';
 export { CHECKLIST_LABELS, Checklist, type ChecklistGroup, type ChecklistItem, type ChecklistLabels } from './forms/Checklist';
 export { MultiSelect, type MultiSelectProps, type Option } from './forms/MultiSelect';
+export {
+  QUERY_FIELD_LABELS,
+  QueryField,
+  type QueryFieldLabels,
+  type QueryFieldProps,
+  type QueryPart,
+  type QueryPartKind,
+  type QueryProblem,
+  type QuerySuggestion,
+  type QuerySuggestions,
+} from './forms/QueryField';
 export { Select } from './forms/Select';
 export { type FormSetting, SettingsForm } from './forms/SettingsForm';
 export { Switch } from './forms/Switch';

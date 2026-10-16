@@ -340,6 +340,21 @@ function compile(where: Where | undefined, catalog: Catalog): Predicate {
   }
 }
 
+/** A where made into a predicate, once: whether an object is one it asks for. */
+export function predicateOf(where: Where | undefined, fields: Fields): (object: unknown) => boolean {
+  return compile(where, catalogOf(fields));
+}
+
+/** How a declared field's values are had of an object, made once (kept as a scan keeps them); none: no such field. */
+export function valuesReader(fields: Fields, name: FieldName): ((object: unknown) => readonly Value[]) | undefined {
+  const read = accessor(catalogOf(fields), name);
+  if (!read) return undefined;
+  return (object) => {
+    const cell = read(object);
+    return isMany(cell) ? cell : [cell];
+  };
+}
+
 /** Whether an object is one the where asks for. For one now and then: its where made into a predicate each call (scan makes it once). */
 export function matches(object: unknown, where: Where | undefined, fields: Fields): boolean {
   return compile(where, catalogOf(fields))(object);
@@ -454,12 +469,12 @@ function first<O>(rows: Row<O>[], k: number, cmp: (a: Row<O>, b: Row<O>) => numb
 }
 
 /** What a cursor is of: its query's kind, scope, where, sort, and the versions of the fields it sorts by (FNV-1a of them). */
-function cursorTag(query: Pick<ListQuery, 'kind' | 'scope' | 'where' | 'sort'>, fields: Fields): string {
+function cursorTag(query: Pick<ListQuery, 'kind' | 'scope' | 'where' | 'filter' | 'sort'>, fields: Fields): string {
   // As it means it: no desc as desc false, no scope as all, its namespaces in order, once each.
   const sort = (query.sort ?? []).map((s) => ({ field: s.field, desc: s.desc === true }));
   const scope = query.scope === undefined || query.scope === 'all' ? 'all' : [...new Set(query.scope.namespaces)].sort();
   const versions = sort.map((s) => fields.get(s.field)?.version ?? null);
-  return fnv1a64(canonical([query.kind, scope, query.where ?? null, sort, versions]));
+  return fnv1a64(canonical([query.kind, scope, query.where ?? null, sort, versions, ...(query.filter ? [query.filter] : [])]));
 }
 
 /** A cursor: past this place, of this query (opaque to whoever holds it). */
@@ -567,7 +582,7 @@ function itemsOf<O>(rows: readonly Row<O>[], query: ListQuery, fields: Fields, c
   });
 }
 
-/** A list query's answer of these objects (checked: checkQuery): its window, how many in all, where the next starts. */
+/** A list query's answer of these objects (checked: checkQuery; its filter's, those given: who gives them works it out): its window, how many in all, where the next starts. */
 export function scan<O>(objects: Iterable<O>, query: ListQuery, fields: Fields): Pick<ListResult<O>, 'items' | 'total' | 'next' | 'fieldErrors'> {
   const catalog = catalogOf(fields);
   const sort = query.sort ?? [];
@@ -792,14 +807,14 @@ function merged(a: Record<FieldName, FieldError> | undefined, b: Record<FieldNam
  * it; a window; the fields sorted by, selected, summed; the namespaces of a scope;
  * a name, a path, a string literal (its length).
  */
-export const LIMITS = { depth: 32, nodes: 1000, values: 1000, page: 10_000, sort: 16, select: 64, sum: 16, namespaces: 1000, text: 1024 } as const;
+export const LIMITS = { depth: 32, nodes: 1000, values: 1000, page: 10_000, sort: 16, select: 64, sum: 16, namespaces: 1000, text: 1024, filter: 4096 } as const;
 
 const TESTS = new Set(['eq', 'ne', 'in', 'range', 'exists', 'contains']);
 const BOUNDS = ['gt', 'gte', 'lt', 'lte'] as const;
 const PARTS = {
   get: ['kind', 'namespace', 'name'],
-  list: ['kind', 'scope', 'where', 'sort', 'page', 'select'],
-  count: ['kind', 'scope', 'where', 'groupBy', 'top', 'sum'],
+  list: ['kind', 'scope', 'where', 'filter', 'sort', 'page', 'select'],
+  count: ['kind', 'scope', 'where', 'filter', 'groupBy', 'top', 'sum'],
 } as const;
 
 /**
@@ -897,6 +912,9 @@ export function checkQuery(query: unknown, fields: Fields, as: 'get' | 'list' | 
   }
   const wrong = q.where === undefined ? undefined : where(q.where, 1);
   if (wrong) return wrong;
+  // A filter: CEL, made by whoever answers (a scan does not: it is given its where and the objects it lets through).
+  if (q.filter !== undefined && (typeof q.filter !== 'string' || q.filter.length > LIMITS.filter))
+    return bad('bad_filter', `a filter is CEL of at most ${LIMITS.filter} characters`);
 
   if (as === 'count') {
     if (q.top !== undefined && !(Number.isInteger(q.top) && (q.top as number) > 0)) return bad('bad_top', 'top is 1 or more');

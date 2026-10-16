@@ -39,6 +39,7 @@ import {
   Finalizer,
   field,
   LabelChip,
+  LabelLink,
   METADATA,
   Metadata,
   MetadataValue,
@@ -50,6 +51,7 @@ import {
   SummaryFields,
   SummaryValue,
 } from './details.tsx';
+import { KindFilter } from './filter.tsx';
 import { Brand, KindApi, KindCount, KindHeader, KindTitle } from './headers.tsx';
 import { addApi } from './kinds/api.tsx';
 import { addConfig } from './kinds/config.tsx';
@@ -172,6 +174,8 @@ export default defineAddon({
     c.add('Fill', 'core.kind.header.api', fill(header.sub, { order: 100, render: KindApi }));
     c.add('Fill', 'core.kind.header.namespaces', fill(header.sub, { order: 150, render: (p) => <KindNamespaces {...p} chosen={namespaces} /> }));
     c.add('Fill', 'core.kind.header.count', fill(header.sub, { order: 200, render: (p) => <KindCount {...p} chosen={namespaces} /> }));
+    // Its filter (?filter=, the page's): over its table, before its columns — one for each kind (one's typing not another's).
+    c.add('Fill', 'core.kind.header.filter', fill(header.actions, { order: 500, render: (p) => <KindFilter key={p.kind.id} {...p} chosen={namespaces} /> }));
     // Its columns' settings, over its table: the user's to turn on and off.
     c.add('Fill', 'core.kind.header.columns', fill(header.actions, { order: 1000, render: ColumnsButton }));
     // At its end, last: its columns, to show or hide.
@@ -272,7 +276,7 @@ export default defineAddon({
     c.add('Fill', 'core.resource.view.metadata.field', fill(metadata.field, { order: 1000, render: field(metadata.field.label, metadata.field.value) }));
     c.add('Fill', 'core.resource.view.metadata.field.label', fill(metadata.field.label, { render: FieldLabel }));
     c.add('Fill', 'core.resource.view.metadata.field.value', fill(metadata.field.value, { render: MetadataValue }));
-    c.add('Fill', 'core.resource.view.metadata.label', fill(metadata.label, { order: 1000, render: LabelChip }));
+    c.add('Fill', 'core.resource.view.metadata.label', fill(metadata.label, { order: 1000, render: LabelLink }));
     c.add('Fill', 'core.resource.view.metadata.annotation', fill(metadata.annotation, { order: 1000, render: LabelChip }));
     c.add('Fill', 'core.resource.view.metadata.finalizer', fill(metadata.finalizer, { order: 1000, render: Finalizer }));
 

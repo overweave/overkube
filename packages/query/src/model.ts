@@ -157,6 +157,8 @@ export interface ListQuery {
   kind: KindRef;
   scope?: Scope;
   where?: Where;
+  /** Which objects, as CEL says it (a user's filter: the kind's fields by short names, labels, self) — of those the where lets through. */
+  filter?: string;
   sort?: Sort;
   page: Page;
   /** The fields wanted of each, not the object (none: the object). */
@@ -172,6 +174,8 @@ export interface CountQuery {
   kind: KindRef;
   scope?: Scope;
   where?: Where;
+  /** As a list's. */
+  filter?: string;
   groupBy?: FieldName;
   top?: number;
   /** Number fields declared (not paths), summed of those counted. */
@@ -192,6 +196,8 @@ export interface QueryError {
   status?: number;
   code: string;
   message: string;
+  /** Where in the query's filter it is wrong (its characters, from start to end), when it is the filter's. */
+  at?: { start: number; end: number };
 }
 
 /** How many: counted, or about so many (a server may say so, not count). */

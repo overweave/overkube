@@ -1,7 +1,7 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import type { Item, ListResult, Where } from '@overkube/query';
-import { type CellValue, type KindTableProps, KindView, kindRef, type ListState, slots, TableView } from '@overkube/sdk';
-import { useCluster, useCount, useList, useMenu, useSay, useUser } from '@overkube/sdk/preact';
+import { type CellValue, filteredIn, type KindTableProps, KindView, kindRef, type ListState, slots, TableView } from '@overkube/sdk';
+import { useCluster, useCount, useList, useMenu, usePage, useSay, useUser } from '@overkube/sdk/preact';
 import { EmptyState, Nothing, Notice, Table, type TableColumn, type TableSort, Tip } from '@overkube/uikit';
 import { slotElement, useDefinition } from '@overweave/ui/preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -91,11 +91,15 @@ export function CoreTable({ chosen, ...table }: KindTableProps & { chosen: Chose
   const sort = sorting(asked) ?? sorting(view.sort && { id: view.sort.column, desc: view.sort.descending }) ?? sorting({ id: 'core.name' });
   const sortBy = placed.find((c) => c.definition.name === sort?.id)?.definition.spec.sort;
   const where = allOf(view.where, table.where);
+  // The kind's own table: the page's filter (?filter=), its objects those it holds.
+  const path = usePage().path.value;
+  const filter = own ? filteredIn(path) : undefined;
   const select = useMemo(() => [...new Set(placed.flatMap((c) => c.fields))], [placed]);
   const asking = {
     kind: ref,
     ...(scope ? { scope } : {}),
     ...(where ? { where } : {}),
+    ...(filter ? { filter } : {}),
     ...(sortBy ? { sort: [{ field: sortBy, desc: sort?.desc ?? false }] } : {}),
   };
   const answer = useList({ ...asking, page: { offset: range.first, limit: Math.max(1, range.last - range.first) }, select });

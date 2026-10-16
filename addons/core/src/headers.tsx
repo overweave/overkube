@@ -1,5 +1,5 @@
-import { type KindProps, KindView, kindRef, slots } from '@overkube/sdk';
-import { useCount, useSay } from '@overkube/sdk/preact';
+import { filteredIn, type KindProps, KindView, kindRef, slots } from '@overkube/sdk';
+import { useCount, usePage, useSay } from '@overkube/sdk/preact';
 import { PageHeader } from '@overkube/uikit';
 import { slotElement, useDefinition } from '@overweave/ui/preact';
 import { titleOf } from './kinds.ts';
@@ -47,11 +47,15 @@ export function KindApi({ kind }: KindProps) {
   return <span>{kind.group ? `${kind.group}/${kind.version}` : kind.version}</span>;
 }
 
-/** How many there are in the namespaces chosen, once known (core.kind.header.count). */
+/** How many there are in the namespaces chosen, once known — of them, filtered (the page's filter), how many it holds (core.kind.header.count). */
 export function KindCount({ kind, chosen }: KindProps & { chosen: Chosen }) {
   const scope = scopeOf(kind, undefined, chosen.value);
+  const filter = filteredIn(usePage().path.value);
   const total = useCount({ kind: kindRef(kind), ...(scope ? { scope } : {}) }).total;
+  const held = useCount({ kind: kindRef(kind), ...(scope ? { scope } : {}), ...(filter ? { filter } : {}) }).total;
   const say = useSay();
   if (!total) return null;
-  return <span>{say(T.kind.header.count, { count: `${total.exact ? '' : '~'}${total.count}` })}</span>;
+  const count = (t: NonNullable<typeof total>) => `${t.exact ? '' : '~'}${t.count}`;
+  if (filter && held) return <span>{say(T.kind.header.filtered, { count: count(held), total: count(total) })}</span>;
+  return <span>{say(T.kind.header.count, { count: count(total) })}</span>;
 }

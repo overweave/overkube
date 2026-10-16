@@ -77,6 +77,55 @@ describe('a kind’s table', () => {
     expect(page.text()).toContain('No namespaces');
   });
 
+  it('is filtered by the page’s filter (?filter=, CEL): shown as typed, its objects those it holds, how many of how many; typing stopped a while, by what is typed', () => {
+    vi.useFakeTimers();
+    const w = kubeWorld();
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'web', namespace: 'shop', labels: { app: 'web' } } }));
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'db', namespace: 'shop', labels: { app: 'db' } } }));
+    w.addon(core);
+    const page = renderPage(w, `/k/pods.v1?filter=${encodeURIComponent('labels[?"app"].orValue("") == "web"')}`);
+    const field = page.container.querySelector<HTMLInputElement>('input[aria-label="Filter"]') as HTMLInputElement;
+    expect(field.value).toBe('labels.app = web');
+    expect(page.column('Name')).toEqual(['web']);
+    expect(page.text()).toContain('1 of 2');
+    page.act(() => {
+      fireEvent.input(field, { target: { value: 'db' } });
+    });
+    page.act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(page.column('Name')).toEqual(['web']);
+    page.act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(page.path).toBe(`/k/pods.v1?filter=${encodeURIComponent('name.lowerAscii().contains("db")')}`);
+    expect(page.column('Name')).toEqual(['db']);
+    // Back (the page's filter from elsewhere): its own text, not what was typed.
+    page.navigate('/k/pods.v1');
+    expect([field.value, page.column('Name').sort()]).toEqual(['', ['db', 'web']]);
+    // Typed as it is not said back (WEB, app=web): applied, kept as typed; Back, its own again.
+    page.act(() => {
+      fireEvent.input(field, { target: { value: 'app=web' } });
+    });
+    page.act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect([page.path, field.value]).toEqual([`/k/pods.v1?filter=${encodeURIComponent('labels[?"app"].orValue("") == "web"')}`, 'app=web']);
+    page.navigate('/k/pods.v1');
+    expect(field.value).toBe('');
+    // Typed, and gone to another kind before it is applied: that kind not filtered by it, its field its own.
+    page.act(() => {
+      fireEvent.input(field, { target: { value: 'db' } });
+    });
+    page.navigate('/k/namespaces.v1');
+    page.act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    vi.useRealTimers();
+    expect(page.path).toBe('/k/namespaces.v1');
+    expect(page.container.querySelector<HTMLInputElement>('input[aria-label="Filter"]')?.value).toBe('');
+  });
+
   it('has a row’s menu (the object’s): open it, copy its name, its YAML — and another’s items', async () => {
     const w = world('web');
     w.addon(

@@ -7,6 +7,7 @@ import {
   type CountResult,
   canonical,
   checkQuery,
+  type FieldError,
   type FieldsResult,
   type GetQuery,
   type GetResult,
@@ -28,6 +29,7 @@ import {
 } from '@overkube/query';
 import { computed, effect, type ReadonlySignal, type Signal, signal, untracked } from '@preact/signals';
 import { capabilities, FieldsCache, type KindFields } from './fields.ts';
+import { filtered, isError, type MadeFilter, makeFilter, ticking, withTold } from './filter.ts';
 
 /*
  * Queries answered by the page, from the cluster's data as it watches it.
@@ -239,6 +241,9 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     if (ask.as === 'fields') return { parts: [], fields: made, namespaces: 'all' };
     const wrong = checkQuery(query, made.fields, ask.as);
     if (wrong) return { state: 'error', error: wrong };
+    // A filter that is none (where it is wrong in it): said so before anything is asked of the cluster.
+    const filter = ask.as === 'get' ? undefined : ask.query.filter && makeFilter(made, ask.query.filter);
+    if (filter && isError(filter)) return { state: 'error', error: filter };
     // An object of a kind in namespaces is had by its namespace and name.
     if (ask.as === 'get' && kind.namespaced && !ask.query.namespace)
       return { state: 'error', error: { code: 'bad_query', message: `${query.kind} is of a namespace: a get query says which` } };
@@ -294,21 +299,34 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
    * else a scan of that window alone (its first, or its objects changed).
    */
   function listOf(plan: Plan & { parts: readonly Part[] }, query: ListQuery) {
+    // The objects its filter keeps (the query as it is asked: its where, its cursors), what it could not be worked out of told.
+    const keeps = filterOf(plan, query.filter);
+    const scanned = <R extends { fieldErrors?: Readonly<Record<string, FieldError>> }>(answer: (objects: Iterable<KubeObject>) => R) => {
+      const f = filtered(objectsOf(plan.parts), keeps);
+      return withTold(answer(f.objects), f.told());
+    };
     const { page, select, ...base } = query;
     const key = `${idOf(plan.fields)}|${plan.parts.map((p) => `${idOf(p.feed)}${p.only ? `:${[...p.only].join(',')}` : ''}`).join(';')}|${canonical(base)}`;
-    const stamp = plan.parts.map((p) => (p.only ? [...p.only].map((ns) => p.feed.revisionIn(ns).value).join(':') : p.feed.revision.value)).join('.');
-    const asked = canonical(page);
+    // Its objects as they are now (a filter of now: time as it goes too).
+    const stamp = `${plan.parts.map((p) => (p.only ? [...p.only].map((ns) => p.feed.revisionIn(ns).value).join(':') : p.feed.revision.value)).join('.')}${keeps?.timed ? `@${ticking()}` : ''}`;
+    const pageKey = canonical(page);
     const was = orderings.get(key);
     if (was && was.stamp === stamp) {
-      if (!was.ordered && was.page !== asked) was.ordered = ordered(objectsOf(plan.parts), base, plan.fields.fields);
+      if (!was.ordered && was.page !== pageKey) was.ordered = scanned((objects) => ordered(objects, base, plan.fields.fields));
       if (was.ordered) return windowOf(was.ordered, query, plan.fields.fields);
     } else {
       orderings.delete(key);
-      orderings.set(key, { stamp, page: asked });
+      orderings.set(key, { stamp, page: pageKey });
       // A few kept: the queries read now.
       if (orderings.size > 32) orderings.delete(orderings.keys().next().value as string);
     }
-    return scan(objectsOf(plan.parts), query, plan.fields.fields);
+    return scanned((objects) => scan(objects, query, plan.fields.fields));
+  }
+
+  /** A query's filter, made (its plan checked it is one); none: not filtered. */
+  function filterOf(plan: Plan & { parts: readonly Part[] }, filter: string | undefined): MadeFilter | undefined {
+    const made = filter ? makeFilter(plan.fields, filter) : undefined;
+    return made && !isError(made) ? made : undefined;
   }
 
   return {
@@ -341,8 +359,9 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
         const status = statusOf(plan);
         if (!plan.parts) return status;
         // How many of all of them: as many as there are (no scan).
-        if (!query.where && query.groupBy === undefined && query.sum === undefined) return { ...status, total: { count: sizeOf(plan.parts), exact: true } };
-        return { ...status, ...scanCount(objectsOf(plan.parts), query, plan.fields.fields) };
+        if (!query.where && !query.filter && query.groupBy === undefined && query.sum === undefined) return { ...status, total: { count: sizeOf(plan.parts), exact: true } };
+        const f = filtered(objectsOf(plan.parts), filterOf(plan, query.filter));
+        return { ...status, ...withTold(scanCount(f.objects, query, plan.fields.fields), f.told()) };
       });
     },
   };

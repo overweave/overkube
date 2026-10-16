@@ -1,23 +1,26 @@
-import type { KindInfo, KubeObject } from '@overkube/kube-types';
+import { type KindInfo, type KubeObject, kinds } from '@overkube/kube-types';
 import type { Where } from '@overkube/query';
-import { forKinds, type KubeContributor, kindRef, type Label, type ResourceProps, slots } from '@overkube/sdk';
-import { useList, useSay } from '@overkube/sdk/preact';
+import { filterIn, forKinds, type KubeContributor, kindPath, kindRef, type Label, type ResourceProps, slots } from '@overkube/sdk';
+import { useList, usePage, useSay } from '@overkube/sdk/preact';
 import { Badge, Chips } from '@overkube/uikit';
 import { fill, slotElement } from '@overweave/ui/preact';
 import type { ComponentChildren } from 'preact';
 import { relatedField, useChipLabels } from '../details.tsx';
+import { titleOf } from '../kinds.ts';
 import { ObjectRef } from '../refs.tsx';
 import { RefusedQuietly, refused } from '../refused.tsx';
+import { type Selector, selectorFilter } from '../selectors.ts';
 import { T } from '../texts.ts';
 
 /*
  * What the usual kinds' views share: a label selector as it is shown (its
- * labels as chips, its expressions as kubectl says them) and as a test of
- * labels; what points at an object (selects it, scales it, binds it,
+ * labels as chips, its expressions as kubectl says them — leading to the
+ * pods it picks), as a filter (CEL) and as a test of labels; what points
+ * at an object (selects it, scales it, binds it,
  * routes to it, uses it) — each a related field of some kinds.
  */
 
-export type Selector = { matchLabels?: Record<string, string>; matchExpressions?: { key: string; operator: string; values?: string[] }[] };
+export type { Selector } from '../selectors.ts';
 
 /** A selector's expression as kubectl says it: tier in (a, b), env notin (dev), team (it exists), !old (it does not). */
 export function said({ key, operator, values = [] }: NonNullable<Selector['matchExpressions']>[number]): string {
@@ -44,6 +47,34 @@ export function shown(selector: Selector | undefined): [ComponentChildren, strin
 
 /** A selector's labels as chips, in the page's language. */
 const LabelChips = ({ items }: { items: Record<string, string> }) => <Chips items={items} labels={useChipLabels()} />;
+
+const { Pod } = kinds.core.v1;
+
+/** A selector leading to the pods it picks (of its namespace): its labels' chips, its expressions' badges — each a link there. */
+function Picking({ selector, namespace, text }: { selector: Selector; namespace: string | undefined; text: string }) {
+  const page = usePage();
+  const say = useSay();
+  const chips = useChipLabels();
+  const href = page.href(filterIn(kindPath(Pod), selectorFilter(selector, namespace)));
+  const follow = say(T.resource.view.metadata.follow, { kind: titleOf(Pod), text });
+  const labels = selector.matchLabels ?? {};
+  return (
+    <span class="uk-badges">
+      {Object.keys(labels).length > 0 && <Chips items={labels} labels={{ ...chips, follow: () => follow }} href={() => href} />}
+      {(selector.matchExpressions ?? []).map(said).map((e) => (
+        <a key={e} class="uk-badge-link" href={href} aria-label={follow}>
+          <Badge>{e}</Badge>
+        </a>
+      ))}
+    </span>
+  );
+}
+
+/** A selector of an object (its namespace's pods it picks) shown as a link to them, and as text; none of it: undefined. */
+export function pickingLink(selector: Selector | undefined, namespace: string | undefined): [ComponentChildren, string] | undefined {
+  const text = shown(selector)?.[1];
+  return selector && text ? [<Picking selector={selector} namespace={namespace} text={text} />, text] : undefined;
+}
 
 /** A related field of some kinds (a fill of resource.view.related, for them: core.resource.view.related.<of>.<name>): its order, label, what it reads of the object. */
 export function addRelated<O extends KubeObject>(

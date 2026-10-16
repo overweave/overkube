@@ -3,6 +3,8 @@ import type { FieldCatalog } from '@overkube/query';
 import {
   type CellValue,
   type ColumnSpec,
+  filterIn,
+  kindPath,
   kindRef,
   type Label,
   type ResourceConditionProps,
@@ -15,7 +17,7 @@ import {
   slots,
   TableView,
 } from '@overkube/sdk';
-import { useList, useSay } from '@overkube/sdk/preact';
+import { useList, usePage, useSay } from '@overkube/sdk/preact';
 import { Chip, Chips, type ChipsLabels, Nothing, Notice, Row, Rows, Section, Tip } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import type { SlotRef } from '@overweave/ui';
@@ -26,9 +28,11 @@ import { Cell, contextOf, drawn, textOf } from './cell.tsx';
 import { useColumns } from './columns.tsx';
 import { type Failed, useFailures } from './failures.ts';
 import { EMPTY, humanDuration, shortTime, shownAs } from './format.ts';
+import { titleOf } from './kinds.ts';
 import { clock, useLive } from './live.ts';
 import { ObjectRef } from './refs.tsx';
 import { Refused, refused } from './refused.tsx';
+import { selectorFilter } from './selectors.ts';
 import { StatusOf } from './statuses.tsx';
 import { T } from './texts.ts';
 
@@ -338,9 +342,18 @@ export function MetadataValue({ kind, object, field, value, display }: ResourceF
   return field.name === 'uid' ? <code>{shownAs(display)}</code> : shownAs(display);
 }
 
-/** A label, an annotation (the core's): a chip — a click copies key=value. */
+/** An annotation (the core's): a chip — a click copies key=value. */
 export function LabelChip({ name, value }: ResourceLabelProps) {
   return <Chip name={name} value={value} labels={useChipLabels()} />;
+}
+
+/** A label (the core's): a chip leading to its kind's page, those of it (all namespaces': as a label means it). */
+export function LabelLink({ kind, name, value }: ResourceLabelProps) {
+  const page = usePage();
+  const say = useSay();
+  const text = `${name}=${value}`;
+  const href = page.href(filterIn(kindPath(kind), selectorFilter({ matchLabels: { [name]: value } })));
+  return <Chip name={name} value={value} href={href} labels={{ ...useChipLabels(), follow: () => say(T.resource.view.metadata.follow, { kind: titleOf(kind), text }) }} />;
 }
 
 /** Chips' words in the page's language (how many more, back to a few, a copy, done): labels, annotations, selectors alike. */

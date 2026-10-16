@@ -1,6 +1,7 @@
 import type { KubeObject } from '@overkube/kube-types';
 import { signal } from '@preact/signals';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { TICK_MS } from './filter.ts';
 import { memorySource } from './memory.ts';
 
 /*
@@ -23,6 +24,46 @@ describe('a source in memory', () => {
     expect(source.count({ kind: 'pods.v1', groupBy: 'pods.v1.phase' }).value.groups).toEqual([{ value: 'Running', count: 1 }]);
     expect(source.list({ kind: 'pods.v1', where: { field: 'nope', op: 'exists' }, page: { limit: 1 } }).value.error?.code).toBe('unknown_field');
     expect(source.fields('pods.v1').value.catalog?.fields['pods.v1.restarts']).toMatchObject({ type: 'number' });
+  });
+
+  it('filters by CEL: what a where says asked as one, the rest worked out of each object; a filter that is none, where it is wrong', () => {
+    const labelled = (name: string, restarts: number, labels: Record<string, string>) =>
+      ({ ...pod(name, 'x', restarts), metadata: { name, namespace: 'x', uid: name, labels } }) as KubeObject;
+    const objects = signal<Record<string, KubeObject[]>>({ 'pods.v1': [labelled('web-1', 0, { app: 'web' }), labelled('web-2', 5, { app: 'web' }), labelled('db-0', 9, {})] });
+    const source = memorySource(objects);
+    const names = (filter: string) =>
+      source.list({ kind: 'pods.v1', filter, sort: [{ field: 'core.name' }], page: { limit: 10 }, select: ['core.name'] }).value.items.map((i) => i.values?.['core.name']);
+    expect(names('restarts > 3')).toEqual(['db-0', 'web-2']);
+    expect(names('app=web')).toEqual(['web-1', 'web-2']);
+    expect(names('labels.app = web and self.metadata.name.endsWith("2")')).toEqual(['web-2']);
+    expect(names('WEB')).toEqual(['web-1', 'web-2']);
+    expect(source.count({ kind: 'pods.v1', filter: 'not labels.app = web' }).value.total?.count).toBe(1);
+    // Its next window, past its cursor: the next it holds.
+    const first = source.list({ kind: 'pods.v1', filter: 'restarts > 3', sort: [{ field: 'core.name' }], page: { limit: 1 }, select: ['core.name'] }).value;
+    const next = source.list({ kind: 'pods.v1', filter: 'restarts > 3', sort: [{ field: 'core.name' }], page: { limit: 1, after: first.next }, select: ['core.name'] }).value;
+    expect([first.items[0]?.values?.['core.name'], next.error, next.items[0]?.values?.['core.name']]).toEqual(['db-0', undefined, 'web-2']);
+    // What it cannot be worked out of (1 / 0, a name not a number): not kept, told — what the where let through only (a guard holds).
+    expect(names('restarts > 0 and 10 / restarts > 1')).toEqual(['web-2']);
+    const failing = source.list({ kind: 'pods.v1', filter: 'int(self.metadata.name) > 0', page: { limit: 10 } }).value;
+    expect([failing.items.length, failing.fieldErrors?.filter?.count]).toEqual([0, 3]);
+    const wrong = source.list({ kind: 'pods.v1', filter: 'restarts > 3 and bogus = x', page: { limit: 1 } }).value.error;
+    expect(wrong).toMatchObject({ code: 'bad_filter', at: { start: 17, end: 22 } });
+  });
+
+  it('filters by now (an age, now-2h) as of each answer, answered anew as time goes', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-16T12:00:00Z'));
+    const made = (name: string, at: string) => ({ ...pod(name, 'x', 0), metadata: { name, namespace: 'x', uid: name, creationTimestamp: at } }) as KubeObject;
+    const objects = signal<Record<string, KubeObject[]>>({ 'pods.v1': [made('old', '2026-10-16T09:00:00Z'), made('new', '2026-10-16T11:30:00Z')] });
+    const list = memorySource(objects).list({ kind: 'pods.v1', filter: 'age > 1h', sort: [{ field: 'core.name' }], page: { limit: 10 }, select: ['core.name'] });
+    const names = () => list.value.items.map((i) => i.values?.['core.name']);
+    const off = list.subscribe(() => {});
+    expect(names()).toEqual(['old']);
+    vi.setSystemTime(new Date('2026-10-16T12:40:00Z'));
+    vi.advanceTimersByTime(TICK_MS);
+    expect(names()).toEqual(['new', 'old']);
+    off();
+    vi.useRealTimers();
   });
 
   it('holds to the page’s rules: a get of a namespaced kind says its namespace; a kind of no namespace has no scope; one not served, none', () => {

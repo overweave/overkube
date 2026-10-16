@@ -6,7 +6,7 @@ import { useMemo } from 'preact/hooks';
 import { ObjectRef } from '../refs.tsx';
 import { Refused, refused } from '../refused.tsx';
 import { T } from '../texts.ts';
-import { addRelated, shown } from './shared.tsx';
+import { addRelated, pickingLink } from './shared.tsx';
 
 /*
  * A service's own, in its view: its ports (each its name, port, where to
@@ -149,5 +149,7 @@ export function addService(c: KubeContributor): void {
     const name = o.metadata?.labels?.['kubernetes.io/service-name'];
     return name ? [<ObjectRef kind="v1/Service" name={name} namespace={o.metadata?.namespace} />, name] : undefined;
   });
-  addRelated<ServiceObject>(c, ['service', Service], 'selector', 200, T.resource.view.service.selector, (o) => shown({ matchLabels: o.spec?.selector }));
+  addRelated<ServiceObject>(c, ['service', Service], 'selector', 200, T.resource.view.service.selector, (o) =>
+    pickingLink({ matchLabels: o.spec?.selector }, o.metadata?.namespace),
+  );
 }

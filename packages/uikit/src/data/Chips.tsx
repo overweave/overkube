@@ -6,7 +6,8 @@ import { Tip } from '../overlays/Tip';
 /*
  * Labels or annotations as chips: each its key (its prefix — a domain and
  * a slash — quieter) and its value, cut short when long (in full under the
- * pointer: a tip). A click copies "key=value" (the chip glows a moment). By key; so many
+ * pointer: a tip). A click copies "key=value" (the chip glows a moment) — or,
+ * given where it leads (href), goes there (those of that label). By key; so many
  * at first, the rest behind "+N", and back. Compact (a table's cell, one
  * line): every one, cut in the middle — a key's prefix its start and end
  * (app…io/name), a long value too (9b8ee5cb…bbd6fee4) — in full under the
@@ -22,6 +23,8 @@ export interface ChipsLabels {
   copy: (text: string) => string;
   /** Said over a chip a moment, once copied. */
   copied: string;
+  /** A chip's name when it leads somewhere (href): where. */
+  follow?: (text: string) => string;
 }
 
 const LABELS: ChipsLabels = { more: (n) => `+${n}`, less: 'Show less', copy: (t) => `Copy ${t}`, copied: '✓ Copied' };
@@ -44,6 +47,8 @@ export interface ChipsProps {
   compact?: boolean;
   /** Each item as it is drawn (none: a Chip). */
   chip?: (key: string, value: string) => ComponentChildren;
+  /** Where each leads (none: it copies). */
+  href?: (key: string, value: string) => string | undefined;
 }
 
 /** The one of them last copied (marked a moment) — one at a time, however each is drawn — and what is said of it (one place to say it). */
@@ -54,7 +59,7 @@ interface Copying {
 }
 const Copied = createContext<Copying | null>(null);
 
-export function Chips({ items, max = 8, compact = false, labels = LABELS, chip }: ChipsProps) {
+export function Chips({ items, max = 8, compact = false, labels = LABELS, chip, href }: ChipsProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<{ key: string | undefined; said: string }>({ key: undefined, said: '' });
   const entries = Object.entries(items ?? {}).sort(([a], [b]) => a.localeCompare(b));
@@ -65,7 +70,7 @@ export function Chips({ items, max = 8, compact = false, labels = LABELS, chip }
     <Copied.Provider value={{ ...copied, set: (key, said = '') => setCopied({ key, said: key ? said : '' }) }}>
       <span class="uk-chips">
         {shown.map(([k, v]) => (
-          <Fragment key={k}>{chip ? chip(k, v) : <Chip name={k} value={v} folded={compact} labels={labels} />}</Fragment>
+          <Fragment key={k}>{chip ? chip(k, v) : <Chip name={k} value={v} folded={compact} labels={labels} href={href?.(k, v)} />}</Fragment>
         ))}
         {rest > 0 && (
           <button type="button" class="uk-chip uk-chip-more" onClick={() => setOpen(true)}>
@@ -86,8 +91,20 @@ export function Chips({ items, max = 8, compact = false, labels = LABELS, chip }
   );
 }
 
-/** One of them: its key (its prefix quieter; folded, cut in its middle), its value (folded and long: cut in its middle) (cut short when long); a click copies "key=value". */
-export function Chip({ name, value, folded = false, labels = LABELS }: { name: string; value: string; folded?: boolean; labels?: Pick<ChipsLabels, 'copy' | 'copied'> }) {
+/** One of them: its key (its prefix quieter; folded, cut in its middle), its value (folded and long: cut in its middle) (cut short when long); a click copies "key=value" — or goes where it leads (href). */
+export function Chip({
+  name,
+  value,
+  folded = false,
+  labels = LABELS,
+  href,
+}: {
+  name: string;
+  value: string;
+  folded?: boolean;
+  labels?: Pick<ChipsLabels, 'copy' | 'copied' | 'follow'>;
+  href?: string;
+}) {
   // Among others (Chips): one marked at a time, said once for all of them; alone, its own (and said by itself).
   const shared = useContext(Copied);
   const [own, setOwn] = useState<string>();
@@ -100,6 +117,27 @@ export function Chip({ name, value, folded = false, labels = LABELS }: { name: s
   }, [copied]);
   const slash = name.lastIndexOf('/');
   const text = `${name}=${value}`;
+  const inside = (
+    <>
+      {/* Its key: its prefix (giving way first, short of room) and its name (never cut). */}
+      {slash >= 0 && <span class="uk-chip-key uk-chip-prefix">{folded ? `${middle(name.slice(0, slash), 3, 2)}/` : name.slice(0, slash + 1)}</span>}
+      <span class="uk-chip-key uk-chip-name">{name.slice(slash + 1)}</span>
+      {/* A short value is never cut (the key's prefix gives way); a long one (a JSON, a certificate) is. */}
+      {value !== '' && (
+        <span class="uk-chip-value" data-long={!folded && value.length > LONG ? '' : undefined}>
+          {folded && value.length > LONG ? middle(value, 8, 8) : value}
+        </span>
+      )}
+    </>
+  );
+  if (href)
+    return (
+      <Tip content={() => text}>
+        <a class="uk-chip" href={href} aria-label={labels.follow?.(text) ?? text}>
+          {inside}
+        </a>
+      </Tip>
+    );
   return (
     <>
       <Tip content={() => text}>
@@ -111,15 +149,7 @@ export function Chip({ name, value, folded = false, labels = LABELS }: { name: s
           data-copied-label={labels.copied}
           onClick={() => copyText(text).then((done) => done && mark(name))}
         >
-          {/* Its key: its prefix (giving way first, short of room) and its name (never cut). */}
-          {slash >= 0 && <span class="uk-chip-key uk-chip-prefix">{folded ? `${middle(name.slice(0, slash), 3, 2)}/` : name.slice(0, slash + 1)}</span>}
-          <span class="uk-chip-key uk-chip-name">{name.slice(slash + 1)}</span>
-          {/* A short value is never cut (the key's prefix gives way); a long one (a JSON, a certificate) is. */}
-          {value !== '' && (
-            <span class="uk-chip-value" data-long={!folded && value.length > LONG ? '' : undefined}>
-              {folded && value.length > LONG ? middle(value, 8, 8) : value}
-            </span>
-          )}
+          {inside}
         </button>
       </Tip>
       {/* Alone: said to those who cannot see it by itself (among others, Chips says it). */}

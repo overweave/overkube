@@ -186,6 +186,13 @@ export const T = {
     /** Its header: how many there are (its name is beside it). */
     header: {
       count: t('core.kind.header.count', '{count} total'),
+      filtered: t('core.kind.header.filtered', '{count} of {total}'),
+    },
+    /** Its filter, over its table: a field compared, a label selector, words of a name — or CEL. */
+    filter: {
+      label: t('core.kind.filter.label', 'Filter'),
+      placeholder: t('core.kind.filter.placeholder', 'Filter: name, app=web, status = Running'),
+      clear: t('core.kind.filter.clear', 'Clear filter'),
     },
     /** Its columns' settings: each turned on or off, grouped by where it comes from. */
     columns: {
@@ -639,6 +646,8 @@ export const T = {
         /** A label's, an annotation's chip: what a click on it does, and what it says once done. */
         copy: t('core.resource.view.metadata.copy', 'Copy {text}'),
         copied: t('core.resource.view.metadata.copied', '✓ Copied'),
+        /** A label's chip, a selector's: where a click on it leads (its kind's page, those of it). */
+        follow: t('core.resource.view.metadata.follow', '{kind} with {text}'),
         /** Chips past the first few: how many more, and back to the few. */
         more: t('core.resource.view.metadata.more', '+{count}'),
         less: t('core.resource.view.metadata.less', 'Show less'),

@@ -7,7 +7,7 @@ import { quantity } from '../format.ts';
 import { ObjectRef } from '../refs.tsx';
 import { Refused, refused } from '../refused.tsx';
 import { T } from '../texts.ts';
-import { addRelated, shown } from './shared.tsx';
+import { addRelated, pickingLink } from './shared.tsx';
 
 /*
  * An autoscaler's, a disruption budget's and a namespace's own, in their
@@ -251,7 +251,7 @@ export function addScaling(c: KubeContributor): void {
     const ref = o.spec?.scaleTargetRef;
     return ref ? [<ObjectRef kind={`${ref.apiVersion ?? 'apps/v1'}/${ref.kind}`} name={ref.name} namespace={o.metadata?.namespace} />, ref.name] : undefined;
   });
-  addRelated<BudgetObject>(c, ['budget', PodDisruptionBudget], 'selector', 100, T.resource.view.workload.selector, (o) => shown(o.spec?.selector));
+  addRelated<BudgetObject>(c, ['budget', PodDisruptionBudget], 'selector', 100, T.resource.view.workload.selector, (o) => pickingLink(o.spec?.selector, o.metadata?.namespace));
   c.add('Fill', 'core.resource.view.namespace.quota', section({ kinds: [Namespace], order: 10, render: Quota }));
   c.add('Fill', 'core.resource.view.quota.used', section({ kinds: [ResourceQuota], order: 10, render: QuotaUsed }));
 }

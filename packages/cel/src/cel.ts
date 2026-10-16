@@ -38,10 +38,13 @@ export const SEMANTICS = 'cel-js@8.0.0;apimachinery@0.35;overkube-cel@3';
 /** Why an expression or a function cannot be one, or cannot be worked out: its code. */
 export class CelError extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
+  /** Where in the expression it is wrong (its characters, from start to end), when that is known. */
+  readonly at?: { start: number; end: number };
+  constructor(code: string, message: string, at?: { start: number; end: number }) {
     super(message);
     this.name = 'CelError';
     this.code = code;
+    if (at) this.at = at;
   }
 }
 
@@ -69,6 +72,8 @@ export interface Inspection {
 
 /** A key not there, an index past a list's end: none (the library's codes). */
 const MISSING = new Set(['no_such_key', 'index_out_of_bounds']);
+/** No overload for a value (a variable's none: null), for what it is used in — a field the object has no value of. */
+const NO_OVERLOAD = new Set(['no_such_overload', 'no_matching_overload']);
 const DEFAULT_BOUND: Bound = { size: 1000, cost: 1_000_000 };
 
 /**
@@ -81,7 +86,8 @@ const wholes = new Map<number, WeakMap<object, unknown>>();
 function toCel(v: unknown, bound?: Bound): unknown {
   if (typeof v === 'number') return Number.isSafeInteger(v) ? BigInt(v) : v;
   if (typeof v === 'string' && bound && v.length > bound.size) throw new CelError('too_big', `a string of ${v.length} (at most ${bound.size})`);
-  if (typeof v !== 'object' || v === null) return v;
+  // A time: CEL's timestamp.
+  if (typeof v !== 'object' || v === null || v instanceof Date) return v;
   const size = bound?.size ?? Number.POSITIVE_INFINITY;
   let whole = wholes.get(size);
   if (!whole) {
@@ -368,6 +374,72 @@ export function createCel(options: CelOptions = {}) {
     inspect(expression: string): Inspection {
       const tree = parse(expression);
       return { fingerprint: fingerprint(tree.ast), functions: used(calls(tree.ast as never)), estimate: estimate(tree.ast as never, options.bound ?? DEFAULT_BOUND, estimates) };
+    },
+
+    /**
+     * Expressions of these variables beside self (a user's filter: a kind's
+     * fields by their short names), each of its CEL type (string, bool, list,
+     * map, google.protobuf.Timestamp, dyn): checked as declared (a CelError
+     * where it is wrong: at), run as any (none: null), its tree
+     * (tree); made as compile makes one given by anyone (held to the
+     * bound), run on an object and its variables' values (compile).
+     */
+    withVariables(declared: Readonly<Record<string, string>>) {
+      const variables = Object.keys(declared);
+      // Checked as they are declared (a string compared to a number: wrong, where it is); run as any (a variable with none: null).
+      const typed = env.clone();
+      const scoped = env.clone();
+      for (const v of variables) {
+        typed.registerVariable(v, declared[v]);
+        scoped.registerVariable(v, 'dyn');
+      }
+      const located = (e: unknown) => {
+        const range = (e as { range?: { start: number; end: number } } | undefined)?.range;
+        const message = ((e as Error | undefined)?.message ?? 'not an expression').split('\n')[0];
+        return new CelError('bad_cel', message, range ? { start: range.start, end: range.end } : undefined);
+      };
+      const made = (expression: string) => {
+        let checked: ReturnType<Environment['check']>;
+        try {
+          checked = typed.check(expression);
+        } catch (e) {
+          throw located(e);
+        }
+        if (!checked.valid) throw located(checked.error);
+        return { run: scoped.parse(expression), type: checked.type ?? 'dyn' };
+      };
+      return {
+        /** Its tree and its type (bool, dyn, string, …), or a CelError where it is wrong. */
+        tree(expression: string): { tree: unknown; type: string } {
+          const { run, type } = made(expression);
+          return { tree: run.ast, type };
+        },
+        /** Worked out of an object, the variables' values given: a variable with none (null) where a value is used, none (not an error). */
+        compile(expression: string): (object: unknown, values: Readonly<Record<string, unknown>>) => unknown {
+          const { run } = made(expression);
+          const bound = options.bound;
+          if (bound) {
+            const e = estimate(run.ast as never, bound, estimates);
+            if (e.regex && !options.regex) throw new CelError('bad_cel', 'no regexes here (matches, find)');
+            if (e.cost > bound.cost) throw new CelError('too_costly', `it may cost ${e.cost} (at most ${bound.cost})`);
+            if (e.size > bound.cost) throw new CelError('too_costly', `it may make a list or string of ${e.size} (at most ${bound.cost})`);
+          }
+          const trie = trieOf(reads(run.ast as never, names));
+          return (object, values) => {
+            try {
+              const self = project(object, trie, bound);
+              if (typeof self === 'object' && self !== null && typeof object === 'object' && object !== null) rawOf.set(self, object);
+              const vars = Object.fromEntries(variables.map((v) => [v, toCel(values[v] ?? null, bound)]));
+              return fromCel(run({ ...vars, self }));
+            } catch (e) {
+              const code = (e as { code?: string }).code;
+              if (code !== undefined && MISSING.has(code)) return undefined;
+              if (code !== undefined && NO_OVERLOAD.has(code) && /\bnull\b/.test((e as Error).message)) return undefined;
+              throw celError(e);
+            }
+          };
+        },
+      };
     },
 
     /**

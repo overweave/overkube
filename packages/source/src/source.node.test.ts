@@ -107,6 +107,37 @@ describe('a list', () => {
     expect([bad.value.error?.code, absent.value.error?.code]).toEqual(['unknown_field', 'not_served']);
   });
 
+  it('filters by CEL, the rest worked out of each object — live as they change; a filter that is none, before anything is asked', async () => {
+    const { kube, source, read, asked } = await setup(spread(12));
+    const list = read(
+      source.list({ kind: 'pods.v1', filter: 'phase = Pending or self.metadata.name.endsWith("1")', sort: [{ field: 'core.name' }], page: { limit: 10 }, select: ['core.name'] }),
+    );
+    const count = read(source.count({ kind: 'pods.v1', filter: 'restarts >= 3 and namespace = a' }));
+    await until(() => list.value.state === 'live' && count.value.state === 'live');
+    expect(list.value.items.map((i) => i.values?.['core.name'])).toEqual(['p0', 'p1', 'p4', 'p8', 'p11']);
+    // p3 and p9: of a, 3 and 4 restarts.
+    expect(count.value.total?.count).toBe(2);
+    // Its windows one after another, past each one's cursor (the first scanned, the next of it ordered).
+    const ask = (after?: string) =>
+      read(source.list<KubeObject>({ kind: 'pods.v1', filter: 'phase = Pending', sort: [{ field: 'core.name' }], page: { limit: 2, ...(after ? { after } : {}) } }));
+    const one = ask();
+    await until(() => one.value.state === 'live');
+    const two = ask(one.value.next);
+    await until(() => two.value.state !== 'loading');
+    expect([one.value.items.map((i) => i.object?.metadata?.name), two.value.error, two.value.items.map((i) => i.object?.metadata?.name)]).toEqual([
+      ['p0', 'p4'],
+      undefined,
+      ['p8'],
+    ]);
+    kube.put(Pod, pod('p21', 'b'));
+    await until(() => list.value.items.some((i) => i.values?.['core.name'] === 'p21'));
+    const before = asked().size;
+    const wrong = read(source.list({ kind: 'nodes.v1', filter: 'bogus > 1', page: { limit: 1 } }));
+    await until(() => wrong.value.state === 'error');
+    expect(wrong.value.error).toMatchObject({ code: 'bad_filter', at: { start: 0, end: 5 } });
+    expect(asked().size).toBe(before);
+  });
+
   it('of a CRD’s kind is asked by its columns, its CRD as it is now', async () => {
     const things = Array.from({ length: 3 }, (_, i) => [Thing, { metadata: { name: `t${i}`, namespace: 'a' }, spec: { size: i, owner: `o${2 - i}` } }] as [typeof Pod, KubeObject]);
     const { kube, source, read } = await setup([[CRD, thingsCrd([{ name: 'Size', type: 'integer', jsonPath: '.spec.size' }])], ...things]);

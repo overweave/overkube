@@ -831,6 +831,35 @@ describe('what points at an object', () => {
     expect(related().map(([k]) => k)).toEqual(['Selector']);
   });
 
+  it('leads from a selector to the pods it picks (its namespace’s), from a label to its kind’s objects of it', () => {
+    const w = world();
+    const labels = { app: 'web' };
+    w.cluster.add(
+      Deployment,
+      make(Deployment, {
+        metadata: { name: 'web', namespace: 'shop', labels },
+        spec: { selector: { matchLabels: labels, matchExpressions: [{ key: 'canary', operator: 'DoesNotExist' }] } },
+      }),
+    );
+    w.cluster.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'other', labels } }));
+    w.cluster.add(Deployment, make(Deployment, { metadata: { name: 'db', namespace: 'shop' } }));
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'web-1', namespace: 'shop', labels } }));
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'web-2', namespace: 'shop', labels: { ...labels, canary: 'yes' } } }));
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'web-1', namespace: 'other', labels } }));
+    const page = renderPage(w, '/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
+    const links = [...(part('related')?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href') ?? '');
+    expect(links).toHaveLength(2);
+    expect(new Set(links).size).toBe(1);
+    expect(part('related')?.querySelector('a')?.getAttribute('aria-label')).toBe('Pods with app=web, !canary');
+    page.navigate(links[0].replace(/^#/, ''));
+    expect([page.path.split('?')[0], page.column('Name'), page.column('Namespace')]).toEqual(['/k/pods.v1', ['web-1'], ['shop']]);
+    page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
+    const label = part('metadata')?.querySelector('a.uk-chip');
+    expect(label?.getAttribute('aria-label')).toBe('Deployments with app=web');
+    page.navigate((label?.getAttribute('href') ?? '').replace(/^#/, ''));
+    expect(page.column('Namespace').sort()).toEqual(['other', 'shop']);
+  });
+
   it('shows a service’s ingresses, a cluster role’s bindings, a service account’s, a policy’s and a budget’s pods', () => {
     const w = world();
     w.cluster.add(Service, make(Service, { metadata: { name: 'api', namespace: 'shop' }, spec: { ports: [{ port: 80 }] } }));

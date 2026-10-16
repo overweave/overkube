@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@overkube/cel": "0.1.0",
     "@overkube/kube-types": "0.1.0",
     "@overkube/sdk": "0.1.0",
     "@overkube/uikit": "0.1.0",

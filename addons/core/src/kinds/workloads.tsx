@@ -9,7 +9,7 @@ import { ObjectRef } from '../refs.tsx';
 import { Refused, refused } from '../refused.tsx';
 import { T } from '../texts.ts';
 import { Containers, specOf } from './pod.tsx';
-import { addRelated, type Selector, shown } from './shared.tsx';
+import { addRelated, pickingLink, type Selector } from './shared.tsx';
 
 /*
  * A workload's own, in its view: its pods (a table of them, as the pods'
@@ -388,5 +388,5 @@ export function addWorkloads(c: KubeContributor): void {
     section({ kinds: [StatefulSet], order: 30, when: ({ object }) => (object.spec?.volumeClaimTemplates?.length ?? 0) > 0, render: Claims }),
   );
   c.add('Fill', 'core.resource.view.workload.jobs', section({ kinds: [CronJob], order: 10, render: Jobs }));
-  addRelated<Workload>(c, ['workload', ...picking], 'selector', 200, T.resource.view.workload.selector, (o) => shown(o.spec?.selector));
+  addRelated<Workload>(c, ['workload', ...picking], 'selector', 200, T.resource.view.workload.selector, (o) => pickingLink(o.spec?.selector, o.metadata?.namespace));
 }

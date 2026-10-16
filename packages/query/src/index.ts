@@ -48,5 +48,21 @@ export type {
   Where,
 } from './model.ts';
 export { compilePath, isPath, PathError, PathEvalError, valuesAt } from './path.ts';
-export { checkQuery, compare, type Fields, keyOf, kindRef, LIMITS, matches, type Ordered, ordered, scan, scanCount, valuesOf, windowOf } from './scan.ts';
+export {
+  checkQuery,
+  compare,
+  type Fields,
+  keyOf,
+  kindRef,
+  LIMITS,
+  matches,
+  type Ordered,
+  ordered,
+  predicateOf,
+  scan,
+  scanCount,
+  valuesOf,
+  valuesReader,
+  windowOf,
+} from './scan.ts';
 export { byCodePoint } from './text.ts';
