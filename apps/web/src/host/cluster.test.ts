@@ -46,7 +46,7 @@ function setup(objects: Record<string, KubeObject[]> = {}) {
 
 const aRun = (id = 'images') => {
   const controller = new AbortController();
-  return { id, signal: controller.signal, stop: () => controller.abort() };
+  return { id, signal: controller.signal, reaches: [], stop: () => controller.abort() };
 };
 
 describe('clusterAccess', () => {
@@ -103,5 +103,21 @@ describe('fieldLayers', () => {
     const images = registry.contributor('images', { priority: 200, rights: ['configure', 'behaviour'] });
     images.add(Field.name, 'images.tag', { kinds: ['pods.v1'], type: 'string', value: '.spec.containers[0].image' });
     expect(layers.value).toEqual([{ fields: { 'images.tag': { kinds: ['pods.v1'], type: 'string', value: '.spec.containers[0].image' } } }]);
+  });
+
+  it('reaches what an addon says it does, from its own cluster alone — nothing once it stops (what is in flight cut off); the page’s reaches none', async () => {
+    const { sent, state, access } = setup();
+    const trivy = { kind: 'service', namespace: 'trivy', name: 'trivy', port: 4954 } as const;
+    const run = { ...aRun('scans'), reaches: [trivy] };
+    const cluster = access.open(run);
+    expect(await cluster.proxy(trivy).get('/healthz')).toEqual({ kind: 'Pod', metadata: { name: 'web' } });
+    expect(sent.at(-1)?.request).toBe('GET /proxy/services/trivy/trivy:4954/healthz');
+    expect(() => cluster.proxy({ ...trivy, name: 'prometheus' })).toThrow(/reaches only what it says it does/);
+    expect(() => access.components().proxy(trivy)).toThrow(/reached by an addon/);
+    state.hold = true;
+    const held = cluster.proxy(trivy).get('/scan', undefined, new AbortController().signal);
+    run.stop();
+    await expect(held).rejects.toThrow(/aborted/);
+    await expect(cluster.proxy(trivy).get('/healthz')).rejects.toThrow(/has stopped/);
   });
 });

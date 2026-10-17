@@ -3,6 +3,7 @@ import { actingAs, type Identity, identityError, ownerOf } from './identity.ts';
 import { me } from './me.ts';
 import { patch } from './patch.ts';
 import { proxy } from './proxy.ts';
+import { reach } from './reach.ts';
 import { status } from './status.ts';
 import { change, type Streams, stream } from './stream.ts';
 import { fail, type UpstreamSource } from './upstream.ts';
@@ -17,6 +18,7 @@ import type { WatchOptions } from './watch.ts';
  *   GET  /stream   several watches over one stream, changed while it is open; POST /stream/<name> changes it (stream.ts)
  *   GET  /status   its version and whether the cluster answers (status.ts)
  *   GET  /me       whom the cluster takes the page for (me.ts)
+ *   *    /proxy/** a workload's port, as data — a Service's, a pod's (reach.ts)
  *   POST /patch    changes, as JSON (patch.ts)
  *   /**            the API server's /api, /apis, /version, /openapi/v3, passed on (proxy.ts) — never a watch (/stream is)
  *
@@ -200,6 +202,12 @@ export function createGateway(options: GatewayOptions): Gateway {
       if (route === '/me') {
         if (method !== 'GET') fail(res, 405, 'bad_method', '/me is asked with GET');
         else void me(res, { upstream: as, via });
+        return true;
+      }
+      if (route.startsWith('/proxy/')) {
+        const pass = (body?: unknown) => reach({ method, url: rest, headers: req.headers, body }, res, { upstream: as, readOnly: options.readOnly });
+        if (reading) pass();
+        else bodyOf(req, res, given, pass);
         return true;
       }
       if (route === '/status' || route === '/stream') {

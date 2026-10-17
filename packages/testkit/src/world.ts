@@ -1,5 +1,5 @@
-import { runAddon } from '@overkube/runtime';
-import { type Addon, type AddonStatus, type Cluster, type KubeContributor, kubeOwnKinds, standingOf, ui } from '@overkube/sdk';
+import { type ClusterRun, runAddon } from '@overkube/runtime';
+import { type Addon, type AddonStatus, type Cluster, type KubeContributor, kubeOwnKinds, runReach, standingOf, ui } from '@overkube/sdk';
 import { memoryStore, type Notifications, notifications, UserService } from '@overkube/shell';
 import { type AddonRun, type Run, uiWorld } from '@overweave/testkit';
 import { type Signal, signal } from '@preact/signals';
@@ -43,7 +43,7 @@ export interface KubeWorld extends KubeWorldBase {
 }
 
 /** The cluster for one run: what it writes is in its name; after it stops, it writes nothing. */
-function scoped(cluster: Cluster, run: { id: string; signal: AbortSignal }): Cluster {
+function scoped(cluster: Cluster, run: ClusterRun): Cluster {
   const live = () => {
     if (run.signal.aborted) throw new Error('the addon has stopped: it writes nothing more');
   };
@@ -60,6 +60,7 @@ function scoped(cluster: Cluster, run: { id: string; signal: AbortSignal }): Clu
       live();
       return cluster.remove(kind, object);
     },
+    proxy: (target) => runReach(run, target, (method, path, init) => cluster.proxy(target).request(method, path, init)),
   };
 }
 

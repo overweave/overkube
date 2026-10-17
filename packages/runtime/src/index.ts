@@ -5,5 +5,5 @@
  * a run took, let go of together.
  */
 
-export { type AddonRun, type RunEnv, runAddon, type Services } from './run.ts';
+export { type AddonRun, type ClusterRun, type RunEnv, runAddon, type Services } from './run.ts';
 export { Scope } from './scope.ts';

@@ -1,4 +1,4 @@
-import type { StatusAnswer } from '@overkube/gateway/protocol';
+import type { ReachTarget, StatusAnswer } from '@overkube/gateway/protocol';
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import type { QueryError, Source } from '@overkube/query';
 import type { ReadonlySignal } from '@preact/signals';
@@ -23,6 +23,68 @@ export interface ObjectChange {
   force?: boolean;
   /** Only checked by the cluster, nothing changed. */
   dryRun?: boolean;
+}
+
+/**
+ * A workload's port, asked as data (the gateway's /proxy: the API server's
+ * proxy, as the one signed in — RBAC decides by the method): an addon's
+ * scanner, a metrics API. Its answers are data, never a page.
+ */
+export interface Reach {
+  /** Its 2xx answer as it is, or an ApiError (its own 401 is its: the session goes on). */
+  request(
+    method: string,
+    path: string,
+    init?: { query?: Record<string, string | undefined>; body?: string; contentType?: string; accept?: string; signal?: AbortSignal },
+  ): Promise<Response>;
+  /** GET, its JSON (none: an empty answer). */
+  get<T>(path: string, query?: Record<string, string | undefined>, signal?: AbortSignal): Promise<T | undefined>;
+  /** POST of JSON, its JSON (none: an empty answer). */
+  post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T | undefined>;
+}
+
+/** An answer's JSON: none when it is empty (204, no body); one that is not JSON, an error of its own (bad_json). */
+async function jsonOf<T>(res: Response): Promise<T | undefined> {
+  const text = await res.text();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw Object.assign(new Error(`the answer is not JSON: ${text.slice(0, 100)}`), { status: res.status, code: 'bad_json' });
+  }
+}
+
+/** A Reach of how it is asked: get and post as JSON over request. */
+export function reachOver(request: Reach['request']): Reach {
+  return {
+    request,
+    get: async (path, query, signal) => jsonOf(await request('GET', path, { ...(query ? { query } : {}), accept: 'application/json', ...(signal ? { signal } : {}) })),
+    post: async (path, body, signal) =>
+      jsonOf(await request('POST', path, { body: JSON.stringify(body), contentType: 'application/json', accept: 'application/json', ...(signal ? { signal } : {}) })),
+  };
+}
+
+/** Whether a target is one of those said (a kind, namespace, name and port alike; any scheme). */
+export const reaches = (said: readonly ReachTarget[], target: ReachTarget) =>
+  said.some((t) => t.kind === target.kind && t.namespace === target.namespace && t.name === target.name && String(t.port) === String(target.port));
+
+/**
+ * An addon's way to a workload (its run: its id, its life, what it says it
+ * reaches): only to one it says; nothing once it stopped — what is in
+ * flight then cut off too (its run's signal, beside any it gives).
+ */
+export function runReach(run: { id: string; signal: AbortSignal; reaches: readonly ReachTarget[] }, target: ReachTarget, request: Reach['request']): Reach {
+  if (!reaches(run.reaches, target))
+    throw new Error(`addon ${run.id} reaches only what it says it does (reaches): not ${target.kind} ${target.namespace}/${target.name}:${target.port}`);
+  return reachOver(async (method, path, init = {}) => {
+    if (run.signal.aborted) throw new Error(`addon ${run.id} has stopped: it reaches nothing more`);
+    return request(method, path, { ...init, signal: init.signal ? AbortSignal.any([init.signal, run.signal]) : run.signal });
+  });
+}
+
+/** The page's own cluster has no way to a workload: an addon reaches one from its run's (ctx.cluster), what it says it reaches. */
+export function noReach(): never {
+  throw new Error('a workload is reached by an addon, from its own cluster (ctx.cluster.proxy: what it says it reaches) — not the page’s');
 }
 
 /** What the cluster serves, as discovery tells it. */
@@ -50,4 +112,6 @@ export interface Cluster {
    * nothing sent.
    */
   remove(kind: KindInfo, object: KubeObject): Promise<void>;
+  /** A workload's port, as data — an addon's: only one it says it reaches (Addon.reaches). */
+  proxy(target: ReachTarget): Reach;
 }

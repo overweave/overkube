@@ -1,7 +1,8 @@
 /**
  * The gateway: the page's way to a Kubernetes cluster — the API server's
  * paths passed on (never what reaches past it: exec, attach, portforward,
- * proxy), several watches over one stream, changes as JSON, a status — as
+ * a node's proxy), several watches over one stream, changes as JSON, a
+ * status, a workload's port reached as data (/proxy) — as
  * one handler over Node's request and response, for any host to serve:
  * overkube's own server, a framework's route, a platform's plugin. The
  * types the page speaks it in: '@overkube/gateway/protocol'.

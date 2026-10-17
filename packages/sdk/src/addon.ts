@@ -1,3 +1,4 @@
+import type { ReachTarget } from '@overkube/gateway/protocol';
 import type { UiContributor } from '@overweave/ui';
 import type { ReadonlySignal } from '@preact/signals';
 import type { Cluster } from './cluster.ts';
@@ -110,6 +111,8 @@ export interface Addon {
   readonly detect?: Condition;
   /** Services it gives others, made when it starts. */
   readonly provides?: Readonly<Record<string, (ctx: Ctx) => unknown>>;
+  /** The workloads' ports it asks (its cluster's proxy: none other) — said where its settings are. */
+  readonly reaches?: readonly ReachTarget[];
   /**
    * Its definitions; what it gives back is done when it stops. It may take a
    * while (async: what it needs first, fetched) — it is starting until it
@@ -173,6 +176,10 @@ export function defineAddon<const A extends Addon>(addon: A): A & Addon {
   for (const field of ['requires', 'detect'] as const) {
     const bad = badCondition(addon[field]);
     if (bad) throw new Error(`addon ${addon.id}: ${field}: ${bad}`);
+  }
+  for (const t of addon.reaches ?? []) {
+    if ((t.kind !== 'service' && t.kind !== 'pod') || !t.namespace || !t.name || t.port === undefined || t.port === '')
+      throw new Error(`addon ${addon.id}: reaches ${JSON.stringify(t)}: a service's or a pod's port ({ kind, namespace, name, port })`);
   }
   for (const [name, make] of Object.entries(addon.provides ?? {})) {
     if (typeof make !== 'function') throw new Error(`addon ${addon.id}: provides ${name}: not a function (ctx => the service)`);

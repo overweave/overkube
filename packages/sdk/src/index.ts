@@ -20,6 +20,7 @@
  * so a theme reaches them too.
  */
 
+export type { ReachTarget } from '@overkube/gateway/protocol';
 export {
   type Addon,
   type AddonState,
@@ -38,7 +39,7 @@ export {
   type SetupResult,
   standingOf,
 } from './addon.ts';
-export type { Cluster, Discovery, ObjectChange } from './cluster.ts';
+export { type Cluster, type Discovery, noReach, type ObjectChange, type Reach, reaches, reachOver, runReach } from './cluster.ts';
 export { type FieldLayer, fieldLayers } from './fields.ts';
 export { action, column, menuItem, type ObjectOfKind, section, tile, wrap } from './helpers.ts';
 export {

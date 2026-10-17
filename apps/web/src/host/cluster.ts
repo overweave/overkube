@@ -1,7 +1,8 @@
 import { type Connector, objectPath } from '@overkube/connector';
 import type { KubeObject } from '@overkube/kube-types';
 import type { GetResult, Live, Source } from '@overkube/query';
-import type { Cluster } from '@overkube/sdk';
+import type { ClusterRun } from '@overkube/runtime';
+import { type Cluster, noReach, runReach } from '@overkube/sdk';
 import { computed, untracked } from '@preact/signals';
 
 /*
@@ -13,17 +14,10 @@ import { computed, untracked } from '@preact/signals';
 
 export interface ClusterAccess {
   facts: { served(groupOrKind: string): boolean | undefined; available(apiService: string): boolean | undefined };
-  /** The cluster for one addon's run: once its signal aborts (the run stopped), it writes nothing, and what is in flight is cut off. */
-  open(run: Run): Cluster;
+  /** The cluster for one addon's run: once its signal aborts (the run stopped), it writes nothing, and what is in flight is cut off; it reaches what it says alone. */
+  open(run: ClusterRun): Cluster;
   /** The cluster for the page's components. */
   components(): Cluster;
-}
-
-/** An addon's run, as the cluster is opened for it. */
-export interface Run {
-  /** Its id: its writes' field manager is overkube-<id>. */
-  id: string;
-  signal: AbortSignal;
 }
 
 const API_SERVICES = 'apiservices.v1.apiregistration.k8s.io';
@@ -49,8 +43,10 @@ export function clusterAccess(connector: Pick<Connector, 'discovery' | 'http'>, 
 
   const path = (kind: Parameters<typeof objectPath>[0], object: KubeObject) => objectPath(kind, object.metadata?.name ?? '', object.metadata?.namespace);
 
-  /** Reading and writing: a run's own signal (and name) given by open(). */
-  const of = (signal?: AbortSignal, fieldManager?: string): Cluster => {
+  /** Reading and writing: a run's own (its signal, its name, what it reaches) given by open(). */
+  const of = (run?: ClusterRun): Cluster => {
+    const signal = run?.signal;
+    const fieldManager = run && `overkube-${run.id}`;
     const live = () => {
       if (signal?.aborted) throw new Error('the addon has stopped: it writes nothing more');
     };
@@ -70,6 +66,8 @@ export function clusterAccess(connector: Pick<Connector, 'discovery' | 'http'>, 
         if (!uid) throw new Error(`${kind.id} ${object.metadata?.name ?? ''}: no uid — only an object read from the cluster is deleted`);
         await http.remove(path(kind, object), { uid }, signal);
       },
+      // An addon's alone (what it says it reaches): the page's components reach no workload.
+      proxy: (target) => (run ? runReach(run, target, (method, p, init) => http.reach(target, p, { method, ...init })) : noReach()),
     };
   };
 
@@ -91,7 +89,7 @@ export function clusterAccess(connector: Pick<Connector, 'discovery' | 'http'>, 
         return (object as { status?: { conditions?: { type: string; status: string }[] } }).status?.conditions?.some((c) => c.type === 'Available' && c.status === 'True') ?? false;
       },
     },
-    open: (run) => of(run.signal, `overkube-${run.id}`),
+    open: (run) => of(run),
     components: () => of(),
   };
 }

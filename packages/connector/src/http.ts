@@ -1,4 +1,4 @@
-import type { PatchBody, StatusAnswer, StreamChange } from '@overkube/gateway/protocol';
+import { type PatchBody, type ReachTarget, reachRoute, type StatusAnswer, type StreamChange } from '@overkube/gateway/protocol';
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { type ReadonlySignal, signal } from '@preact/signals';
 
@@ -76,7 +76,11 @@ export type Query = Record<string, string | undefined>;
 
 interface Init {
   query?: Query;
+  /** Sent as JSON. */
   body?: unknown;
+  /** Sent as it is (a workload's own body), as contentType says. */
+  raw?: string;
+  contentType?: string;
   signal?: AbortSignal;
   accept?: string;
 }
@@ -165,6 +169,33 @@ export class Http {
     return this.answer('GET', '/stream', { signal, accept: 'application/x-ndjson' });
   }
 
+  /**
+   * A workload's port (/proxy: a Service's, a pod's), asked as it takes it:
+   * its 2xx answer as it is; else an ApiError — a Kubernetes Status (the
+   * API server's: forbidden, no endpoints) by its reason, else by its
+   * status — the session ended only by the gateway's own refusal
+   * (x-overkube-error), never by what the workload or its proxy answers
+   * (its own 401 is its). Anything accepted, unless said.
+   */
+  async reach(
+    target: ReachTarget,
+    path: string,
+    init: { method?: string; query?: Query; body?: string; contentType?: string; accept?: string; signal?: AbortSignal } = {},
+  ): Promise<Response> {
+    const { method = 'GET', body, contentType, accept = '*/*', ...rest } = init;
+    const res = await this.send(method, `${reachRoute(target)}${path.startsWith('/') ? path : `/${path}`}`, { ...rest, accept, raw: body, contentType });
+    if (res.ok) return res;
+    if (res.headers.has('x-overkube-error')) throw await this.failure(res);
+    const text = await res.text().catch(() => '');
+    let status: Status | undefined;
+    try {
+      const parsed = JSON.parse(text) as Status;
+      if (parsed?.kind === 'Status') status = parsed;
+    } catch {}
+    if (status) throw new ApiError(res.status, status.reason ?? `http_${res.status}`, status.message ?? `answered ${res.status}`, status);
+    throw new ApiError(res.status, `http_${res.status}`, text.slice(0, 500) || `${reachRoute(target)} answered ${res.status}`);
+  }
+
   /** Change a /stream's subscriptions. */
   changeStream(name: string, change: StreamChange, signal?: AbortSignal): Promise<void> {
     return this.request<void>('POST', `/stream/${name}`, { body: change, signal });
@@ -186,8 +217,10 @@ export class Http {
     // x-overkube: the gateway's own header, which a page of another site cannot send (it takes no change without it).
     const headers: Record<string, string> = { accept: init.accept ?? 'application/json', 'x-overkube': '1', ...this.headers() };
     if (init.body !== undefined) headers['content-type'] = 'application/json';
+    if (init.raw !== undefined) headers['content-type'] = init.contentType ?? 'application/json';
+    const body = init.raw ?? (init.body === undefined ? undefined : JSON.stringify(init.body));
     try {
-      return await this.fetcher(url, { method, headers, body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: init.signal });
+      return await this.fetcher(url, { method, headers, body, signal: init.signal });
     } catch (err) {
       if (init.signal?.aborted) throw err;
       throw new ApiError(0, 'network', `the gateway did not answer: ${(err as Error).message}`);

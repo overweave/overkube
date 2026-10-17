@@ -121,8 +121,8 @@ export function isDown(err: NodeJS.ErrnoException): boolean {
   return err.code === 'ECONNREFUSED' || err.code === 'EHOSTUNREACH' || err.code === 'ENOTFOUND' || err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT';
 }
 
-/** The gateway's own error answer: { error: { code, message } }. */
+/** The gateway's own error answer: { error: { code, message } } — said so in a header no answer passed on carries (x-overkube-error: what a workload's proxied answer cannot pass for). */
 export function fail(res: ServerResponse, status: number, code: ErrorCode, message: string, more: { f?: string } = {}): void {
-  res.writeHead(status, { 'content-type': 'application/json' });
+  res.writeHead(status, { 'content-type': 'application/json', 'x-overkube-error': code });
   res.end(JSON.stringify({ error: { code, message, ...more } }));
 }

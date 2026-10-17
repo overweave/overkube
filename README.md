@@ -34,6 +34,8 @@ With `token`, the server's own credentials may be none at all: what it still ask
 
 Its kubeconfig signs in with a token (or a token file) or a client certificate. One that signs in otherwise — `exec` plugins (EKS, GKE, AKS, OIDC), an `auth-provider`, a username and password — or goes through a `proxy-url` is refused with the reason (the server's log, `/kube/status` says it; `/readyz` only that the cluster is not ready): give it a token, or run it in the cluster. A kubeconfig with several contexts names the one to use (`current-context`).
 
+A workload's port is reached as data — for addons that ask what runs in the cluster (a scanner, a metrics API) — at `/kube/proxy/services/<namespace>/<[scheme:]name:port>/<path>` (or `pods/…`): through the API server's proxy, as the one signed in, so RBAC decides by the method (`get`, `create`, … on `services/proxy`, `pods/proxy`); read only, GET and HEAD alone. What comes back is never a page of the dashboard's (sandboxed, never sniffed, its cookies dropped), 16 MiB at most. A node's proxy is never reached; nor is a workload's UI opened.
+
 No page of another site reaches the cluster through its visitor's browser: a request another site's page sends (`Sec-Fetch-Site: cross-site`, another `Origin`) is refused, and anything but a read carries the `x-overkube` header — which such a page cannot set. A script of its own (curl) sends it too: `-H 'x-overkube: 1'`.
 
 From the sources, with Node 24:

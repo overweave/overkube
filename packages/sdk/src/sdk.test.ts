@@ -5,7 +5,7 @@ import { mount, renderSlot } from '@overweave/testkit/preact';
 import { signal } from '@preact/signals';
 import { h } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
-import { accessOf, action, type Cluster, column, defineAddon, kindMatcher, kubeOwnKinds, section, slots, standingOf, takes, tile, ui, wrap } from './index.ts';
+import { accessOf, action, type Cluster, column, defineAddon, kindMatcher, kubeOwnKinds, reachOver, section, slots, standingOf, takes, tile, ui, wrap } from './index.ts';
 import { KubeProvider, useList } from './preact/index.ts';
 
 /*
@@ -188,6 +188,16 @@ describe('access: whether the one signed in may have something', () => {
         {},
       ),
     ).toBe('allowed');
+  });
+});
+
+describe('reaching a workload', () => {
+  it('reads its JSON — an empty answer as none, one not JSON said so', async () => {
+    const answers: Response[] = [Response.json({ ok: true }), new Response(null, { status: 204 }), new Response('plain', { status: 200 })];
+    const reach = reachOver(async () => answers.shift() as Response);
+    expect(await reach.get('/a')).toEqual({ ok: true });
+    expect(await reach.post('/b', {})).toBeUndefined();
+    await expect(reach.get('/c')).rejects.toMatchObject({ code: 'bad_json' });
   });
 });
 

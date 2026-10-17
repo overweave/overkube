@@ -294,6 +294,33 @@ describe('the stream', () => {
     expect(connector.session.value).toBe('ok');
   });
 
+  it('reaches a workload’s port: its own refusal (a 401 of its) is its — only the gateway’s ends the session', async () => {
+    const target = { kind: 'service', namespace: 'trivy', name: 'trivy', port: 4954 } as const;
+    let gatewaySays = false;
+    let status = false;
+    const { connector } = await setup([], {}, (url) =>
+      url.includes('/proxy/services/trivy/trivy:4954/')
+        ? Promise.resolve(
+            status
+              ? Response.json({ kind: 'Status', code: 403, reason: 'Forbidden', message: 'services "trivy" is forbidden' }, { status: 403 })
+              : gatewaySays
+                ? Response.json({ error: { code: 'unauthorized', message: 'not signed in' } }, { status: 401, headers: { 'x-overkube-error': 'unauthorized' } })
+                : new Response('token required', { status: 401 }),
+          )
+        : undefined,
+    );
+    await expect(connector.http.reach(target, '/healthz')).rejects.toMatchObject({ status: 401, code: 'http_401', message: 'token required' });
+    expect(connector.session.value).toBe('ok');
+    // The API server's own refusal (its Status): by its reason — the session goes on.
+    status = true;
+    await expect(connector.http.reach(target, '/healthz')).rejects.toMatchObject({ status: 403, code: 'Forbidden', message: 'services "trivy" is forbidden' });
+    expect(connector.session.value).toBe('ok');
+    status = false;
+    gatewaySays = true;
+    await expect(connector.http.reach(target, '/healthz')).rejects.toMatchObject({ status: 401, code: 'unauthorized' });
+    expect(connector.session.value).toBe('expired');
+  });
+
   it('is closed with the connector: nothing watched', async () => {
     const { kube, feeds, connector } = await setup([pod('x')]);
     feeds.use({ kind: Pod });

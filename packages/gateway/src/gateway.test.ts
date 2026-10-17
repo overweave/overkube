@@ -1,5 +1,5 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -44,6 +44,35 @@ beforeAll(async () => {
     req.on('end', () => {
       seen.push({ method: req.method ?? '', url: req.url ?? '', contentType: req.headers['content-type'], body });
       acted.push({ url: req.url ?? '', user: req.headersDistinct['impersonate-user'], groups: req.headersDistinct['impersonate-group'], authorization: req.headers.authorization });
+      // A workload's answers through the API server's proxy: one saying what it should not be taken for, one too large (said, or not), one refusing.
+      if (req.url?.includes('/proxy/headers')) {
+        res.writeHead(302, {
+          location: '/kube/api/v1/secrets',
+          'www-authenticate': 'Basic',
+          'content-disposition': 'inline',
+          'access-control-allow-origin': '*',
+          'x-overkube-error': 'unauthorized',
+          'cache-control': 'public, max-age=86400',
+        });
+        return res.end();
+      }
+      if (req.url?.includes('/proxy/said-large')) {
+        res.writeHead(200, { 'content-length': String(64 * 1024 * 1024) });
+        return res.end();
+      }
+      if (req.url?.includes('/proxy/large')) {
+        res.writeHead(200, { 'content-type': 'application/octet-stream' });
+        return res.end(Buffer.alloc(17 * 1024 * 1024));
+      }
+      if (req.url?.includes('/proxy/refuse')) {
+        res.writeHead(401, { 'content-type': 'text/plain' });
+        return res.end('token required');
+      }
+      // A workload's answer through the API server's proxy: what it was asked, and a cookie it would set.
+      if (req.url?.includes('/proxy/')) {
+        res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'grafana_session=x; Path=/' });
+        return res.end(`<script>${req.method} ${req.url} ${body}</script>`);
+      }
       if (req.url === '/apis/authentication.k8s.io/v1/selfsubjectreviews') {
         // Who it is taken for: whom it acts as, else the kubeconfig's.
         const user = req.headers['impersonate-user'] ?? 'kubeconfig-admin';
@@ -356,5 +385,103 @@ describe('createGateway: someone signed in', () => {
     expect([other.status, (await other.json()).error.code]).toEqual([404, 'no_stream']);
     expect((await change('alice')).status).toBe(204);
     await reader.cancel();
+  });
+});
+
+describe('createGateway: a workload’s port, as data', () => {
+  const at = '/proxy/services/monitoring/https:prometheus:9090';
+
+  it('reaches it through the API server’s proxy as the one signed in: its path, query and body; its answer as data, never a page', async () => {
+    const base = await host({ identify: () => ({ user: 'alice', groups: ['ops'] }) });
+    const read = await fetch(`${base}${at}/api/v1/query?query=up`, { headers: { cookie: 'session=secret' } });
+    expect([read.status, read.headers.get('content-security-policy'), read.headers.get('x-content-type-options'), read.headers.get('set-cookie')]).toEqual([
+      200,
+      'sandbox',
+      'nosniff',
+      null,
+    ]);
+    expect(await read.text()).toBe('<script>GET /api/v1/namespaces/monitoring/services/https:prometheus:9090/proxy/api/v1/query?query=up </script>');
+    await send(`${base}/proxy/pods/trivy/scanner-0:4954/twirp/trivy.scanner.v1.Scanner/Scan`, { method: 'POST', body: '{"target":"nginx"}' });
+    expect(seen.at(-1)).toEqual({
+      method: 'POST',
+      url: '/api/v1/namespaces/trivy/pods/scanner-0:4954/proxy/twirp/trivy.scanner.v1.Scanner/Scan',
+      contentType: 'application/json',
+      body: '{"target":"nginx"}',
+    });
+    expect(acted.map((a) => [a.user, a.authorization])).toEqual([
+      [['alice'], 'Bearer t'],
+      [['alice'], 'Bearer t'],
+    ]);
+  });
+
+  it('passes back none of what the workload says of more than its answer: a redirect, a challenge, a cache, a CORS grant, the gateway’s own mark', async () => {
+    const base = await host();
+    const res = await fetch(`${base}${at}/headers`, { redirect: 'manual' });
+    expect([
+      res.status,
+      res.headers.get('location'),
+      res.headers.get('www-authenticate'),
+      res.headers.get('content-disposition'),
+      res.headers.get('access-control-allow-origin'),
+      res.headers.get('x-overkube-error'),
+      res.headers.get('cache-control'),
+      res.headers.get('cross-origin-resource-policy'),
+    ]).toEqual([302, null, null, null, null, null, 'no-store', 'same-origin']);
+    // Its own refusal, as it is: no mark of the gateway's on it.
+    const refused = await fetch(`${base}${at}/refuse`);
+    expect([refused.status, refused.headers.get('x-overkube-error'), await refused.text()]).toEqual([401, null, 'token required']);
+  });
+
+  it('bounds its answer: one said larger refused before any of it, one larger broken off; HEAD, none of it', async () => {
+    const base = await host();
+    const said = await fetch(`${base}${at}/said-large`);
+    expect([said.status, (await said.json()).error.code]).toEqual([502, 'too_large']);
+    const large = await fetch(`${base}${at}/large`);
+    await expect(large.arrayBuffer()).rejects.toThrow();
+    const head = await fetch(`${base}${at}/metrics`, { method: 'HEAD' });
+    expect([head.status, await head.text()]).toEqual([200, '']);
+  });
+
+  it('is asked by the page’s code alone: never opened as a page, a frame, an image', async () => {
+    const base = await host();
+    for (const dest of ['document', 'iframe', 'image', 'script']) {
+      const res = await fetch(`${base}${at}/metrics`, { headers: { 'sec-fetch-dest': dest } });
+      expect([dest, res.status, res.headers.get('x-overkube-error')]).toEqual([dest, 403, 'not_fetched']);
+    }
+    expect((await fetch(`${base}${at}/metrics`, { headers: { 'sec-fetch-dest': 'empty' } })).status).toBe(200);
+  });
+
+  it('read only: asks it with GET and HEAD alone', async () => {
+    const base = await host({ readOnly: true });
+    expect((await fetch(`${base}${at}/metrics`)).status).toBe(200);
+    const post = await send(`${base}${at}/api`, { method: 'POST', body: '{}' });
+    expect([post.status, (await post.json()).error.code]).toEqual([403, 'read_only']);
+  });
+
+  it('reaches nothing else: a path that could be cleaned into the API’s, a node’s proxy, a target that is none — asking the cluster nothing', async () => {
+    const base = await host();
+    for (const path of [
+      `${at}/../../secrets`,
+      `${at}/%2e%2e/secrets`,
+      `${at}/./x`,
+      '/proxy/nodes/node-1:10250/pods',
+      '/proxy/services/monitoring/prometheus/metrics',
+      '/proxy/services/Monitoring/prometheus:9090/',
+      '/proxy/services/monitoring/ftp:prometheus:21/',
+      '/proxy/services/monitoring/prometheus:9090:extra/',
+    ]) {
+      // Sent as it is (fetch would clean "." and ".." away itself).
+      const answered = await new Promise<[number, unknown]>((done, failed) => {
+        const { hostname, port } = new URL(base);
+        const out = request({ hostname, port, path }, (res) => {
+          res.resume();
+          done([res.statusCode ?? 0, res.headers['x-overkube-error']]);
+        });
+        out.on('error', failed);
+        out.end();
+      });
+      expect([path, ...answered]).toEqual([path, 400, 'bad_path']);
+    }
+    expect(seen).toEqual([]);
   });
 });

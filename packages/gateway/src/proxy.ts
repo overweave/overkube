@@ -8,6 +8,16 @@ const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE']);
 /** Request headers passed to the API server; everything else (cookies, tokens) stays here. */
 const PASS_REQUEST = ['content-type', 'accept'];
 
+/** The request's headers passed on (PASS_REQUEST): what it is, what it takes — never its cookies or credentials. */
+export function passedHeaders(headers: IncomingHttpHeaders): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of PASS_REQUEST) {
+    const v = headers[name];
+    if (typeof v === 'string') out[name] = v;
+  }
+  return out;
+}
+
 /** Response headers passed back to the client: what the answer is, how long to wait (429), what is deprecated. */
 const PASS_RESPONSE = ['content-type', 'cache-control', 'content-length', 'retry-after', 'warning', 'audit-id'];
 
@@ -55,11 +65,7 @@ export function proxy(req: ProxyRequest, res: ServerResponse, options: ProxyOpti
     return;
   }
 
-  const headers: Record<string, string> = {};
-  for (const name of PASS_REQUEST) {
-    const v = req.headers[name];
-    if (typeof v === 'string') headers[name] = v;
-  }
+  const headers = passedHeaders(req.headers);
   const params = new URLSearchParams(query);
   // A watch, a followed log go through /stream (its limits, its slow-client rules), never as they are.
   if (truthy(params.get('watch'))) {
@@ -95,7 +101,11 @@ function truthy(value: string | null): boolean {
  * the client goes away the upstream request is dropped too; when the API
  * server breaks off, so is the client's answer, rather than hang half-done.
  */
-export function relay(request: UpstreamRequest, res: ServerResponse, options: { upstream: UpstreamSource; head?: boolean }): void {
+export function relay(
+  request: UpstreamRequest,
+  res: ServerResponse,
+  options: { upstream: UpstreamSource; head?: boolean; maxBytes?: number /** Over the answer's own, whatever it says. */; force?: Record<string, string> },
+): void {
   let out: ReturnType<typeof openUpstream>;
   try {
     out = openUpstream(request, options.upstream, (answer: IncomingMessage) => {
@@ -104,15 +114,30 @@ export function relay(request: UpstreamRequest, res: ServerResponse, options: { 
         const v = answer.headers[name];
         if (typeof v === 'string') back[name] = v;
       }
-      res.writeHead(answer.statusCode ?? 502, { ...HARDENING, 'cache-control': 'no-store', ...back });
+      const max = options.maxBytes;
+      // Larger than it may be, as it says: refused before any of it is passed on.
+      if (max !== undefined && Number(answer.headers['content-length']) > max) {
+        answer.destroy();
+        fail(res, 502, 'too_large', `the answer is larger than ${max} bytes`);
+        return;
+      }
+      res.writeHead(answer.statusCode ?? 502, { ...HARDENING, 'cache-control': 'no-store', ...back, ...options.force });
       if (options.head) {
-        answer.resume();
+        answer.destroy();
         res.end();
         return;
       }
       answer.on('close', () => {
         if (!answer.complete) res.destroy();
       });
+      // One larger than it may be, not said beforehand: broken off (the client sees it cut short).
+      if (max !== undefined) {
+        let size = 0;
+        answer.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > max) res.destroy();
+        });
+      }
       answer.pipe(res);
     });
   } catch (err) {
@@ -134,7 +159,8 @@ export function relay(request: UpstreamRequest, res: ServerResponse, options: { 
   res.on('close', () => out.destroy());
 }
 
-function encodeBody(body: unknown): string | Buffer | undefined {
+/** A body as it is passed on: text or bytes as they are, a parsed value as JSON; none, empty. */
+export function encodeBody(body: unknown): string | Buffer | undefined {
   if (body === undefined || body === null || body === '') return undefined;
   if (typeof body === 'string') return body;
   // Bytes as they are: a protobuf body is not text.

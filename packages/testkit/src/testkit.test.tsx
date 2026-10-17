@@ -233,6 +233,41 @@ describe('kubeWorld', () => {
   });
 });
 
+describe('an addon reaching a workload', () => {
+  const trivy = { kind: 'service', namespace: 'trivy', name: 'trivy', port: 4954 } as const;
+
+  it('asks what it says it reaches, as the test answers it — nothing else, nothing once it stops', async () => {
+    const w = kubeWorld();
+    w.cluster.answer(trivy, ({ method, path, body }) => ({ method, path, body }));
+    let ctx: Parameters<Parameters<typeof defineAddon>[0]['setup']>[0] | undefined;
+    w.addon(
+      defineAddon({
+        id: 'scans',
+        title: 'Scans',
+        reaches: [trivy, { ...trivy, name: 'idle' }],
+        setup(c) {
+          ctx = c;
+        },
+      }),
+    );
+    const reach = ctx?.cluster.proxy(trivy);
+    expect(await reach?.post('/twirp/trivy.scanner.v1.Scanner/Scan', { target: 'nginx' })).toEqual({
+      method: 'POST',
+      path: '/twirp/trivy.scanner.v1.Scanner/Scan',
+      body: '{"target":"nginx"}',
+    });
+    expect(() => ctx?.cluster.proxy({ ...trivy, name: 'prometheus' })).toThrow(/reaches only what it says it does/);
+    // Said, but no one answering: as the API server says it (no endpoints).
+    await expect(ctx?.cluster.proxy({ ...trivy, name: 'idle' }).get('/x')).rejects.toMatchObject({ status: 503 });
+    w.stop('scans');
+    await expect(reach?.get('/healthz')).rejects.toThrow(/has stopped/);
+  });
+
+  it('is checked when defined: a service’s or a pod’s port', () => {
+    expect(() => defineAddon({ id: 'bad', title: 'x', reaches: [{ kind: 'node' as never, namespace: 'a', name: 'b', port: 1 }], setup() {} })).toThrow(/reaches/);
+  });
+});
+
 describe('drawing', () => {
   it('draws a slot over the world’s cluster, its fills chosen by kind', () => {
     const w = kubeWorld();

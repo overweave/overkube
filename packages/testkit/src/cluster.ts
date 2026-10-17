@@ -1,7 +1,7 @@
 import type { StatusAnswer } from '@overkube/gateway/protocol';
 import { type KindInfo, type KubeObject, knownKinds } from '@overkube/kube-types';
 import { ALL_ALLOWED, keyOf, type LogLine, type QueryError, type State } from '@overkube/query';
-import { type Cluster, type FieldLayer, fieldLayers, kindRef, type ObjectChange, type ObjectOfKind } from '@overkube/sdk';
+import { type Cluster, type FieldLayer, fieldLayers, kindRef, type ObjectChange, type ObjectOfKind, type ReachTarget, reachOver } from '@overkube/sdk';
 import { logKey, type MemoryAccess, type MemoryState, memorySource } from '@overkube/source';
 import { batch, computed, type ReadonlySignal, signal } from '@preact/signals';
 
@@ -57,6 +57,16 @@ export interface FakeCluster extends Cluster {
   log(namespace: string, pod: string, container: string, ...lines: (string | LogLine)[]): void;
   /** What the user may do, as RBAC's rules (the cluster's, a namespace's more); none: anything. Its answers are not refused by it: say so (state). */
   rules(access: MemoryAccess | null): void;
+  /** A workload's port answering what proxy() asks of it: a value (as JSON) or a Response; none answering: 503, as the API server says no endpoints. */
+  answer(target: ReachTarget, handler: (asked: Asked) => unknown): void;
+}
+
+/** What a workload's port was asked (proxy()). */
+export interface Asked {
+  method: string;
+  path: string;
+  query: Record<string, string | undefined>;
+  body?: string;
 }
 
 export interface FakeClusterOptions {
@@ -98,6 +108,8 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
   const followed = signal<ReadonlySignal<readonly FieldLayer[]> | null>(null);
   const logs = signal<Readonly<Record<string, readonly LogLine[]>>>({});
   const access = signal<MemoryAccess | undefined>(undefined);
+  const answering = new Map<string, (asked: Asked) => unknown>();
+  const keyOfTarget = (t: ReachTarget) => `${t.kind}/${t.namespace}/${t.name}:${t.port}`;
   let clock = Date.parse('2026-10-17T09:00:00Z');
   const source = memorySource(objects, {
     logs,
@@ -159,6 +171,24 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
     },
     rules(said) {
       access.value = said ?? undefined;
+    },
+    answer(target, handler) {
+      answering.set(keyOfTarget(target), handler);
+    },
+    proxy(target) {
+      return reachOver(async (method, path, init = {}) => {
+        const handler = answering.get(keyOfTarget(target));
+        if (!handler) throw Object.assign(new Error(`no endpoints available for ${target.kind} "${target.name}"`), { status: 503, code: 'ServiceUnavailable' });
+        // Its query as asked: given apart, or in its path.
+        const [bare, inPath = ''] = path.split('?');
+        const query = { ...Object.fromEntries(new URLSearchParams(inPath)), ...init.query };
+        const out = await handler({ method, path: bare, query, ...(init.body === undefined ? {} : { body: init.body }) });
+        if (out instanceof Response) {
+          if (!out.ok) throw Object.assign(new Error(await out.text()), { status: out.status, code: `http_${out.status}` });
+          return out;
+        }
+        return Response.json(out);
+      });
     },
     refuse(op, refusal) {
       refusals.set(op, [...(refusals.get(op) ?? []), refusal]);

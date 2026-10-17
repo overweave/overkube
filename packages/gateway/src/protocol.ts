@@ -14,6 +14,7 @@ import { logTimeKey } from '@overkube/query';
  *   POST /patch                                    PatchBody → the API server's answer
  *   GET  /status                                   StatusAnswer
  *   GET  /me                                       MeAnswer: whom the cluster takes the page for
+ *   *    /proxy/services|pods/<ns>/<[scheme:]name:port>/<path>   a workload's port (ReachTarget), as data
  *
  * Anything but a read carries the gateway's header (x-overkube: any value),
  * and no request comes from another site's page (Sec-Fetch-Site: cross-site,
@@ -46,6 +47,8 @@ export type ErrorCode =
   /** Signing in over plain HTTP off this machine: refused (what is sent could be read on the way). */
   | 'insecure'
   | 'not_found'
+  /** A workload's port asked as a page (a navigation, a frame, an image): it is asked by the page's code alone. */
+  | 'not_fetched'
   | 'kube_down'
   | 'kube_timeout'
   | 'kube_error';
@@ -195,6 +198,30 @@ export type StreamLine =
   | { f: string; type: 'REMOVED' }
   | { type: 'PING' }
   | { type: 'CLOSE'; reason: 'slow_client' | 'shutdown' };
+
+/**
+ * A workload's port reached through the API server's proxy (/proxy/…): a
+ * Service's or a pod's, by its number or name, http unless said. What
+ * comes back is data — sandboxed, never a page — at most REACH.maxBytes,
+ * nothing coming for REACH.idleMs given up.
+ */
+export interface ReachTarget {
+  kind: 'service' | 'pod';
+  namespace: string;
+  name: string;
+  port: number | string;
+  scheme?: 'http' | 'https';
+}
+
+export const REACH = { maxBytes: 16 * 1024 * 1024, idleMs: 60_000 } as const;
+
+const targetOf = (t: ReachTarget) => `${t.scheme ? `${t.scheme}:` : ''}${t.name}:${t.port}`;
+
+/** Where a target is asked of the gateway: /proxy/services/<ns>/<[scheme:]name:port> (its path after it). */
+export const reachRoute = (t: ReachTarget) => `/proxy/${t.kind}s/${t.namespace}/${targetOf(t)}`;
+
+/** Where the API server proxies to it: /api/v1/namespaces/<ns>/services/<[scheme:]name:port>/proxy (its path after it). */
+export const reachPath = (t: ReachTarget) => `/api/v1/namespaces/${t.namespace}/${t.kind}s/${targetOf(t)}/proxy`;
 
 /** A change to one object (or its subresource), the one way the page makes changes. */
 export interface PatchBody {
