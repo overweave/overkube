@@ -2,7 +2,7 @@
 #
 # overkube's image: its server (one file) and its page, on Node — built as CI builds it for a tag:
 #
-#   docker build --build-arg VERSION=0.1.0 --build-arg REVISION=$(git rev-parse HEAD) -t overkube:0.1.0 .
+#   docker build --build-arg VERSION=0.1.1 --build-arg REVISION=$(git rev-parse HEAD) -t overkube:0.1.1 .
 #
 # Run with OVERKUBE_AUTH (token or oidc; loopback with OVERKUBE_LOCAL_NETWORK, published on 127.0.0.1)
 # and OVERKUBE_HOSTS; HTTPS on 8443, by a certificate of its own unless one is given

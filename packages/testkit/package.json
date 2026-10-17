@@ -1,6 +1,6 @@
 {
   "name": "@overkube/testkit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Testing overkube's addons without the page or a cluster: a cluster in memory, objects made as the API server would, a world where addons run as on the page (their contributor, their ctx), their slots drawn",
   "license": "MIT",
@@ -25,13 +25,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overkube/gateway": "0.1.0",
-    "@overkube/kube-types": "0.1.0",
-    "@overkube/query": "0.1.0",
-    "@overkube/runtime": "0.1.0",
-    "@overkube/sdk": "0.1.0",
-    "@overkube/shell": "0.1.0",
-    "@overkube/source": "0.1.0",
+    "@overkube/gateway": "0.1.1",
+    "@overkube/kube-types": "0.1.1",
+    "@overkube/query": "0.1.1",
+    "@overkube/runtime": "0.1.1",
+    "@overkube/sdk": "0.1.1",
+    "@overkube/shell": "0.1.1",
+    "@overkube/source": "0.1.1",
     "@overweave/testkit": "0.5.0"
   },
   "peerDependencies": {
