@@ -132,7 +132,7 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
     setFailures((now) => (now.includes(said) ? now : [...now, said]));
   };
   return (
-    <div class="uk-root" style={{ padding: '16px', background: 'var(--uk-bg)', minHeight: '100%', fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
+    <div class="uk-root" style={{ padding: '16px', background: 'var(--uk-bg)', minHeight: '100%' }}>
       <WorldStory
         ui={ui}
         kinds={kubeOwnKinds}

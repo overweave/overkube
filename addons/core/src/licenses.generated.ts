@@ -17,6 +17,18 @@ export const OVERKUBE: Library = {
 
 export const LIBRARIES: readonly Library[] = [
   {
+    "name": "@fontsource-variable/inter",
+    "version": "5.3.0",
+    "license": "OFL-1.1",
+    "url": "https://fontsource.org/fonts/inter"
+  },
+  {
+    "name": "@fontsource-variable/jetbrains-mono",
+    "version": "5.3.0",
+    "license": "OFL-1.1",
+    "url": "https://fontsource.org/fonts/jetbrains-mono"
+  },
+  {
     "name": "@marcbachmann/cel-js",
     "version": "8.0.0",
     "license": "MIT",

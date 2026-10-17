@@ -3,8 +3,8 @@
 #   chart   the Helm chart linted, drawn as signing in with a token and with OIDC
 #   audit   the dependencies: no known vulnerability (high or worse), every one signed by its registry
 #   review  a pull request's new dependencies: none with a known vulnerability (moderate or worse); MIT
-#           only — those under another license listed by name (the tools there were before it, and
-#           yaml, the gateway's)
+#           only — those under another license listed by name (the tools there were before it,
+#           yaml, the gateway's, and the page's fonts)
 name: check
 
 on:
@@ -85,8 +85,10 @@ jobs:
           fail-on-severity: moderate
           allow-licenses: MIT
           # Under another license, taken by name: TypeScript, Vite's, Storybook's and Testing Library's own
-          # dependencies; yaml (ISC), the gateway's.
+          # dependencies; yaml (ISC), the gateway's; the page's fonts, Inter and JetBrains Mono (OFL-1.1).
           allow-dependencies-licenses: >-
+            pkg:npm/%40fontsource-variable/inter, pkg:npm/%40fontsource-variable/jetbrains-mono,
+            pkg:npm/@fontsource-variable/inter, pkg:npm/@fontsource-variable/jetbrains-mono,
             pkg:npm/aria-query, pkg:npm/baseline-browser-mapping, pkg:npm/boolbase, pkg:npm/caniuse-lite,
             pkg:npm/css-select, pkg:npm/css-what, pkg:npm/detect-libc, pkg:npm/domelementtype,
             pkg:npm/domhandler, pkg:npm/domutils, pkg:npm/electron-to-chromium, pkg:npm/entities,

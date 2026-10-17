@@ -5,7 +5,8 @@ body {
   height: 100%;
 }
 body {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* The kit's font (uikit's FONT; loaded by main.tsx), the system's until it is. */
+  font-family: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 #app {
   min-height: 100%;

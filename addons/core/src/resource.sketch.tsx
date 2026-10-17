@@ -36,7 +36,7 @@ import { useEffect, useState } from 'preact/hooks';
 // ── The sketch's own looks: few, on the kit's scale ────────────────────────
 
 const SKETCH = `
-.rv-stage { padding: 24px; min-height: 100vh; background: var(--uk-bg); font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.rv-stage { padding: 24px; min-height: 100vh; background: var(--uk-bg); font-family: var(--uk-font); }
 .rv-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; color: var(--uk-muted); font-size: 12px; }
 .rv-frame { margin: 0 auto; }
 .rv-frame .uk-modal-panel { width: 100%; max-height: none; animation: none; }

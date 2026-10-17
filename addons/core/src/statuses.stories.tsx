@@ -22,7 +22,6 @@ export const Looks = () => {
         minHeight: '100vh',
         columns: '300px',
         columnGap: '24px',
-        fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif",
       }}
     >
       {groups.map((g) => (

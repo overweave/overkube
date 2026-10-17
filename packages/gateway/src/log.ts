@@ -159,14 +159,13 @@ export class LogFeed implements Feed {
     answer.setEncoding('utf8');
     answer.on('data', (chunk: string) => {
       if (!current()) return;
-      const lines = (rest + chunk).split('\n');
-      rest = lines.pop() ?? '';
-      // A line with no end in sight: told in pieces (by code points: none cut in two).
-      while (rest.length > MAX_LOG_LINE) {
-        const cut = /[\uD800-\uDBFF]/.test(rest[MAX_LOG_LINE - 1]) ? MAX_LOG_LINE - 1 : MAX_LOG_LINE;
-        lines.push(rest.slice(0, cut));
-        rest = rest.slice(cut);
-      }
+      const whole = (rest + chunk).split('\n');
+      rest = whole.pop() ?? '';
+      // A long line in pieces, however it came (at once, or with no end in sight yet): the same pieces.
+      const lines = whole.flatMap(pieces);
+      const unfinished = pieces(rest);
+      rest = unfinished.pop() ?? '';
+      lines.push(...unfinished);
       const out = lines.filter((line) => this.cursor.take(splitLogLine(line).time));
       if (!out.length) return;
       // Working for a while: the next trouble starts from the shortest wait again (not a few lines, then a break, at once forever).
@@ -182,4 +181,17 @@ export class LogFeed implements Feed {
       if (current() && !answer.complete) this.fail('kube_error', 'the API server broke the log off');
     });
   }
+}
+
+/** A line in pieces of MAX_LOG_LINE at most (by code points: none cut in two); a short one, itself. */
+function pieces(line: string): string[] {
+  const all: string[] = [];
+  let left = line;
+  while (left.length > MAX_LOG_LINE) {
+    const cut = /[\uD800-\uDBFF]/.test(left[MAX_LOG_LINE - 1]) ? MAX_LOG_LINE - 1 : MAX_LOG_LINE;
+    all.push(left.slice(0, cut));
+    left = left.slice(cut);
+  }
+  all.push(left);
+  return all;
 }

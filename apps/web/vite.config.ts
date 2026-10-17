@@ -41,5 +41,10 @@ export default defineConfig({
     // Polled (no file events cross a container's mount); ours watched too, though seen through node_modules.
     watch: { usePolling: true, interval: 300, ignored: ['**/node_modules/**', '!**/node_modules/@overkube/**', '!**/node_modules/@overweave/**', '**/dist/**'] },
   },
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    // Fonts as files of their own, however small: the page's CSP takes no data: font.
+    assetsInlineLimit: (file) => (file.endsWith('.woff2') ? false : undefined),
+  },
 });

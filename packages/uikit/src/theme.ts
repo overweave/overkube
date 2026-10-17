@@ -41,6 +41,17 @@ export const COLOR_TOKENS = [
 /** The rest: fonts, corners. */
 export const SHAPE_TOKENS = ['font', 'mono', 'radius-sm', 'radius', 'radius-lg'] as const;
 
+/**
+ * The kit's fonts: Inter and JetBrains Mono — the same on every system, the
+ * page's to load (@fontsource-variable/inter, @fontsource-variable/jetbrains-mono:
+ * their own files, never another site's) — the system's while they load, or
+ * where they are not loaded.
+ */
+export const FONT = "'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif";
+export const MONO_FONT = "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+/** The system's own (a theme's choice). */
+export const SYSTEM_FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif";
+
 export const TOKENS = [...COLOR_TOKENS, ...SHAPE_TOKENS] as const;
 export type Token = (typeof TOKENS)[number];
 
@@ -64,8 +75,8 @@ const dark: Record<Token, string> = {
   overlay: 'rgb(0 0 0 / .5)',
   shadow: '#000',
   knob: '#fff',
-  font: 'inherit',
-  mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+  font: FONT,
+  mono: MONO_FONT,
   'radius-sm': '4px',
   radius: '6px',
   'radius-lg': '12px',
@@ -150,7 +161,7 @@ export interface ThemeKnobs {
 export const HUE_TRACK = `linear-gradient(90deg, ${[0, 60, 120, 180, 240, 300, 360].map((h) => `hsl(${h} 70% 50%)`).join(', ')})`;
 
 /** The kit's own, as near as knobs say it. */
-export const KNOBS: ThemeKnobs = { accent: '#ff8c2f', hue: 0, tint: 0, depth: 10, contrast: 90, corners: 6, font: 'inherit' };
+export const KNOBS: ThemeKnobs = { accent: '#ff8c2f', hue: 0, tint: 0, depth: 10, contrast: 90, corners: 6, font: FONT };
 
 const hsl = (h: number, s: number, l: number) => `hsl(${h} ${s}% ${Math.max(0, Math.min(100, l))}%)`;
 

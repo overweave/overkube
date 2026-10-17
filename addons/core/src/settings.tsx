@@ -8,6 +8,7 @@ import {
   BoardAside,
   Button,
   DEFAULT_TOKENS,
+  FONT,
   knobsOf,
   Modal,
   madeTheme,
@@ -22,6 +23,7 @@ import {
   Status,
   Swatches,
   Switch,
+  SYSTEM_FONT,
   type ThemeKnobs,
   ThemePicker,
 } from '@overkube/uikit';
@@ -66,8 +68,8 @@ const Part = ({ title, count, tools, children }: { title: string; count?: number
 export const OWN_THEME = 'custom';
 const ACCENTS = ['#ff8c2f', '#e5534b', '#e3b341', '#4caf50', '#3ddbd9', '#58a6ff', '#a371f7', '#f778ba'];
 const FONTS = [
-  { value: 'inherit', title: 'System' },
-  { value: 'Inter, system-ui, sans-serif', title: 'Inter' },
+  { value: FONT, title: 'Inter' },
+  { value: SYSTEM_FONT, title: 'System' },
   { value: 'var(--uk-mono)', title: 'Monospace' },
 ];
 

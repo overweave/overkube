@@ -1,3 +1,6 @@
+// The kit's fonts, the page's own files (its CSP takes no other site's).
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
 import './page.css';
 import { boot } from './boot.ts';
 
