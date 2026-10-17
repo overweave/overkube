@@ -27,11 +27,11 @@
     "@overkube/storybook": "0.1.0",
     "@overkube/testkit": "0.1.0",
     "@testing-library/preact": "3.2.4",
-    "happy-dom": "20.14.5",
+    "happy-dom": "20.14.6",
     "preact": "10.29.8"
   },
   "peerDependencies": {
-    "@preact/signals": "^2.11.2",
+    "@preact/signals": "^2.11.3",
     "preact": "^10.29.8"
   }
 }
