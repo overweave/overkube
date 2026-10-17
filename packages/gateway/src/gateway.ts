@@ -110,7 +110,11 @@ export function fromAnotherSite(req: IncomingMessage): boolean {
 }
 
 export function createGateway(options: GatewayOptions): Gateway {
-  const prefix = `/${(options.prefix ?? '').replace(/^\/+|\/+$/g, '')}`.replace(/^\/$/, '');
+  // Its prefix as /kube: none, or one / before it and none after.
+  let path = options.prefix ?? '';
+  while (path.startsWith('/')) path = path.slice(1);
+  while (path.endsWith('/')) path = path.slice(0, -1);
+  const prefix = path ? `/${path}` : '';
   const maxBodyBytes = options.maxBodyBytes ?? 10 * 1024 * 1024;
   const header = options.header === undefined ? 'x-overkube' : options.header;
   const { upstream } = options;

@@ -58,11 +58,12 @@ export function searchedKinds(kinds: Iterable<KindInfo>, refOf: (k: KindInfo) =>
 /** What is typed: a kind's name first (more after it: of that kind only — its plural, its kind, a short name), the rest. */
 export function kindFirst(text: string, kinds: readonly KindInfo[], refOf: (k: KindInfo) => KindRef): { only?: KindRef; rest: string } {
   const rest = text.trim();
-  const first = /^(\S+)\s+(.+)$/.exec(rest);
-  if (!first) return { rest };
-  const said = first[1].toLowerCase();
+  // Its first word, and what is after it (read once: no run of spaces makes it slow).
+  const space = rest.search(/\s/);
+  if (space < 0) return { rest };
+  const said = rest.slice(0, space).toLowerCase();
   const kind = kinds.find((k) => k.plural === said || k.kind.toLowerCase() === said || (k.shortNames ?? []).includes(said));
-  return kind ? { only: refOf(kind), rest: first[2] } : { rest };
+  return kind ? { only: refOf(kind), rest: rest.slice(space).trimStart() } : { rest };
 }
 
 /** Nothing found yet: of these kinds, as typed. */

@@ -462,7 +462,7 @@ function About() {
       <Part title={say(t.libraries)} count={LIBRARIES.length}>
         <dl class="uk-board-facts">
           {LIBRARIES.map((l) => (
-            <Fragment key={`${l.name}@${l.version}`}>
+            <Fragment key={`${l.name} ${l.license}`}>
               <dt>
                 {l.url ? (
                   <a href={l.url} target="_blank" rel="noreferrer">
@@ -473,7 +473,7 @@ function About() {
                 )}
               </dt>
               <dd>
-                <span class="uk-mono">{l.version}</span> <Badge>{l.license}</Badge>
+                <Badge>{l.license}</Badge>
               </dd>
             </Fragment>
           ))}

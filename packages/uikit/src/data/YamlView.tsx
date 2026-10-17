@@ -41,19 +41,28 @@ type Part = [text: string, kind?: 'key' | 'string' | 'number' | 'word' | 'commen
 
 const NUMBER = /^-?(\d+(\.\d+)?([eE][-+]?\d+)?|\.inf|\.nan)$/;
 const WORD = /^(true|false|null|~|yes|no|on|off)$/i;
-const KEY = /^(- )*("(?:[^"\\]|\\.)*"|'[^']*'|[^\s:#'"][^:#]*?)(:)(\s|$)/;
+/** A key, its list's dashes taken off first (each read once: no line of them makes it slow). */
+const KEY = /^("(?:[^"\\]|\\.)*"|'[^']*'|[^\s:#'"][^:#]*?)(:)(\s|$)/;
+const DASHES = /^(?:- )+/;
+
+/** Where a comment starts: a # after a space (none: -1). */
+function commentAt(text: string): number {
+  for (let at = text.indexOf('#', 1); at > 0; at = text.indexOf('#', at + 1)) if (/\s/.test(text[at - 1])) return at - 1;
+  return -1;
+}
 
 /** A value's parts: a quoted string, a number, a word, a block's mark, else as it is — a comment after it apart. */
 function partsOfValue(text: string): Part[] {
-  const comment = text.match(/\s#.*$/);
-  const value = comment ? text.slice(0, comment.index) : text;
+  const at = commentAt(text);
+  const comment = at < 0 ? undefined : text.slice(at);
+  const value = comment === undefined ? text : text.slice(0, at);
   const out: Part[] = [];
   const v = value.trim();
   const lead = value.slice(0, value.length - value.trimStart().length);
   if (lead) out.push([lead]);
   if (v) out.push([v, /^["']/.test(v) ? 'string' : NUMBER.test(v) ? 'number' : WORD.test(v) ? 'word' : /^[|>][-+]?$/.test(v) || v === '[]' || v === '{}' ? 'mark' : 'string']);
   if (value.length > lead.length + v.length) out.push([value.slice(lead.length + v.length)]);
-  if (comment) out.push([comment[0], 'comment']);
+  if (comment !== undefined) out.push([comment, 'comment']);
   return out;
 }
 
@@ -70,17 +79,17 @@ function linesOf(text: string): { parts: Part[]; indent: number }[] {
       const body = line.slice(indent);
       const parts: Part[] = indent ? [[line.slice(0, indent)]] : [];
       if (body.startsWith('#')) return { parts: [...parts, [body, 'comment']], indent };
-      const key = KEY.exec(body);
+      const dashes = DASHES.exec(body)?.[0] ?? '';
+      const key = KEY.exec(body.slice(dashes.length));
       if (key) {
-        const dashes = key[1] ? (key[0].match(/^(- )+/)?.[0] ?? '') : '';
         if (dashes) parts.push([dashes, 'mark']);
-        parts.push([key[2], 'key'], [':', 'mark']);
-        const rest = body.slice(key[0].length - key[4].length);
+        parts.push([key[1], 'key'], [':', 'mark']);
+        const rest = body.slice(dashes.length + key[0].length - key[3].length);
         if (/^\s*[|>][-+]?\s*(#.*)?$/.test(rest)) block = indent + dashes.length;
         parts.push(...partsOfValue(rest));
         return { parts, indent };
       }
-      const dash = body.match(/^(- )+/)?.[0] ?? (body === '-' ? '-' : '');
+      const dash = dashes || (body === '-' ? '-' : '');
       if (dash) parts.push([dash, 'mark']);
       parts.push(...partsOfValue(body.slice(dash.length)));
       return { parts, indent };

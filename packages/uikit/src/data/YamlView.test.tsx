@@ -53,6 +53,28 @@ describe('YAML shown', () => {
     ]);
   });
 
+  it('tells a comment apart after a value, a line that starts with # as one; reads a long run of dashes or # at once', () => {
+    const { container } = render(<YamlView text={'image: web:1.2 # pinned\n#a: b # c\n- - name: x'} />);
+    const parts = (n: number) => [...[...container.querySelectorAll('.uk-yaml-line')][n].querySelectorAll('[data-k]')].map((p) => [p.textContent, p.getAttribute('data-k')]);
+    expect(parts(0)).toEqual([
+      ['image', 'key'],
+      [':', 'mark'],
+      ['web:1.2', 'string'],
+      [' # pinned', 'comment'],
+    ]);
+    expect(parts(1)).toEqual([['#a: b # c', 'comment']]);
+    expect(parts(2)).toEqual([
+      ['- - ', 'mark'],
+      ['name', 'key'],
+      [':', 'mark'],
+      ['x', 'string'],
+    ]);
+    // What an object may say (an annotation's value): never slow to read, however it repeats.
+    const started = performance.now();
+    render(<YamlView text={`${'- '.repeat(20000)}!\nnote: ${' #'.repeat(20000)}!\nk${' '.repeat(20000)}x`} />);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it('folds a key’s lines away, how many said in their place — and back', () => {
     const { container } = render(<YamlView text={text} />);
     const lines = () => container.querySelectorAll('.uk-yaml-line').length;

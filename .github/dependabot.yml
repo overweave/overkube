@@ -29,6 +29,12 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: '@preact/*'
         update-types: [version-update:semver-major]
+      # TypeScript's next major is a new compiler: taken on purpose, not by a weekly pull request.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # Node's types follow the Node it runs on (24: engines, the image).
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: docker
     directories: [/, /dev/node, /dev/kube]
