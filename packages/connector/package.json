@@ -30,6 +30,6 @@
   "devDependencies": {
     "@overkube/fake-kube": "0.1.0",
     "@preact/signals": "2.11.2",
-    "@types/node": "24.10.1"
+    "@types/node": "26.6.5"
   }
 }
