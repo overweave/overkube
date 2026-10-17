@@ -1,6 +1,6 @@
 /**
  * Kubernetes object types. The kinds' types are generated from a cluster's
- * OpenAPI schemas (make kube-types) and imported by group and version:
+ * OpenAPI schemas (overkube-typegen, packages/typegen) and imported by group and version:
  *
  *   import type { Pod } from '@overkube/kube-types/core/v1';
  *   import type { Deployment } from '@overkube/kube-types/apps/v1';

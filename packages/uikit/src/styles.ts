@@ -451,9 +451,9 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-clamped { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
 .uk-clamped-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--uk-clamp, 2); overflow: hidden; max-width: 100%; }
 .uk-clamped-text[data-open] { display: block; -webkit-line-clamp: none; }
-/* A state among fields: its words wrap (a long one, NotReady,SchedulingDisabled), not cut short. */
+/* A state among fields: its words wrap (a long one, NotReady,SchedulingDisabled), not cut short — after a colon or a comma (Status), inside a word only when it has no room. */
 .uk-field > dd .uk-status { white-space: normal; }
-.uk-field > dd .uk-status-text { overflow: visible; }
+.uk-field > dd .uk-status-text { overflow: visible; overflow-wrap: break-word; }
 
 /* Things dragged into another order (useSortable): the one held lifted (a little larger, leaning as it moves, following the pointer a moment behind), the others moving aside on springs; dropped, it settles where it lands. */
 [data-sorting] { user-select: none; cursor: grabbing; --uk-sort-ease: linear(0, 0.104, 0.314, 0.533, 0.715, 0.847, 0.934, 0.984, 1.009, 1.019, 1.02, 1.016, 1.012, 1.008, 1.004, 1.002, 1.001, 1); --uk-sort-follow: 70ms; --uk-lift: 1.03; }

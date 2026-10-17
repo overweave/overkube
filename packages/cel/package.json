@@ -1,6 +1,7 @@
 {
   "name": "@overkube/cel",
   "version": "0.1.0",
+  "private": true,
   "description": "CEL as overkube's fields have it, the page's and a server's alike: one object as self, a missing value none (not an error), integers as integers, Kubernetes' quantity and lists functions",
   "license": "MIT",
   "type": "module",

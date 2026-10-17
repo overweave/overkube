@@ -1,6 +1,7 @@
 {
   "name": "@overkube/storybook",
   "version": "0.1.0",
+  "private": true,
   "description": "overkube's addons in Storybook: the whole page at a path, the addons beside one another (turned off and on in overweave's panel), a cluster in memory with what the story gives it, the user's own changes",
   "license": "MIT",
   "type": "module",

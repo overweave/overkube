@@ -1,0 +1,42 @@
+# Updates proposed once a week — the workflows' actions, the workspace's npm packages (grouped, so one
+# pull request a week at most for each; a major version of a package on its own), the image's base —
+# a version only once it is a week old (a bad release is mostly taken back by then). Security updates
+# come at once.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # overweave's slot trace and render counts read Preact 10's own tree: another major waits for it.
+      - dependency-name: preact
+        update-types: [version-update:semver-major]
+      - dependency-name: '@preact/*'
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: docker
+    directories: [/, /dev/node, /dev/kube]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # One pull request: Node's Alpine and the image's are the same release (Dockerfile).
+    groups:
+      images:
+        patterns: ['*']

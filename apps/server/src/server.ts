@@ -111,6 +111,15 @@ function page(dir: string, req: IncomingMessage, res: ServerResponse): void {
 export function startServer(config: Config, options: { version?: string; log?: (message: string) => void } = {}): Promise<Running> {
   const log = options.log ?? ((m: string) => console.log(`[overkube] ${m}`));
   const upstream = upstreamOf(config);
+  // How the cluster is reached, read once as it starts: a kubeconfig it cannot read or make sense of, a pod
+  // without its ServiceAccount — said now, not taken for a cluster that never answers.
+  try {
+    upstream();
+  } catch (err) {
+    const where = config.cluster.from === 'in-cluster' ? 'its ServiceAccount' : `the kubeconfig ${config.cluster.path}`;
+    const denied = (err as NodeJS.ErrnoException).code === 'EACCES' ? ` — not readable by this process (uid ${process.getuid?.()})` : '';
+    throw new Error(`${where}: ${(err as Error).message}${denied}`);
+  }
   // Signing in (its sessions ending their streams: gateway.close(who)), then the gateway acting as whoever is signed in.
   const auth = signIn(config, upstream, (who) => gateway.close(who), log);
   const gateway = createGateway({ upstream, prefix: config.prefix, readOnly: config.readOnly, version: options.version, ...(auth.identify ? { identify: auth.identify } : {}) });

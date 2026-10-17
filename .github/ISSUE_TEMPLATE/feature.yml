@@ -1,0 +1,16 @@
+name: Feature
+description: Something overkube could show or do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need
+      description: The problem, in your cluster's terms — what you look for, what you do today instead.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could look
+      description: Where it would be shown, what kubectl says of it, a sketch — if you have one in mind.

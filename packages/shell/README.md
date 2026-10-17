@@ -1,0 +1,5 @@
+# @overkube/shell
+
+overkube's frame, drawn wherever the page is: the page itself (`Shell`), a test or a story (`ShellProvider` and `Frame` under their own providers). It draws the header, navigation, overlay, menu and notifications slots, and the `Page` at the path — a hash's (`hashRouter`) or one in memory (`memoryRouter`; `matchPath`, `matchPage`) — with the resource opened over it (`?open=`). What the user is told is kept by `notifications()`; the user's own changes by a `UserService` over a store (`localStore`: localStorage; `memoryStore`): one more contributor of the registry, `user`, above every addon's, its patches kept whole between visits. It draws nothing of its own but where nothing is (no page at a path, nothing to open): what fills its slots and pages is the addons' — by default the [core](../../addons/core/README.md)'s.
+
+Used by the [page](../../apps/web/README.md), the [testkit](../testkit/README.md) (`renderPage`) and [storybook](../storybook/README.md) (`KubeStory`). Built with `npm run build -w @overkube/shell` (`dist/`); in the workspace read from `src/`.

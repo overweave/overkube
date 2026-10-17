@@ -1,0 +1,76 @@
+# overkube's settings: the server's environment (apps/server/src/config.ts), named here.
+
+image:
+  repository: ghcr.io/overweave/overkube
+  # None: the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# How one signs in. token: with a token the cluster takes (kubectl create token …), the cluster used as
+# that token may — the server's own ServiceAccount given nothing. oidc: with an OpenID Connect provider,
+# the server acting as the one signed in — its ServiceAccount may impersonate users and groups (a strong
+# right: keep the namespace to the cluster's admins).
+auth:
+  mode: token
+  # How long one stays signed in at most (a token's or an ID token's own end, sooner).
+  sessionHours: 8
+  oidc:
+    # The provider (https://id.example.org/realms/main) and its client, whose redirect URI is
+    # https://<one of hosts>/auth/oidc/callback.
+    issuer: ""
+    clientId: ""
+    # A confidential client's secret: the Secret and its key (none: a public client, PKCE alone).
+    clientSecret:
+      secretName: ""
+      key: client-secret
+    scopes: openid profile email
+    userClaim: email
+    groupsClaim: groups
+    # Put before the user and each group: what the cluster's RBAC names them by.
+    prefix: "oidc:"
+
+# The names it is reached by: any other is refused (a DNS rebinding). The Ingress's hosts are added.
+hosts: [localhost, 127.0.0.1]
+
+# HTTPS. self: a certificate of its own, made as it starts (kubectl port-forward; an Ingress that speaks
+# HTTPS to it). secret: a kubernetes.io/tls Secret's. off: whatever is in front ends TLS and says so
+# (X-Forwarded-Proto: https) — an Ingress that speaks only HTTP to its backends.
+tls:
+  mode: self
+  secretName: ""
+
+# Nothing that changes the cluster, whoever signs in.
+readOnly: false
+
+service:
+  type: ClusterIP
+  port: 8443
+
+ingress:
+  enabled: false
+  className: ""
+  # ingress-nginx, the server keeping its certificate (tls.mode self):
+  #   nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+  #   nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # its watches: one long response each
+  #   nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  annotations: {}
+  hosts: []
+  #  - dash.example.org
+  tls: []
+  #  - secretName: overkube-tls
+  #    hosts: [dash.example.org]
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+# More of the server's environment (name, value).
+extraEnv: []
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,6 +1,7 @@
 {
   "name": "@overkube/shell",
   "version": "0.1.0",
+  "private": true,
   "description": "overkube's frame, drawn wherever the page is — the page itself, a test, a story: its header, navigation and overlay slots, the Page at the path (a hash's, or one held in memory) and the resource opened over it, the user told things",
   "license": "MIT",
   "type": "module",

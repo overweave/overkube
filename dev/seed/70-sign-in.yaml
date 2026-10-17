@@ -1,5 +1,5 @@
 # Whom to sign in as with a token (OVERKUBE_AUTH=token): make dev-token SA=<one of them>.
-# admin: the whole cluster; viewer: read everything (no Secrets, no logs: kubectl's view);
+# admin: the whole cluster; viewer: read everything but Secrets (kubectl's view: logs too);
 # shop-dev: edit in seed-shop alone — what the page hides from each is theirs.
 # With OIDC (OVERKUBE_AUTH=oidc, Dex: dev/dex.yaml) the same, impersonated: oidc:admin@seed.test,
 # oidc:viewer@seed.test, and the group oidc:authors (Dex's mock user) in seed-shop.

@@ -1,5 +1,10 @@
-# Everything `make check` checks — lint and format, types, tests — on every push to main and every
-# pull request.
+# On every push to main and every pull request; called by the release too:
+#   check   lint and format, types, tests (their coverage shown: a warning under 80%, never a failure)
+#   chart   the Helm chart linted, drawn as signing in with a token and with OIDC
+#   audit   the dependencies: no known vulnerability (high or worse), every one signed by its registry
+#   review  a pull request's new dependencies: none with a known vulnerability (moderate or worse); MIT
+#           only — those under another license listed by name (the tools there were before it, and
+#           yaml, the gateway's)
 name: check
 
 on:
@@ -20,12 +25,77 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run coverage
+      # Shown on the run (its summary; a warning under 80%), never failing it.
+      - run: npm run coverage:summary
+
+  chart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
+      - run: helm lint --strict charts/overkube
+      - run: helm template overkube charts/overkube > /dev/null
+      - run: >-
+          helm template overkube charts/overkube --set auth.mode=oidc --set auth.oidc.issuer=https://id.example.org
+          --set auth.oidc.clientId=overkube --set ingress.enabled=true --set 'ingress.hosts={dash.example.org}' > /dev/null
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      # What runs (the server, the page): any known vulnerability; the tools it is built with: high or worse.
+      - run: npm audit --omit=dev
+      - run: npm audit --audit-level=high
+      - run: npm audit signatures
+
+  review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          allow-licenses: MIT
+          # Under another license, taken by name: TypeScript, Vite's, Storybook's and Testing Library's own
+          # dependencies; yaml (ISC), the gateway's.
+          allow-dependencies-licenses: >-
+            pkg:npm/aria-query, pkg:npm/baseline-browser-mapping, pkg:npm/boolbase, pkg:npm/caniuse-lite,
+            pkg:npm/css-select, pkg:npm/css-what, pkg:npm/detect-libc, pkg:npm/domelementtype,
+            pkg:npm/domhandler, pkg:npm/domutils, pkg:npm/electron-to-chromium, pkg:npm/entities,
+            pkg:npm/esprima, pkg:npm/expect-type, pkg:npm/lightningcss, pkg:npm/lightningcss-android-arm64,
+            pkg:npm/lightningcss-darwin-arm64, pkg:npm/lightningcss-darwin-x64,
+            pkg:npm/lightningcss-freebsd-x64, pkg:npm/lightningcss-linux-arm-gnueabihf,
+            pkg:npm/lightningcss-linux-arm64-gnu, pkg:npm/lightningcss-linux-arm64-musl,
+            pkg:npm/lightningcss-linux-x64-gnu, pkg:npm/lightningcss-linux-x64-musl,
+            pkg:npm/lightningcss-win32-arm64-msvc, pkg:npm/lightningcss-win32-x64-msvc, pkg:npm/lru-cache,
+            pkg:npm/nth-check, pkg:npm/picocolors, pkg:npm/semver, pkg:npm/source-map, pkg:npm/source-map-js,
+            pkg:npm/tslib, pkg:npm/typescript, pkg:npm/yallist, pkg:npm/yaml
+          comment-summary-in-pr: on-failure

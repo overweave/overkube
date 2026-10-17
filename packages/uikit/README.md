@@ -1,0 +1,7 @@
+# @overkube/uikit
+
+overkube's UI kit: the components and styles its page and its addons are drawn with, so that they look one. Preact components by what they are for — actions (`Button`, `Segmented`), status, data (`Table`, `KeyValue`, `Chips`, `Code`, `YamlView`, `ConfigViewer`, `File`, `LogView`, `Gauge`, `Meter`, `Ratio`, `Split`), display (`Icon`, `Kbd`, `Logo`, `PageHeader`, `Ref`, `Skeleton`, `EmptyState`, `Highlight`, `Clamped`), layout (`Panel`, `Card`, `Section`, `Rows`, `Board`, `Accordion`, `SideRail`), forms (`Select`, `MultiSelect`, `Switch`, `Slider`, `Checklist`, `GroupPicker`, `QueryField`, `SettingsForm`, `ThemePicker`), navigation (`Tab`, `NavList`, the `Catalog*` pieces), overlays (`Layer`, `Above`, `placeAt`) — and what they are made with (`adoptStyles`, `useSortable`, `usePresence`, `copyText`, `toYaml`).
+
+Its styles are adopted by a document or a shadow root (`adoptStyles`); colours are dark, or light with `data-theme='light'` on `.uk-root`, as tokens (`var(--uk-accent)`, `var(--uk-panel)`, …) an addon's own components use too. A component's words are its `labels` prop (English by default: `CONFIG_LABELS`, `FILE_LABELS`, …), so a page in another language gives its own. The `uk-` prefix is the kit's own.
+
+Icons are Tabler's ([NOTICE](NOTICE)), picked into [src/display/icons.generated.ts](src/display/icons.generated.ts) by `npm run icons -w @overkube/uikit`. Stories (`*.stories.tsx`) run in `make storybook` beside the core's. Built with `npm run build -w @overkube/uikit` (`dist/`); in the workspace read from `src/`.

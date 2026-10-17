@@ -1,6 +1,7 @@
 {
   "name": "@overkube/uikit",
   "version": "0.1.0",
+  "private": true,
   "description": "overkube's UI kit: the components and styles its page and its addons are drawn with",
   "license": "MIT",
   "type": "module",

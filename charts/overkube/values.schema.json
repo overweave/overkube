@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "auth": {
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["token", "oidc"] },
+        "sessionHours": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "hosts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "tls": {
+      "type": "object",
+      "properties": { "mode": { "enum": ["self", "secret", "off"] } }
+    },
+    "readOnly": { "type": "boolean" },
+    "service": {
+      "type": "object",
+      "properties": { "port": { "type": "integer", "minimum": 1, "maximum": 65535 } }
+    }
+  }
+}

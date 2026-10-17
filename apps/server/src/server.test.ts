@@ -70,8 +70,18 @@ describe('the server', () => {
     expect(await (await fetch(`${base}/healthz`)).text()).toBe('ok');
     const ready = await fetch(`${base}/readyz`);
     expect([ready.status, await ready.text()]).toEqual([200, 'ok']);
-    const nowhere = await start({ cluster: { from: 'kubeconfig', path: join(tmpdir(), 'no-such-kubeconfig') } });
+    const unreached = join(mkdtempSync(join(tmpdir(), 'ok-')), 'kubeconfig');
+    writeFileSync(unreached, 'clusters:\n- cluster:\n    server: http://127.0.0.1:1\n  name: c\ncontexts:\n- context:\n    cluster: c\n  name: x\ncurrent-context: x\n');
+    const nowhere = await start({ cluster: { from: 'kubeconfig', path: unreached } });
     expect((await fetch(`${nowhere}/readyz`)).status).toBe(503);
+  });
+
+  it('does not start without a way to the cluster: a kubeconfig it cannot read, or not one', async () => {
+    const missing = join(tmpdir(), 'no-such-kubeconfig');
+    await expect(start({ cluster: { from: 'kubeconfig', path: missing } })).rejects.toThrow(`the kubeconfig ${missing}: ENOENT`);
+    const notOne = join(mkdtempSync(join(tmpdir(), 'ok-')), 'kubeconfig');
+    writeFileSync(notOne, '- a list');
+    await expect(start({ cluster: { from: 'kubeconfig', path: notOne } })).rejects.toThrow(`the kubeconfig ${notOne}: not a kubeconfig`);
   });
 
   it('serves the gateway under its prefix, its version told', async () => {

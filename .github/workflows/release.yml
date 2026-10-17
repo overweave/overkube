@@ -1,0 +1,116 @@
+# A release for a tag `v<version>` (the server's version, apps/server/package.json): checked as a push
+# is, then the image built for amd64 and arm64 and pushed to GitHub's registry (ghcr.io/overweave/overkube)
+# — and to Docker Hub once it is set up: the repository's variable DOCKERHUB_USERNAME and secret
+# DOCKERHUB_TOKEN (an access token, Read & Write; DOCKERHUB_NAMESPACE, else overweave). Tagged
+# <version>, <major>.<minor>, and latest (none of them for a version with a `-`, but the version);
+# its SBOM and provenance with it, and GitHub's attestation of where it was built (once the
+# repository is public). The Helm chart (its version the server's) pushed to oci://ghcr.io/overweave/charts.
+# Then a release on GitHub, the chart drawn as plain manifests attached (overkube.yaml, for kubectl
+# apply); a 0.x version as a pre-release.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/check.yml
+
+  image:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+      # GitHub's attestation of the image: signed by the workflow's identity.
+      id-token: write
+      attestations: write
+    env:
+      DOCKERHUB: ${{ vars.DOCKERHUB_USERNAME != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The tag is the server's version, and the chart's
+        run: |
+          version="$(node -p "require('./apps/server/package.json').version")"
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "the tag $GITHUB_REF_NAME is not the server's version $version"; exit 1; }
+          if ! grep -qx "version: $version" charts/overkube/Chart.yaml || ! grep -qx "appVersion: \"$version\"" charts/overkube/Chart.yaml; then
+            echo "charts/overkube/Chart.yaml: its version and appVersion are to be $version"; exit 1
+          fi
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - if: env.DOCKERHUB == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ghcr.io/overweave/overkube
+            name=docker.io/${{ vars.DOCKERHUB_NAMESPACE || 'overweave' }}/overkube,enable=${{ env.DOCKERHUB }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            REVISION=${{ github.sha }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # GitHub's attestations are a public repository's (or a paid plan's).
+      - if: github.event.repository.private == false
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/overweave/overkube
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
+      - name: The chart, in GitHub's registry; drawn as plain manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm package charts/overkube --destination packed
+          helm push packed/overkube-*.tgz oci://ghcr.io/overweave/charts
+          helm template overkube charts/overkube --namespace overkube > overkube.yaml
+      - name: The release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in v0.*|*-*) pre="--prerelease" ;; esac
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && exit 0
+          {
+            echo "The image: \`ghcr.io/overweave/overkube:$VERSION\` (linux/amd64, linux/arm64)."
+            echo
+            echo "With Helm: \`helm install overkube oci://ghcr.io/overweave/charts/overkube --version $VERSION -n overkube --create-namespace\`"
+            echo
+            echo "With kubectl: \`kubectl create namespace overkube && kubectl apply -n overkube -f https://github.com/overweave/overkube/releases/download/$GITHUB_REF_NAME/overkube.yaml\`"
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" overkube.yaml --title "$GITHUB_REF_NAME" --notes-file notes.md --generate-notes --verify-tag $pre

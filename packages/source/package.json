@@ -1,6 +1,7 @@
 {
   "name": "@overkube/source",
   "version": "0.1.0",
+  "private": true,
   "description": "overkube's answers to queries (@overkube/query) from the cluster's data: a live query planned onto feeds (@overkube/connector), its fields per kind (kube-fields, a CRD's columns), answered by a scan as they change",
   "license": "MIT",
   "type": "module",

@@ -1,6 +1,7 @@
 {
   "name": "@overkube/sdk",
   "version": "0.1.0",
+  "private": true,
   "description": "What overkube's addons are written with: the dashboard's kinds over overweave (KindView, Category, Column, Field, TableView, Page, Action), its slots, defineAddon and what an addon is given — its contributor and the cluster (queries, live); hooks for its components",
   "license": "MIT",
   "type": "module",

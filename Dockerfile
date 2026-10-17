@@ -4,16 +4,20 @@
 #
 #   docker build --build-arg VERSION=0.1.0 --build-arg REVISION=$(git rev-parse HEAD) -t overkube:0.1.0 .
 #
-# Run with OVERKUBE_AUTH (token or oidc) and OVERKUBE_HOSTS; HTTPS on 8443, by a certificate of its
-# own unless one is given (docker/entrypoint.sh). The rest as apps/server/src/config.ts says.
+# Run with OVERKUBE_AUTH (token or oidc; loopback with OVERKUBE_LOCAL_NETWORK, published on 127.0.0.1)
+# and OVERKUBE_HOSTS; HTTPS on 8443, by a certificate of its own unless one is given
+# (docker/entrypoint.sh). The rest as apps/server/src/config.ts says.
 
-# Node's Alpine and the image's the same release: its node runs there as built.
-FROM node:24-alpine3.24 AS build
+# The server and the page built where the build runs (what is built is JavaScript, any platform's);
+# Node itself the image's platform's — its Alpine the image's release, so its node runs there as built.
+FROM --platform=$BUILDPLATFORM node:24-alpine3.24 AS build
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund --ignore-scripts
 RUN npm run build -w @overkube/web && npm run build -w @overkube/server
+
+FROM node:24-alpine3.24 AS node
 
 # Node alone (its binary and the libraries it needs): no npm, no yarn in the image.
 FROM alpine:3.24
@@ -28,7 +32,7 @@ LABEL org.opencontainers.image.title="overkube" \
 RUN apk add --no-cache libstdc++ openssl \
  && addgroup -g 1000 node && adduser -u 1000 -G node -D -H node \
  && mkdir -p /var/lib/overkube/tls && chown node:node /var/lib/overkube/tls
-COPY --from=build /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
 ENV NODE_ENV=production \
     OVERKUBE_VERSION=$VERSION \
     OVERKUBE_HOST=0.0.0.0 \

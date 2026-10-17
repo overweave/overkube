@@ -1,6 +1,7 @@
 {
   "name": "@overkube/kube-types",
   "version": "0.1.0",
+  "private": true,
   "description": "Kubernetes object types for overkube and its addons, generated from a cluster's OpenAPI schemas",
   "license": "MIT",
   "type": "module",

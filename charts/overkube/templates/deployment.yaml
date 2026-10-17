@@ -1,0 +1,134 @@
+{{- $oidc := .Values.auth.oidc -}}
+{{- if eq .Values.auth.mode "oidc" }}
+{{- if not (and $oidc.issuer $oidc.clientId) }}{{ fail "auth.mode oidc: auth.oidc.issuer and auth.oidc.clientId" }}{{ end }}
+{{- end }}
+{{- if and (eq .Values.tls.mode "secret") (not .Values.tls.secretName) }}{{ fail "tls.mode secret: tls.secretName" }}{{ end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "overkube.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "overkube.labels" . | nindent 4 }}
+spec:
+  # One: its sessions are its memory's.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "overkube.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "overkube.labels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "overkube.name" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: overkube
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: OVERKUBE_AUTH
+              value: {{ .Values.auth.mode | quote }}
+            - name: OVERKUBE_HOSTS
+              value: {{ include "overkube.hosts" . | quote }}
+            - name: OVERKUBE_SESSION_HOURS
+              value: {{ .Values.auth.sessionHours | quote }}
+            - name: OVERKUBE_READ_ONLY
+              value: {{ .Values.readOnly | quote }}
+            {{- if eq .Values.tls.mode "secret" }}
+            - name: OVERKUBE_TLS_CERT
+              value: /etc/overkube/tls/tls.crt
+            - name: OVERKUBE_TLS_KEY
+              value: /etc/overkube/tls/tls.key
+            {{- else if eq .Values.tls.mode "off" }}
+            - name: OVERKUBE_TLS
+              value: "off"
+            {{- end }}
+            {{- if eq .Values.auth.mode "oidc" }}
+            - name: OVERKUBE_OIDC_ISSUER
+              value: {{ $oidc.issuer | quote }}
+            - name: OVERKUBE_OIDC_CLIENT_ID
+              value: {{ $oidc.clientId | quote }}
+            - name: OVERKUBE_OIDC_SCOPES
+              value: {{ $oidc.scopes | quote }}
+            - name: OVERKUBE_OIDC_USER_CLAIM
+              value: {{ $oidc.userClaim | quote }}
+            - name: OVERKUBE_OIDC_GROUPS_CLAIM
+              value: {{ $oidc.groupsClaim | quote }}
+            - name: OVERKUBE_OIDC_PREFIX
+              value: {{ $oidc.prefix | quote }}
+            {{- with $oidc.clientSecret.secretName }}
+            - name: OVERKUBE_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $oidc.clientSecret.key }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: https
+              containerPort: 8443
+          # Health over plain HTTP on the same port.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: https
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: https
+            periodSeconds: 10
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            {{- if eq .Values.tls.mode "secret" }}
+            - name: tls
+              mountPath: /etc/overkube/tls
+              readOnly: true
+            {{- else }}
+            # Where its own certificate is made as it starts.
+            - name: tls
+              mountPath: /var/lib/overkube/tls
+            {{- end }}
+      volumes:
+        - name: tls
+          {{- if eq .Values.tls.mode "secret" }}
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

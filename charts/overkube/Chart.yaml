@@ -1,0 +1,14 @@
+apiVersion: v2
+name: overkube
+description: A dashboard for Kubernetes clusters — one signs in with a token of one's own or an OpenID Connect provider
+type: application
+# The chart's version and the server's: released together (a tag v<version>).
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/overweave/overkube
+icon: https://raw.githubusercontent.com/overweave/overkube/main/apps/web/public/favicon.svg
+sources:
+  - https://github.com/overweave/overkube
+keywords: [kubernetes, dashboard]
+annotations:
+  licenses: MIT

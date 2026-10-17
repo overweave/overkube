@@ -1,6 +1,7 @@
 {
   "name": "@overkube/connector",
   "version": "0.1.0",
+  "private": true,
   "description": "overkube's way to the cluster's data: the gateway's HTTP and its one changing stream, what the cluster serves, and feeds — a collection listed and watched, shared, let go of when no one uses it",
   "license": "MIT",
   "type": "module",

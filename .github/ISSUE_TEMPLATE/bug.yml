@@ -1,0 +1,37 @@
+name: Bug
+description: Something does not work, or is shown wrong.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: overkube's version, and how it runs
+      placeholder: "0.1.0 — the Helm chart / the image / from source"
+    validations:
+      required: true
+  - type: input
+    id: cluster
+    attributes:
+      label: Kubernetes
+      placeholder: "v1.35, k3s / EKS / kind…; signing in with a token / OIDC"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: What you did, what you expected, what happened instead. A screenshot helps for anything shown.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The objects involved (their YAML, without secrets), the page, the steps. The server's log, if it says something.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      placeholder: "Chrome 140 / Firefox 145 / Safari 26"

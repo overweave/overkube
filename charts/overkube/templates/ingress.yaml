@@ -1,0 +1,35 @@
+{{- if .Values.ingress.enabled }}
+{{- if not .Values.ingress.hosts }}{{ fail "ingress.enabled: ingress.hosts" }}{{ end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "overkube.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "overkube.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "overkube.name" $ }}
+                port:
+                  name: https
+    {{- end }}
+{{- end }}

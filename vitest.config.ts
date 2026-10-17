@@ -44,8 +44,9 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['{packages,apps,addons}/*/src/**/*.{ts,tsx}'],
-      exclude: ['**/*.test.{ts,tsx}', '**/*.stories.tsx'],
-      reporter: ['text-summary', 'text'],
+      exclude: ['**/*.test.{ts,tsx}', '**/*.stories.tsx', '**/*.d.ts'],
+      // json-summary: what CI shows of it (scripts/coverage-summary.mjs).
+      reporter: ['text-summary', 'text', 'json-summary'],
     },
   },
 });

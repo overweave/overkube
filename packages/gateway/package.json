@@ -1,6 +1,7 @@
 {
   "name": "@overkube/gateway",
   "version": "0.1.0",
+  "private": true,
   "description": "overkube's way to a Kubernetes cluster: the API server's paths passed on, several watches over one stream, changes as JSON, a status — one handler over Node's request and response, for any host",
   "license": "MIT",
   "type": "module",

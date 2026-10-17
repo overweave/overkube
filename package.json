@@ -19,7 +19,8 @@
     "lint": "biome check .",
     "typecheck": "[ \"$(npm query .workspace)\" = \"[]\" ] || npm run typecheck --workspaces --if-present",
     "test": "vitest run --passWithNoTests",
-    "coverage": "vitest run --passWithNoTests --coverage"
+    "coverage": "vitest run --passWithNoTests --coverage",
+    "coverage:summary": "node scripts/coverage-summary.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

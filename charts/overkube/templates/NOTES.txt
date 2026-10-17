@@ -1,0 +1,24 @@
+overkube {{ .Chart.AppVersion }} is starting in {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+
+Open https://{{ first .Values.ingress.hosts }}
+{{- else }}
+
+Reach it from this machine:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "overkube.name" . }} 8443:{{ .Values.service.port }}
+
+and open https://localhost:8443{{ if eq .Values.tls.mode "self" }} (its own certificate: the browser asks once){{ end }}.
+{{- end }}
+
+{{- if eq .Values.auth.mode "token" }}
+
+Sign in with a token the cluster takes, for one whose rights you want to use — for instance:
+
+  kubectl -n <namespace> create token <serviceaccount> --duration=8h
+{{- else }}
+
+Sign in with {{ .Values.auth.oidc.issuer }}; what each one may do is the cluster's RBAC for
+{{ .Values.auth.oidc.prefix }}<their {{ .Values.auth.oidc.userClaim }}> and {{ .Values.auth.oidc.prefix }}<their groups>.
+{{- end }}

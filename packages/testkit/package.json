@@ -1,6 +1,7 @@
 {
   "name": "@overkube/testkit",
   "version": "0.1.0",
+  "private": true,
   "description": "Testing overkube's addons without the page or a cluster: a cluster in memory, objects made as the API server would, a world where addons run as on the page (their contributor, their ctx), their slots drawn",
   "license": "MIT",
   "type": "module",
