@@ -34,7 +34,7 @@
   },
   "peerDependencies": {
     "@preact/preset-vite": "^2.10.6",
-    "@preact/signals": "^2.11.2",
+    "@preact/signals": "^2.11.3",
     "@storybook/preact-vite": "^10.6.0",
     "preact": "^10.29.8",
     "storybook": "^10.6.0",
@@ -57,7 +57,7 @@
   "devDependencies": {
     "@overkube/addon-core": "0.1.0",
     "@testing-library/preact": "3.2.4",
-    "happy-dom": "20.14.5",
+    "happy-dom": "20.14.6",
     "preact": "10.29.8"
   }
 }

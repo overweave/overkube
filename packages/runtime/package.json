@@ -26,6 +26,6 @@
     "@preact/signals": "^2.11.2"
   },
   "devDependencies": {
-    "@preact/signals": "2.11.2"
+    "@preact/signals": "2.11.3"
   }
 }

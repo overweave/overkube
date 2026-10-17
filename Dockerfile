@@ -8,19 +8,20 @@
 # and OVERKUBE_HOSTS; HTTPS on 8443, by a certificate of its own unless one is given
 # (docker/entrypoint.sh). The rest as apps/server/src/config.ts says.
 
+# Each base by its digest as well as its tag (what is pulled is what was checked; Dependabot moves both).
 # The server and the page built where the build runs (what is built is JavaScript, any platform's);
 # Node itself the image's platform's — its Alpine the image's release, so its node runs there as built.
-FROM --platform=$BUILDPLATFORM node:24-alpine3.24 AS build
+FROM --platform=$BUILDPLATFORM node:24-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS build
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund --ignore-scripts
 RUN npm run build -w @overkube/web && npm run build -w @overkube/server
 
-FROM node:24-alpine3.24 AS node
+FROM node:24-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS node
 
 # Node alone (its binary and the libraries it needs): no npm, no yarn in the image.
-FROM alpine:3.24
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 ARG VERSION=dev
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="overkube" \

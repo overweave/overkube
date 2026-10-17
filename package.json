@@ -33,7 +33,7 @@
     "node": ">=24"
   },
   "overrides": {
-    "@preact/signals": "2.11.2",
+    "@preact/signals": "2.11.3",
     "preact": "10.29.8"
   }
 }
