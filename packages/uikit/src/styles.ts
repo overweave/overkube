@@ -822,6 +822,17 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-page-header :is(h1, h2) > .uk-icon { align-self: center; }
 .uk-page-header h1 { font-size: 20px; line-height: 28px; }
 .uk-page-header h1 .uk-icon { width: 28px; height: 28px; color: var(--uk-accent); }
+.uk-page-header :is(h1, h2) > .uk-logo { align-self: center; }
+.uk-page-header h1 .uk-logo { width: 24px; height: 27px; }
+/* overkube's mark, of the accent (lighter and darker of it, whatever it is): its top the accent itself, the left face lighter, the right darker, the tile over it lighter still. */
+.uk-logo { flex: none; }
+.uk-logo { shape-rendering: geometricPrecision; }
+.uk-logo-left-0 { stop-color: oklch(from var(--uk-accent) calc(l + .1) c h); }
+.uk-logo-left-1 { stop-color: oklch(from var(--uk-accent) calc(l + .06) c h); }
+.uk-logo-right-0 { stop-color: oklch(from var(--uk-accent) calc(l - .2) c h); }
+.uk-logo-right-1 { stop-color: oklch(from var(--uk-accent) calc(l - .17) c h); }
+.uk-logo-top { fill: var(--uk-accent); stroke: var(--uk-accent); }
+.uk-logo-over { fill: oklch(from var(--uk-accent) calc(l + .18) c h); stroke: oklch(from var(--uk-accent) calc(l + .18) c h); opacity: .82; }
 .uk-page-header h2 { font-size: 16px; font-weight: 600; gap: 8px; }
 .uk-page-header h2 .uk-icon { color: var(--uk-muted); }
 .uk-page-header-sub { color: var(--uk-muted); font-family: var(--uk-mono); font-size: 12px; display: flex; align-items: baseline; gap: 8px; }

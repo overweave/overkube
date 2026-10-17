@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="70 58 232 258">
+  <!-- overkube's mark in the default accent (#ff8c2f); the page's own (uikit Logo) takes the theme's. -->
+  <defs>
+    <linearGradient id="left" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#ffac56"/>
+      <stop offset="1" stop-color="#ff9f47"/>
+    </linearGradient>
+    <linearGradient id="right" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ba4d00"/>
+      <stop offset="1" stop-color="#c45600"/>
+    </linearGradient>
+  </defs>
+  <g stroke-linejoin="round">
+    <path d="M74.0,174.1 Q74.0,164.1 82.8,168.9 L168.5,215.6 Q179.0,221.3 179.0,233.3 L179.0,307.8 Q179.0,313.8 173.7,311.0 L88.0,264.3 Q74.0,256.6 74.0,240.6 Z" fill="url(#left)"/>
+    <path d="M297.0,174.1 Q297.0,164.1 288.2,168.9 L202.5,215.6 Q192.0,221.3 192.0,233.3 L192.0,307.8 Q192.0,313.8 197.3,311.0 L283.0,264.3 Q297.0,256.6 297.0,240.6 Z" fill="url(#right)"/>
+    <polygon points="101.5,158.5 185.5,114.5 269.5,158.5 185.5,202.5" fill="#ff8c2f" stroke="#ff8c2f" stroke-width="15"/>
+    <polygon points="88.5,119.5 185.5,71.0 282.5,119.5 185.5,168.0" fill="#ffc771" stroke="#ffc771" stroke-width="17" opacity="0.82"/>
+  </g>
+</svg>

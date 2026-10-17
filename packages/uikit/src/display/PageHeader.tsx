@@ -2,18 +2,21 @@ import type { ComponentChildren } from 'preact';
 import { Icon } from './Icon';
 
 /**
- * A header: its title (an icon before it), a line beside it (what it is
+ * A header: its title (an icon before it, or a mark of its own: a logo), a line beside it (what it is
  * about), what can be done at its end. The page's own (an h1, large), or
  * one of a part of it (level 2: an h2, smaller).
  */
 export function PageHeader({
   icon,
+  mark,
   children,
   sub,
   end,
   level = 1,
 }: {
   icon?: string;
+  /** Before its title in its icon's place: a mark of its own (a logo). */
+  mark?: ComponentChildren;
   children: ComponentChildren;
   sub?: ComponentChildren;
   end?: ComponentChildren;
@@ -23,7 +26,7 @@ export function PageHeader({
   return (
     <div class="uk-page-header" data-level={level}>
       <H>
-        {icon && <Icon name={icon} />}
+        {mark ?? (icon && <Icon name={icon} />)}
         <span>{children}</span>
       </H>
       {sub && <span class="uk-page-header-sub">{sub}</span>}

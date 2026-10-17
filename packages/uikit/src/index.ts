@@ -23,6 +23,7 @@ export { Highlight } from './display/Highlight';
 export { ICONS, Icon, type IconData, registerIcons } from './display/Icon';
 export { Image } from './display/Image';
 export { Kbd, keyName, onMac } from './display/Kbd';
+export { Logo } from './display/Logo';
 export { Nothing } from './display/Nothing';
 export { PageHeader } from './display/PageHeader';
 export { Ref } from './display/Ref';

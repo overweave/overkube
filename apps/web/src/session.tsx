@@ -1,7 +1,7 @@
 import type { AuthAnswer } from '@overkube/gateway/protocol';
 import { grantsAny } from '@overkube/query';
 import { defineAddon, slots } from '@overkube/sdk';
-import { adoptStyles, Button, copyText, Notice, PageHeader } from '@overkube/uikit';
+import { adoptStyles, Button, copyText, Logo, Notice, PageHeader } from '@overkube/uikit';
 import { fill } from '@overweave/ui/preact';
 import { type ComponentChildren, render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
@@ -66,7 +66,7 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
   return (
     <main class="ok-signin">
       <section class="ok-signin-card">
-        <PageHeader icon="kube">overkube</PageHeader>
+        <PageHeader mark={<Logo />}>overkube</PageHeader>
         <div class="ok-signin-title">
           <h2>{title}</h2>
           {sub && <p>{sub}</p>}

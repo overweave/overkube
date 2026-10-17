@@ -1,6 +1,6 @@
 import { filteredIn, type KindProps, KindView, kindRef, slots } from '@overkube/sdk';
 import { useCount, usePage, useSay } from '@overkube/sdk/preact';
-import { PageHeader } from '@overkube/uikit';
+import { Logo, PageHeader } from '@overkube/uikit';
 import { slotElement, useDefinition } from '@overweave/ui/preact';
 import { titleOf } from './kinds.ts';
 import { type Chosen, scopeOf } from './namespaces.tsx';
@@ -16,7 +16,7 @@ import { T } from './texts.ts';
 /** The page's mark and name, what it is about beside them (core.header.brand: header.sub's). */
 export function Brand() {
   return (
-    <PageHeader icon="kube" sub={slotElement(slots.header.sub, NO_PROPS)}>
+    <PageHeader mark={<Logo />} sub={slotElement(slots.header.sub, NO_PROPS)}>
       overkube
     </PageHeader>
   );
