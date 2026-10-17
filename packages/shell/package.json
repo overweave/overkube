@@ -19,6 +19,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@overkube/kube-types": "0.1.0",
+    "@overkube/query": "0.1.0",
     "@overkube/sdk": "0.1.0",
     "@overkube/uikit": "0.1.0",
     "@overweave/core": "0.4.0",

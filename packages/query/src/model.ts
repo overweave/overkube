@@ -34,6 +34,8 @@
  * row-value comparison.
  */
 
+import type { AccessQuery, AccessResult } from './access.ts';
+
 /** A value a field has. */
 export type Value = string | number | boolean;
 
@@ -318,6 +320,8 @@ export interface Source {
   search(query: SearchQuery): Live<SearchResult>;
   /** A log: its newest lines (and, followed, each written after), or a window further back. */
   log(query: LogQuery): Live<LogResult>;
+  /** What the one signed in may do: in a namespace (the cluster's rules among them), or in the whole cluster. */
+  access(query: AccessQuery): Live<AccessResult>;
 }
 
 /**

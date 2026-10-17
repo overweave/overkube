@@ -13,10 +13,12 @@ import { logTimeKey } from '@overkube/query';
  *   POST /stream/<stream>                          StreamChange → 204 (read only or not: it changes no cluster)
  *   POST /patch                                    PatchBody → the API server's answer
  *   GET  /status                                   StatusAnswer
+ *   GET  /me                                       MeAnswer: whom the cluster takes the page for
  *
  * Anything but a read carries the gateway's header (x-overkube: any value),
  * and no request comes from another site's page (Sec-Fetch-Site: cross-site,
- * an Origin not the gateway's): 403 cross_site. A /patch is
+ * an Origin not the gateway's): 403 cross_site. A gateway whose host signs
+ * people in answers one it has not signed in 401 unauthorized. A /patch is
  * application/json, as is a /stream change. A path holds no "%" and no "."
  * segment.
  *
@@ -37,6 +39,13 @@ export type ErrorCode =
   | 'too_large'
   | 'read_only'
   | 'cross_site'
+  /** Not signed in (its host's sign-in): sign in again. */
+  | 'unauthorized'
+  /** Signing in tried too often from one place: wait a minute. */
+  | 'too_many_tries'
+  /** Signing in over plain HTTP off this machine: refused (what is sent could be read on the way). */
+  | 'insecure'
+  | 'not_found'
   | 'kube_down'
   | 'kube_timeout'
   | 'kube_error';
@@ -204,6 +213,24 @@ export interface KubeState {
   reachable: boolean;
   version?: string;
   error?: { code: ErrorCode; message: string };
+}
+
+/** Whom the cluster takes the page for (its SelfSubjectReview): what RBAC grants it by. */
+export interface MeAnswer {
+  user: string;
+  groups: string[];
+  /** How its host signed it in (its own word: token, a platform's); none: the gateway's own credentials, no one signed in. */
+  via?: string;
+}
+
+/** How the page signs in (overkube's server, GET /auth): no one does (loopback), with a token, with OIDC (its provider) — and who it is signed in as, if it is. */
+export interface AuthAnswer {
+  mode: 'loopback' | 'token' | 'oidc';
+  /** The provider's issuer, to say whom one signs in with. */
+  provider?: string;
+  user?: string;
+  groups?: string[];
+  via?: string;
 }
 
 export interface StatusAnswer {

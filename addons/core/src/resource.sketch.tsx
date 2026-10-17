@@ -1,9 +1,9 @@
 import {
+  adoptStyles,
   Badge,
   Button,
   Chips,
   Code,
-  css,
   Icon,
   Image,
   KeyValue,
@@ -111,8 +111,9 @@ export type Layout = 'right' | 'center' | 'full';
 /** The kit's styles and the sketch's; a frame as wide as the layout chosen; addons' places shown or not. */
 export function Stage({ children }: { children: ComponentChildren }) {
   useEffect(() => {
+    adoptStyles(document);
     const style = document.getElementById('rv-css') ?? document.head.appendChild(Object.assign(document.createElement('style'), { id: 'rv-css' }));
-    style.textContent = css + SKETCH;
+    style.textContent = SKETCH;
   }, []);
   const [layout, setLayout] = useState<Layout>('right');
   const [ext, setExt] = useState(true);

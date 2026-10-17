@@ -23,6 +23,8 @@ interface Seen {
 
 let api: Server;
 let seen: Seen[] = [];
+/** Whom each request acted as (its Impersonate-User and -Group). */
+let acted: { url: string; user?: string[]; groups?: string[]; authorization?: string }[] = [];
 let kubeconfig: string;
 const servers: Server[] = [];
 
@@ -41,6 +43,14 @@ beforeAll(async () => {
     });
     req.on('end', () => {
       seen.push({ method: req.method ?? '', url: req.url ?? '', contentType: req.headers['content-type'], body });
+      acted.push({ url: req.url ?? '', user: req.headersDistinct['impersonate-user'], groups: req.headersDistinct['impersonate-group'], authorization: req.headers.authorization });
+      if (req.url === '/apis/authentication.k8s.io/v1/selfsubjectreviews') {
+        // Who it is taken for: whom it acts as, else the kubeconfig's.
+        const user = req.headers['impersonate-user'] ?? 'kubeconfig-admin';
+        const groups = req.headersDistinct['impersonate-group'] ?? [];
+        res.writeHead(201, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ kind: 'SelfSubjectReview', status: { userInfo: { username: user, groups: [...groups, 'system:authenticated'] } } }));
+      }
       res.writeHead(200, { 'content-type': 'application/json' });
       if (req.url === '/version') return res.end('{"gitVersion":"v1.35.7"}');
       if (new URL(req.url ?? '', 'http://kube').searchParams.get('watch') === '1') {
@@ -65,6 +75,7 @@ afterAll(() => {
 
 beforeEach(() => {
   seen = [];
+  acted = [];
 });
 
 /** A host: the gateway under its options, the rest answered as the host's own (404 "host"); a body given, if any. */
@@ -254,5 +265,96 @@ describe('createGateway: methods, bodies, answers', () => {
       text += new TextDecoder().decode(value);
     }
     expect(text.trim().split('\n').at(-1)).toBe('{"type":"CLOSE","reason":"shutdown"}');
+  });
+});
+
+describe('createGateway: someone signed in', () => {
+  const alice = { user: 'alice', groups: ['admins', 'ops'], via: 'token' };
+  /** Signed in as the x-who header says (none: no one). */
+  const signedIn = () => host({ identify: (req) => (req.headers['x-who'] ? { ...alice, user: String(req.headers['x-who']) } : null) });
+
+  it('acts as them in all it asks the cluster: a read, a change, a /patch, a stream', async () => {
+    const base = await signedIn();
+    const who = { 'x-who': 'alice' };
+    await fetch(`${base}/api/v1/pods`, { headers: who });
+    await send(`${base}/api/v1/namespaces`, { method: 'POST', body: '{}', headers: who });
+    await send(`${base}/patch`, { method: 'POST', body: JSON.stringify({ path: '/api/v1/namespaces/a', type: 'merge', patch: {} }), headers: who });
+    const res = await fetch(`${base}/stream`, { headers: who });
+    const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+    const name = JSON.parse(new TextDecoder().decode((await reader.read()).value).split('\n')[0]).stream;
+    await send(`${base}/stream/${name}`, { method: 'POST', body: JSON.stringify({ add: [{ id: 'p', path: '/api/v1/pods' }] }), headers: who });
+    await expect.poll(() => acted.length).toBe(4);
+    await reader.cancel();
+    expect(acted.map((a) => [a.url.split('?')[0], a.user, a.groups])).toEqual([
+      ['/api/v1/pods', ['alice'], ['admins', 'ops']],
+      ['/api/v1/namespaces', ['alice'], ['admins', 'ops']],
+      ['/api/v1/namespaces/a', ['alice'], ['admins', 'ops']],
+      ['/api/v1/pods', ['alice'], ['admins', 'ops']],
+    ]);
+  });
+
+  it('turns away whoever is not signed in, or cannot be acted as — asking the cluster nothing', async () => {
+    const base = await signedIn();
+    for (const [path, who] of [
+      ['/api/v1/pods', undefined],
+      ['/stream', undefined],
+      ['/status', undefined],
+      ['/me', undefined],
+      ['/api/v1/pods', 'system:admin'],
+      ['/api/v1/pods', 'bad\tname'],
+    ] as const) {
+      const res = await fetch(`${base}${path}`, { headers: who ? { 'x-who': who } : {} });
+      expect([path, who, res.status, (await res.json()).error.code]).toEqual([path, who, 401, 'unauthorized']);
+    }
+    const masters = await host({ identify: () => ({ user: 'alice', groups: ['system:masters'] }) });
+    expect((await fetch(`${masters}/api/v1/pods`)).status).toBe(401);
+    expect(seen).toEqual([]);
+  });
+
+  it('says whom the cluster takes the page for: the one signed in, or its credentials', async () => {
+    const res = await fetch(`${await signedIn()}/me`, { headers: { 'x-who': 'alice' } });
+    expect(await res.json()).toEqual({ user: 'alice', groups: ['admins', 'ops', 'system:authenticated'], via: 'token' });
+    const own = await fetch(`${await host()}/me`);
+    expect(await own.json()).toEqual({ user: 'kubeconfig-admin', groups: ['system:authenticated'] });
+    expect(acted.map((a) => [a.user, a.groups])).toEqual([
+      [['alice'], ['admins', 'ops']],
+      [undefined, undefined],
+    ]);
+  });
+
+  it('reaches the cluster with one’s own token: the gateway’s credentials left out, no one impersonated', async () => {
+    const base = await host({ identify: () => ({ user: 'system:serviceaccount:ops:viewer', groups: ['system:serviceaccounts'], via: 'token', token: 'the-users-token' }) });
+    await fetch(`${base}/api/v1/pods`);
+    expect(acted.map((a) => [a.authorization, a.user, a.groups])).toEqual([['Bearer the-users-token', undefined, undefined]]);
+  });
+
+  it('ends the streams of one signed out, and only theirs', async () => {
+    const gateway = createGateway({ upstream: fromKubeconfig(kubeconfig), identify: (req) => ({ user: String(req.headers['x-who']), groups: [] }) });
+    const srv = createServer((req, res) => void gateway.handle(req, res));
+    const base = `http://127.0.0.1:${await listen(srv)}`;
+    const open = async (who: string) => {
+      const reader = ((await fetch(`${base}/stream`, { headers: { 'x-who': who } })).body as ReadableStream<Uint8Array>).getReader();
+      await reader.read();
+      return reader;
+    };
+    const [alice, bob] = [await open('alice'), await open('bob')];
+    gateway.close({ user: 'alice', groups: [] });
+    expect(new TextDecoder().decode((await alice.read()).value)).toBe('{"type":"CLOSE","reason":"shutdown"}\n');
+    expect((await alice.read()).done).toBe(true);
+    const still = await Promise.race([bob.read().then(() => 'read'), new Promise((r) => setTimeout(() => r('open'), 100))]);
+    expect(still).toBe('open');
+    await bob.cancel();
+  });
+
+  it('keeps a stream its owner’s: to anyone else it is not there', async () => {
+    const base = await signedIn();
+    const res = await fetch(`${base}/stream`, { headers: { 'x-who': 'alice' } });
+    const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+    const name = JSON.parse(new TextDecoder().decode((await reader.read()).value).split('\n')[0]).stream;
+    const change = (who: string) => send(`${base}/stream/${name}`, { method: 'POST', body: JSON.stringify({ add: [] }), headers: { 'x-who': who } });
+    const other = await change('bob');
+    expect([other.status, (await other.json()).error.code]).toEqual([404, 'no_stream']);
+    expect((await change('alice')).status).toBe(204);
+    await reader.cancel();
   });
 });

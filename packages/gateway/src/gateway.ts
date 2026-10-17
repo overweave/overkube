@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { actingAs, type Identity, identityError, ownerOf } from './identity.ts';
+import { me } from './me.ts';
 import { patch } from './patch.ts';
 import { proxy } from './proxy.ts';
 import { status } from './status.ts';
@@ -14,11 +16,16 @@ import type { WatchOptions } from './watch.ts';
  *
  *   GET  /stream   several watches over one stream, changed while it is open; POST /stream/<name> changes it (stream.ts)
  *   GET  /status   its version and whether the cluster answers (status.ts)
+ *   GET  /me       whom the cluster takes the page for (me.ts)
  *   POST /patch    changes, as JSON (patch.ts)
  *   /**            the API server's /api, /apis, /version, /openapi/v3, passed on (proxy.ts) — never a watch (/stream is)
  *
- * Who may use it is the host's to decide before it hands a request over
- * (a session, an API key, a proxy in front). What the gateway itself holds
+ * Who someone is, is the host's to say (a session, a platform's sign-in:
+ * identify); the gateway reaches the cluster as them in every request (with
+ * their token, or impersonating them: RBAC grants them what it grants), and
+ * a stream is theirs alone — ended when they are (close(who)). With no identify, it acts with its credentials'
+ * own rights — a host that keeps out whoever may not use them itself (or
+ * one on this machine only). What the gateway itself holds
  * to: the paths it never passes on (paths.ts); read only, nothing that
  * changes the cluster; and no page of another site using it through its
  * visitor's browser — a request another site's page sends (Sec-Fetch-Site:
@@ -46,6 +53,12 @@ export interface GatewayOptions {
    * itself (a platform's own CSRF token).
    */
   header?: string | false;
+  /**
+   * Who sent a request (the host's sign-in: a session, a platform's), acted as
+   * in the cluster; null: no one signed in (401 unauthorized). None: no one
+   * is asked — the credentials' own rights for all.
+   */
+  identify?: (req: IncomingMessage) => Identity | null;
   /** The watches' (a /stream's) limits and timings. */
   stream?: Omit<WatchOptions, 'upstream' | 'streams'>;
 }
@@ -64,8 +77,8 @@ export interface Gateway {
    * not leaves the request unread.
    */
   handle(req: IncomingMessage, res: ServerResponse, given?: Given): boolean;
-  /** Its streams told CLOSE (shutdown) and ended: the host is stopping. */
-  close(): void;
+  /** Its streams told CLOSE (shutdown) and ended: the host is stopping — or only those of one signed in, signed out (they open again only signed in). */
+  close(who?: Identity): void;
 }
 
 const READING = new Set(['GET', 'HEAD']);
@@ -82,6 +95,18 @@ function sizeOf(body: unknown): number {
   return Buffer.byteLength(JSON.stringify(body) ?? '');
 }
 
+/** Whether another site's page sent it, through its visitor's browser (Sec-Fetch-Site: cross-site, an Origin not its own). */
+export function fromAnotherSite(req: IncomingMessage): boolean {
+  if (req.headers['sec-fetch-site'] === 'cross-site') return true;
+  const origin = req.headers.origin;
+  if (!origin || origin === 'null') return origin === 'null';
+  try {
+    return new URL(origin).host !== req.headers.host;
+  } catch {
+    return true;
+  }
+}
+
 export function createGateway(options: GatewayOptions): Gateway {
   const prefix = `/${(options.prefix ?? '').replace(/^\/+|\/+$/g, '')}`.replace(/^\/$/, '');
   const maxBodyBytes = options.maxBodyBytes ?? 10 * 1024 * 1024;
@@ -89,18 +114,6 @@ export function createGateway(options: GatewayOptions): Gateway {
   const { upstream } = options;
   const streams = new Set<{ shutdown(): void }>();
   const changing: Streams = new Map();
-
-  /** Whether another site's page sent it, through its visitor's browser. */
-  const crossSite = (req: IncomingMessage) => {
-    if (req.headers['sec-fetch-site'] === 'cross-site') return true;
-    const origin = req.headers.origin;
-    if (!origin || origin === 'null') return origin === 'null';
-    try {
-      return new URL(origin).host !== req.headers.host;
-    } catch {
-      return true;
-    }
-  };
 
   /** The body: the one the host gives (checked as one read), or read off the request (at most maxBodyBytes). */
   const bodyOf = (req: IncomingMessage, res: ServerResponse, given: Given | undefined, then: (body: unknown) => void) => {
@@ -161,7 +174,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       const method = (req.method ?? 'GET').toUpperCase();
       const reading = READING.has(method);
 
-      if (crossSite(req)) {
+      if (fromAnotherSite(req)) {
         fail(res, 403, 'cross_site', 'a page of another site may not use the gateway');
         return true;
       }
@@ -169,13 +182,33 @@ export function createGateway(options: GatewayOptions): Gateway {
         fail(res, 403, 'cross_site', `a request that is not a read carries the ${header} header`);
         return true;
       }
+      // Who it is, acted as in all it asks the cluster (no one: as the credentials); the streams theirs alone.
+      let as = upstream;
+      let owner = '';
+      let via: string | undefined;
+      if (options.identify) {
+        const who = options.identify(req);
+        const wrong = who ? identityError(who) : 'not signed in';
+        if (!who || wrong) {
+          fail(res, 401, 'unauthorized', who ? `the one signed in cannot be acted as: ${wrong}` : 'not signed in: sign in again');
+          return true;
+        }
+        as = actingAs(upstream, who);
+        owner = ownerOf(who);
+        via = who.via;
+      }
+      if (route === '/me') {
+        if (method !== 'GET') fail(res, 405, 'bad_method', '/me is asked with GET');
+        else void me(res, { upstream: as, via });
+        return true;
+      }
       if (route === '/status' || route === '/stream') {
         if (method !== 'GET') {
           fail(res, 405, 'bad_method', `${route} is asked with GET`);
           return true;
         }
-        if (route === '/stream') stream(res, { ...options.stream, upstream, streams }, changing);
-        else void status(res, { upstream, version: options.version });
+        if (route === '/stream') stream(res, { ...options.stream, upstream: as, streams }, changing, owner);
+        else void status(res, { upstream: as, version: options.version });
         return true;
       }
       const changed = STREAM_CHANGE.exec(route);
@@ -184,7 +217,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           fail(res, 405, 'bad_method', '/stream/<name> is asked with POST');
           return true;
         }
-        jsonOf(req, res, given, '/stream change', (body) => change(changed[1], body, res, changing));
+        jsonOf(req, res, given, '/stream change', (body) => change(changed[1], body, res, changing, owner));
         return true;
       }
       if (options.readOnly && !reading && !(method === 'POST' && REVIEWS.test(route))) {
@@ -196,16 +229,17 @@ export function createGateway(options: GatewayOptions): Gateway {
           fail(res, 405, 'bad_method', '/patch is asked with POST');
           return true;
         }
-        jsonOf(req, res, given, '/patch', (body) => patch({ body }, res, { upstream, fieldManager: options.fieldManager }));
+        jsonOf(req, res, given, '/patch', (body) => patch({ body }, res, { upstream: as, fieldManager: options.fieldManager }));
         return true;
       }
-      const pass = (body?: unknown) => proxy({ method, url: rest, headers: req.headers, body }, res, { upstream });
+      const pass = (body?: unknown) => proxy({ method, url: rest, headers: req.headers, body }, res, { upstream: as });
       if (reading) pass();
       else bodyOf(req, res, given, pass);
       return true;
     },
-    close() {
-      for (const s of [...streams]) s.shutdown();
+    close(who) {
+      if (!who) for (const s of [...streams]) s.shutdown();
+      else for (const s of [...changing.values()]) if (s.owner === ownerOf(who)) s.shutdown();
     },
   };
 }

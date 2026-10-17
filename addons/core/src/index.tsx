@@ -1,6 +1,5 @@
 import { type KindInfo, kinds } from '@overkube/kube-types';
 import {
-  action,
   defineAddon,
   forKinds,
   KIND_PAGE,
@@ -163,7 +162,8 @@ export default defineAddon({
     // Its pages: the start, a kind's — each empty but for what fills it: the core's, others' before or after it (a Wrap of it in its place).
     c.add('Page', 'overview', { path: '/', title: T.page.overview.title, icon: 'home', pinned: true, order: 0 });
     c.add('Fill', 'core.page.overview', fill(slots.page('overview'), { render: Overview }));
-    c.add('Page', 'kind', { path: KIND_PAGE });
+    // A kind's page: for one who may list it (somewhere).
+    c.add('Page', 'kind', { path: KIND_PAGE, needs: [{ verb: 'list' }] });
     c.add('Fill', 'core.page.kind.table', fill(slots.page('kind'), { render: PageTable }));
     // Its kind not found (not served, not known yet): why, in the table's place.
     c.add('Fill', 'core.page.kind.missing', fill(slots.page('kind'), { when: (p) => !p.kind, render: KindMissing }));
@@ -221,8 +221,6 @@ export default defineAddon({
       'core.resource.context.copy-yaml',
       menuItem({ on: 'resource.context', group: 'copy', title: T.resource.context.copyYaml, icon: 'copy', run: ({ object }, page) => copy(toYaml(object), page) }),
     );
-    // What is done to any object (its view's footer): its YAML copied.
-    c.add('Action', 'core.copy-yaml', action({ title: T.resource.view.actions.copyYaml, icon: 'copy', order: 100, run: (object) => copyText(toYaml(object)) }));
     // How it is laid out (a side panel, a window, all the window): one for all of them, switched in its header — kept while the page runs.
     const layout = signal<Layout>('right');
     c.add('Fill', 'core.resource.view', { slot: slots.resource.view.name, order: 1000, render: (p: ResourceRef) => <ResourceView {...p} layout={layout} /> });
@@ -230,12 +228,19 @@ export default defineAddon({
     // Its tabs: the Overview (its summary, its sections), its YAML — every kind's, another's among them.
     c.add('ResourceTab', 'core.overview', { target: {}, title: T.resource.view.tabs.overview, icon: 'grid', order: 100 });
     c.add('Fill', 'core.resource.view.overview', fill(slots.resource.view.tab('core.overview'), { render: ResourceOverview }));
-    c.add('ResourceTab', 'core.events', { target: {}, title: T.resource.view.tabs.events, icon: 'activity', order: 200 });
+    // What they need of the cluster (needs): one who may not have it is not shown them (the access layer).
+    c.add('ResourceTab', 'core.events', { target: {}, title: T.resource.view.tabs.events, icon: 'activity', order: 200, needs: [{ verb: 'list', resource: 'events' }] });
     c.add('Fill', 'core.resource.view.events', fill(slots.resource.view.tab('core.events'), { render: AllEvents }));
     c.add('ResourceTab', 'core.yaml', { target: {}, title: T.resource.view.tabs.yaml, icon: 'file', order: 1000 });
     c.add('Fill', 'core.resource.view.yaml', fill(slots.resource.view.tab('core.yaml'), { render: Yaml }));
     // A log's: a pod's (its containers), a workload's (its pods') — before the YAML.
-    c.add('ResourceTab', 'core.logs', { target: forKinds(LOGGED.pod, ...LOGGED.workloads), title: T.resource.view.tabs.logs, icon: 'file-text', order: 900 });
+    c.add('ResourceTab', 'core.logs', {
+      target: forKinds(LOGGED.pod, ...LOGGED.workloads),
+      title: T.resource.view.tabs.logs,
+      icon: 'file-text',
+      order: 900,
+      needs: [{ verb: 'get', resource: 'pods', subresource: 'log' }],
+    });
     c.add(
       'Fill',
       'core.resource.view.logs',
@@ -338,6 +343,8 @@ export default defineAddon({
 
     // The navigation: tabs, or the menu — as the NavView says (one setting, the user's to patch).
     c.add('NavView', 'default', { mode: 'tabs' }, fallback);
+    // The namespaces one may use without listing them: the page's guess, the user's own (added in the picker).
+    c.add('Namespaces', 'default', {}, fallback);
     // The tabs open (opened, closed, moved: this visit's), while the page runs; those pinned, the side rail pinned: the user's (the NavView, patched).
     const tabs: TabsState = { open: signal<string[]>([]) };
     c.add('Fill', 'core.nav.tabs', { slot: slots.nav.tabs.name, render: () => <NavTabs tabs={tabs} /> });

@@ -9,8 +9,10 @@ import { type ReadonlySignal, signal } from '@preact/signals';
  * whatever went wrong — the gateway's own error, a Kubernetes Status,
  * nothing answering, an answer that is not JSON — is an ApiError.
  *
- * A request the host turns away (401, or 403 without a Kubernetes Status:
- * the page is signed out, or may not use the cluster) ends the session for
+ * A request the host turns away (401, or a 403 without a Kubernetes
+ * Status: the page is signed out, or may not use the cluster) — or, signed
+ * in with a token of its own (tokenSession), the API server's 401: the
+ * token ended, or taken back — ends the session for
  * the page: it is said once (session: expired), and nothing more is asked
  * until the page is loaded again, after the user signs in.
  */
@@ -24,6 +26,8 @@ export interface HttpOptions {
   fetch?: typeof fetch;
   /** Headers every request carries (a host's CSRF token, say). */
   headers?: () => Record<string, string>;
+  /** Signed in with a token of its own, which the gateway sends the API server: its 401 ends the session too. */
+  tokenSession?: boolean;
 }
 
 /** A Kubernetes Status: what the API server says went wrong (or right, for a delete). */
@@ -83,11 +87,14 @@ export class Http {
   private readonly headers: () => Record<string, string>;
   private readonly sessionSignal = signal<Session>('ok');
   private ended: ApiError | null = null;
+  /** The API server's 401 ends the session (signed in with a token of its own). */
+  readonly tokenSession: boolean;
 
   constructor(options: HttpOptions = {}) {
     this.base = options.base ?? BASE;
     this.fetcher = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.headers = options.headers ?? (() => ({}));
+    this.tokenSession = options.tokenSession === true;
   }
 
   /** Whether the host lets the page ask; once expired, it stays so until the page is loaded again. */
@@ -189,17 +196,21 @@ export class Http {
 
   /** An answer other than 2xx as an ApiError; one that says the session is over ends it. */
   private async failure(res: Response): Promise<ApiError> {
-    const error = await failure(res);
-    if (error.code === 'unauthorized') {
-      this.ended = error;
-      this.sessionSignal.value = 'expired';
-    }
+    const error = await failure(res, this.tokenSession);
+    if (error.code === 'unauthorized') this.expire(error);
     return error;
+  }
+
+  /** The session is over (said once): nothing more is asked. */
+  expire(error: ApiError): void {
+    if (this.ended) return;
+    this.ended = error;
+    this.sessionSignal.value = 'expired';
   }
 }
 
 /** An answer other than 2xx as an ApiError: the gateway's { error }, a Status, or whatever came. */
-async function failure(res: Response): Promise<ApiError> {
+async function failure(res: Response, tokenSession: boolean): Promise<ApiError> {
   let text: string;
   try {
     text = await res.text();
@@ -215,6 +226,9 @@ async function failure(res: Response): Promise<ApiError> {
   }
   const b = body as { error?: { code?: string; message?: string; f?: string }; kind?: string; reason?: string; message?: string } | undefined;
   if (b?.error?.code) return new ApiError(res.status, b.error.code, b.error.message ?? b.error.code, undefined, b.error.f);
+  // The API server's 401: the credentials the page is signed in with are not taken (a token ended, taken back).
+  if (b?.kind === 'Status' && res.status === 401 && tokenSession)
+    return new ApiError(401, 'unauthorized', b.message ?? 'the cluster does not take the credentials signed in with', body as Status);
   if (b?.kind === 'Status') return new ApiError(res.status, b.reason ?? `http_${res.status}`, b.message ?? `answered ${res.status}`, body as Status);
   // Not the gateway's, not the API server's: the host's own (its sign-in).
   if (res.status === 401 || res.status === 403)

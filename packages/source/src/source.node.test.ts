@@ -52,9 +52,10 @@ async function until(ok: () => boolean): Promise<void> {
 }
 
 /** A fake API server with these objects, the gateway, a connector, a source over it; read() keeps a query read (subscribed). */
-async function setup(objects: [ReturnType<typeof kindOf>, KubeObject][] = [], options: SourceOptions = {}, lingerMs = 30) {
+async function setup(objects: [ReturnType<typeof kindOf>, KubeObject][] = [], options: SourceOptions = {}, lingerMs = 30, forbidden: string[] = []) {
   const kube = new FakeKube([Pod, Namespace, Node, CRD, APIService, Thing]);
   for (const [kind, o] of objects) kube.put(kind, o);
+  for (const path of forbidden) kube.forbidden.add(path);
   const gateway = createGateway({ upstream: fromKubeconfig(await kube.listen()), stream: { retryMs: 20 } });
   const server = createServer((req, res) => {
     if (!gateway.handle(req, res)) res.writeHead(404).end();
@@ -420,12 +421,26 @@ describe('a plan', () => {
     expect([all.value.error?.status, all.value.total]).toEqual([403, undefined]);
   });
 
-  it('asks the namespaces it is given when the namespaces cannot be listed either; none allowed: denied', async () => {
-    const { kube, source, read } = await setup([...namespaces, ...spread(9)], { namespaces: ['c'] });
+  it('asks the namespaces it is given when the namespaces cannot be listed either — as they are said; none allowed: denied', async () => {
+    const given = signal<readonly string[]>(['c']);
+    const { kube, source, read } = await setup([...namespaces, ...spread(9)], { namespaces: () => given.value });
     for (const path of ['/api/v1/pods', '/api/v1/namespaces', '/api/v1/namespaces/c/pods']) kube.forbidden.add(path);
     const all = read(source.count({ kind: 'pods.v1' }));
     await until(() => all.value.state === 'denied');
     expect(all.value.coverage).toEqual({ namespaces: [], denied: ['c'] });
+    // One the user adds (they may use it): read at once.
+    given.value = ['a', 'c'];
+    await until(() => all.value.state === 'partial');
+    expect([all.value.coverage, all.value.total?.count]).toEqual([{ namespaces: ['a'], denied: ['c'] }, 3]);
+  });
+
+  it('lists a kind of a group when the CRDs may not be listed: taken as no CRD’s', async () => {
+    const { source, read } = await setup([[Thing, { metadata: { name: 't', namespace: 'a', uid: 't' } } as KubeObject]], {}, 30, [
+      '/apis/apiextensions.k8s.io/v1/customresourcedefinitions',
+    ]);
+    const things = read(source.list({ kind: 'things.v1.example.com', page: { limit: 10 } }));
+    await until(() => things.value.state === 'live');
+    expect(things.value.items.map((i) => i.key)).toEqual(['a/t']);
   });
 
   it('holds its feeds while it is read, and lets them go after', async () => {
@@ -505,5 +520,29 @@ describe('a pod’s log', () => {
     const first = read(source.log({ ...q, before: before.value.older }));
     await until(() => first.value.state === 'done');
     expect([texts(first), first.value.older]).toEqual([[], undefined]);
+  });
+});
+
+describe('access', () => {
+  it('is what the cluster says the user may do: the cluster’s rules alone, or a namespace’s with them — asked once while read', async () => {
+    const { kube, source, read } = await setup();
+    const view = { verbs: ['get', 'list', 'watch'], apiGroups: [''], resources: ['pods'] };
+    const logs = { verbs: ['get'], apiGroups: [''], resources: ['pods/log'] };
+    kube.rules = { cluster: [view], namespaces: { a: [logs] } };
+    const cluster = read(source.access({}));
+    const a = read(source.access({ namespace: 'a' }));
+    expect(cluster.value).toEqual({ state: 'loading', rules: [] });
+    await until(() => cluster.value.state === 'live' && a.value.state === 'live');
+    expect([cluster.value.rules, a.value.rules]).toEqual([[view], [view, logs]]);
+    read(source.access({ namespace: 'a' }));
+    expect(kube.requests.filter((r) => r.includes('selfsubjectrulesreviews'))).toHaveLength(2);
+  });
+
+  it('says the rules are incomplete when the cluster does', async () => {
+    const { kube, source, read } = await setup();
+    kube.rules = { cluster: [], incomplete: true };
+    const live = read(source.access({ namespace: 'a' }));
+    await until(() => live.value.state === 'live');
+    expect(live.value).toEqual({ state: 'live', rules: [], incomplete: true });
   });
 });

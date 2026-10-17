@@ -4,8 +4,8 @@ import { type IconData, TABLER } from './icons.generated';
  * Icons by name: the kit's own set (Tabler's, by scripts/icons.mjs — only
  * those it names reach the plugin), and those an extension registers. A
  * name no icon has draws a cube, and says so once (a typo is seen). Drawn
- * in the colour of the text around them, hidden from a reader unless given
- * a title.
+ * in the colour of the text around them (denied: the error's, wherever it
+ * is), hidden from a reader unless given a title.
  */
 
 export type { IconData } from './icons.generated';
@@ -49,12 +49,12 @@ export function Icon({ name, title }: { name: string; title?: string }) {
   }
   const paths = icon.d.map((d) => <path key={d} d={d} />);
   return title ? (
-    <svg class="uk-icon" viewBox="0 0 24 24" role="img" data-filled={icon.filled ? '' : undefined}>
+    <svg class="uk-icon" viewBox="0 0 24 24" role="img" data-filled={icon.filled ? '' : undefined} data-icon={name}>
       <title>{title}</title>
       {paths}
     </svg>
   ) : (
-    <svg class="uk-icon" viewBox="0 0 24 24" aria-hidden="true" data-filled={icon.filled ? '' : undefined}>
+    <svg class="uk-icon" viewBox="0 0 24 24" aria-hidden="true" data-filled={icon.filled ? '' : undefined} data-icon={name}>
       {paths}
     </svg>
   );

@@ -19,15 +19,17 @@ import type { kubeOwnKinds, Right, ui } from './kinds.ts';
 export type Layer = 'core' | 'builtin' | 'addon' | 'plugin';
 
 /** Each layer's priority: a field is what the highest that says it says. */
-export const PRIORITY: Readonly<Record<Layer | 'user', number>> = { core: 0, builtin: 100, addon: 200, plugin: 300, user: 1000 };
+export const PRIORITY: Readonly<Record<Layer | 'user' | 'access', number>> = { core: 0, builtin: 100, addon: 200, plugin: 300, user: 1000, access: 2000 };
 
 /** What each layer may say: every addon how things look and what they do; the user how things look. */
-export const RIGHTS_OF: Readonly<Record<Layer | 'user', readonly Right[]>> = {
+export const RIGHTS_OF: Readonly<Record<Layer | 'user' | 'access', readonly Right[]>> = {
   core: ['configure', 'behaviour'],
   builtin: ['configure', 'behaviour'],
   addon: ['configure', 'behaviour'],
   plugin: ['configure', 'behaviour'],
   user: ['configure'],
+  // Over everyone: what the one signed in may not have, hidden (or marked: its own marks drawn) — and whether they may, its own word.
+  access: ['configure', 'behaviour', 'access'],
 };
 
 /** A contributor of the dashboard's registry, with an addon's rights. */
@@ -179,6 +181,6 @@ export function defineAddon<const A extends Addon>(addon: A): A & Addon {
 }
 
 /** A layer's priority and rights (an addon's: standingOf(addon.layer); none: an addon's; the user's: standingOf('user')). */
-export function standingOf(layer: Layer | 'user' = 'addon'): { priority: number; rights: readonly Right[] } {
+export function standingOf(layer: Layer | 'user' | 'access' = 'addon'): { priority: number; rights: readonly Right[] } {
   return { priority: PRIORITY[layer], rights: RIGHTS_OF[layer] };
 }

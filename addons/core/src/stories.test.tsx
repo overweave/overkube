@@ -44,6 +44,8 @@ const SAID: [module: Record<string, unknown>, where: string, said: Record<string
       Gone: 'There is no Pod web-1',
       Refused: 'pods cannot be had: Forbidden',
       OneTab: 'Pod web-1 shop',
+      Viewer: 'Pod web-1 shop',
+      ViewerMarked: 'Pod web-1 shop',
     },
   ],
   [

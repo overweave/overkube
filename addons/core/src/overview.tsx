@@ -173,7 +173,8 @@ function KindTile({ kind, field, chosen }: { kind: KindInfo; field: string; chos
   const say = useSay();
   const page = usePage();
   const looks = useDefinitions(StatusLook);
-  const icon = useDefinition(KindView, kind.id)?.spec.icon;
+  const view = useDefinition(KindView, kind.id)?.spec;
+  const icon = view?.icon;
   const scope = scopeOf(kind, undefined, chosen.value);
   const count = useCount({ kind: kindRef(kind), ...(scope ? { scope } : {}), groupBy: field, top: 8 });
   const parts = partsOf(count, kind, looks, say(T.page.overview.tiles.other));
@@ -181,8 +182,8 @@ function KindTile({ kind, field, chosen }: { kind: KindInfo; field: string; chos
   const well = parts.filter((p) => WELL.has(p.tone)).reduce((n, p) => n + p.count, 0);
   const rest = parts.filter((p) => !WELL.has(p.tone));
   const level = rest.some((p) => p.tone === 'error') ? 'error' : rest.length ? 'warn' : undefined;
-  // A kind the cluster does not serve (no batch API): no tile.
-  if (absent(count)) return null;
+  // A kind the cluster does not serve (no batch API), or one not listed (hidden: the one signed in may list it nowhere): no tile.
+  if (absent(count) || view?.hidden) return null;
   // Under its number, a line kept either way: the rest, else those as they should be.
   const note = refused(count) ? <RefusedQuietly kind={kind} error={count.error} /> : (stated && rest.length ? rest : parts).map((p) => `${p.count} ${p.label}`).join(' · ') || ' ';
   const total = count.total?.count;

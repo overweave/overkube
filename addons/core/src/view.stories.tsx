@@ -245,6 +245,16 @@ export const Gone = () => <KubeStory addons={[core]} path={OPEN} cluster={(c) =>
 /** Refused by the cluster: said why. */
 export const Refused = () => <KubeStory addons={[core]} path={OPEN} cluster={(c) => c.state(Pod, 'error', { status: 403, code: 'Forbidden', message: 'pods is forbidden' })} />;
 
+/** One who may read pods, their namespaces and workloads only (no events, no logs): what they may not have is not there — the Events and Logs tabs, the kinds they may not list. */
+const viewer = (c: StoryCluster) => {
+  shop()(c);
+  c.rules({ cluster: [{ verbs: ['get', 'list', 'watch'], apiGroups: ['', 'apps'], resources: ['pods', 'namespaces', 'deployments', 'replicasets', 'nodes'] }] });
+};
+export const Viewer = () => <KubeStory addons={[core]} path={OPEN} cluster={viewer} />;
+
+/** The same, debugged: nothing hidden — what would be, marked (a red lock). */
+export const ViewerMarked = () => <KubeStory addons={[core]} path={OPEN} cluster={viewer} access="mark" />;
+
 /** The user's: the Events and YAML tabs hidden — one tab left, no tabs drawn. */
 export const OneTab = () => (
   <KubeStory
@@ -259,6 +269,8 @@ export const OneTab = () => (
 );
 
 AnyKind.storyName = 'Any kind';
+Viewer.storyName = 'Viewer - no events, no logs';
+ViewerMarked.storyName = 'Viewer - marked (debugging)';
 CustomResource.storyName = 'Any kind - a custom resource';
 AnyKindAndAnAddon.storyName = 'Any kind - an addon’s places';
 BeingDeleted.storyName = 'Any kind - being deleted';

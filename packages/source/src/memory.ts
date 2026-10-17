@@ -3,6 +3,10 @@ import { compareLogTimes } from '@overkube/connector';
 import type { CrdLike } from '@overkube/kube-fields';
 import { type KindInfo, type KubeObject, knownKinds } from '@overkube/kube-types';
 import {
+  type AccessQuery,
+  type AccessResult,
+  type AccessRule,
+  ALL_ALLOWED,
   type CountQuery,
   type CountResult,
   checkQuery,
@@ -64,6 +68,16 @@ export interface MemoryOptions {
   serves?: (kind: KindInfo) => boolean | undefined;
   /** Containers' logs, by logKey: followed as the signal changes. */
   logs?: ReadonlySignal<Readonly<Record<string, readonly LogLine[]>>>;
+  /** What the one signed in may do (none: anything). */
+  access?: ReadonlySignal<MemoryAccess>;
+}
+
+/** What one may do, as RBAC's rules: in the whole cluster, and more in some namespaces (a namespace's: the cluster's and its own). */
+export interface MemoryAccess {
+  cluster?: readonly AccessRule[];
+  namespaces?: Readonly<Record<string, readonly AccessRule[]>>;
+  /** Some of what is allowed not in the rules (another authorizer). */
+  incomplete?: boolean;
 }
 
 /** A container's log's key, of a memory source's logs: namespace/pod/container (none: its only one, ''), :previous for its last run's. */
@@ -162,6 +176,14 @@ export function memorySource(objects: ReadonlySignal<Readonly<Record<KindRef, re
         const { result, answers } = stateOf(kind);
         if (!answers) return result.state === 'loading' ? {} : { error: result.error ?? { code: result.state, message: `${kind} is ${result.state}` } };
         return { total: { count: inScope(kind, scope).length, exact: true } };
+      });
+    },
+    access(query: AccessQuery): Live<AccessResult> {
+      return computed((): AccessResult => {
+        const said = options.access?.value;
+        if (!said) return { state: 'live', rules: ALL_ALLOWED };
+        const rules = [...(said.cluster ?? []), ...(query.namespace === undefined ? [] : (said.namespaces?.[query.namespace] ?? []))];
+        return { state: 'live', rules, ...(said.incomplete ? { incomplete: true } : {}) };
       });
     },
     owned(kind: KindRef): Live<readonly KindRef[]> {

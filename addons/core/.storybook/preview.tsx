@@ -1,10 +1,10 @@
-import { css } from '@overkube/uikit';
+import { adoptStyles } from '@overkube/uikit';
 import type { Decorator } from '@storybook/preact-vite';
 
 /** A kit's story on the page's ground: its styles, its root (the core's draw their own, KubeStory). */
 const kit: Decorator = (Story, { title }) => {
   if (title.startsWith('core')) return <Story />;
-  if (!document.getElementById('overkube-css')) document.head.appendChild(Object.assign(document.createElement('style'), { id: 'overkube-css', textContent: css }));
+  adoptStyles(document);
   return (
     <div class="uk-root" style={{ padding: '24px', minHeight: '100vh', background: 'var(--uk-bg)', fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
       <Story />

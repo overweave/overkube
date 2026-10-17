@@ -1,7 +1,8 @@
 # One entry point for checking and building. Node runs in containers, so only
 # Docker is needed on the development machine.
 
-NODE_IMAGE ?= node:24-alpine
+# Node's image with openssl (dev/node): built here, once — Docker's cache keeps it.
+NODE_IMAGE ?= overkube-node:24
 
 # overweave's packages come from GitHub's npm registry (.npmrc): its token is gh's, or the environment's
 # (CI). Passed to the container by name: never on a command line.
@@ -14,7 +15,7 @@ NODE = $(RUN) -e npm_config_update_notifier=false -e GITHUB_TOKEN -v ok-npmcache
 # overweave's packages, by name (node_modules/@overweave/<name>).
 OVERWEAVE = core ui testkit storybook
 
-.PHONY: help deps check lint format typecheck test coverage dev dev-down dev-logs dev-kubectl dev-reset dev-seed dev-clean link-overweave unlink-overweave storybook
+.PHONY: help image deps check lint format typecheck test coverage dev dev-down dev-logs dev-kubectl dev-token dev-reset dev-seed dev-clean link-overweave unlink-overweave storybook
 
 help:
 	@echo "make check      everything CI checks: lint and format, types, tests"
@@ -27,10 +28,13 @@ help:
 	@echo "make link-overweave     overweave from its sources beside this repository (../overweave), not the registry's"
 	@echo "make unlink-overweave   the registry's again"
 
-# Reinstall only when the lock file or a package.json changed.
+# Reinstall only when the lock file or a package.json changed (the image made first, whatever).
 deps: node_modules/.package-lock.json
-node_modules/.package-lock.json: $(wildcard package-lock.json) package.json $(wildcard packages/*/package.json apps/*/package.json addons/*/package.json)
+node_modules/.package-lock.json: $(wildcard package-lock.json) package.json $(wildcard packages/*/package.json apps/*/package.json addons/*/package.json) | image
 	$(NODE) npm install --no-audit --no-fund
+
+image:
+	@docker build -q -t $(NODE_IMAGE) dev/node >/dev/null
 
 check: deps
 	$(NODE) sh -c 'npm run lint && npm run typecheck && npm test'
@@ -69,15 +73,17 @@ unlink-overweave:
 
 # ── The dev stand (dev/compose.yaml) ─────────────────────────────────────────
 
-DEV = docker compose -f dev/compose.yaml
+DEV = docker compose -f dev/compose.yaml $(if $(filter oidc,$(OVERKUBE_AUTH)),--profile oidc)
 
 dev: deps
 	$(DEV) up -d --build
+	@# Dex runs only for OIDC: started without it, one left from before is stopped.
+	$(if $(filter oidc,$(OVERKUBE_AUTH)),,@docker compose -f dev/compose.yaml --profile oidc rm -sf dex >/dev/null 2>&1 || true)
 	@echo "the page: http://localhost:$${WEB_PORT:-5173}   the server: http://localhost:$${OVERKUBE_PORT:-8080}/healthz"
 
 # Stopped; the cluster's data kept.
 dev-down:
-	$(DEV) down
+	docker compose -f dev/compose.yaml --profile oidc down
 
 dev-logs:
 	$(DEV) logs -f --tail=100
@@ -85,6 +91,13 @@ dev-logs:
 # kubectl against the stand's cluster: make dev-kubectl ARGS="get pods -A"
 dev-kubectl:
 	$(DEV) exec kube kubectl $(ARGS)
+
+# A token to sign in with (the server started with OVERKUBE_AUTH=token make dev): the seed's admin, viewer or shop-dev,
+# for so long (10m at the least: one that ends while the page is open).
+SA ?= viewer
+DURATION ?= 8h
+dev-token:
+	@$(DEV) exec -T kube kubectl -n seed-ops create token $(SA) --duration=$(DURATION)
 
 # The seed (dev/seed): cert-manager from its release, then every usual kind, a few of each, on busybox.
 # cert-manager's webhook answers a while after its deployment is available (its CA injected): asked

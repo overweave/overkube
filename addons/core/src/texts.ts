@@ -259,6 +259,10 @@ export const T = {
     search: t('core.namespaces.search', 'Search…'),
     in: t('core.namespaces.in', 'in {names}'),
     inMany: t('core.namespaces.in-many', 'in {count} namespaces'),
+    unlisted: t('core.namespaces.unlisted', 'You may not list the namespaces: add those you use.'),
+    add: t('core.namespaces.add', 'Add “{name}”'),
+    nothing: t('core.namespaces.nothing', 'You may do nothing in {name}: not added.'),
+    notAName: t('core.namespaces.not-a-name', '{name} is not a namespace’s name.'),
   },
   /** Of a kind, wherever it is shown (its table, one of its resources). */
   kind: {
@@ -360,7 +364,15 @@ export const T = {
       },
       actions: {
         sure: t('core.resource.view.actions.sure', 'Confirm {action}?'),
-        copyYaml: t('core.resource.view.actions.copy-yaml', 'Copy YAML'),
+      },
+      yaml: {
+        size: t('core.resource.view.yaml.size', { one: '{count} line · {size}', other: '{count} lines · {size}' }),
+        copy: t('core.resource.view.yaml.copy', 'Copy'),
+        copied: t('core.resource.view.yaml.copied', 'Copied'),
+        download: t('core.resource.view.yaml.download', 'Download'),
+        wrap: t('core.resource.view.yaml.wrap', 'Wrap lines'),
+        folded: t('core.resource.view.yaml.folded', { one: '{count} line', other: '{count} lines' }),
+        fold: t('core.resource.view.yaml.fold', 'Fold'),
       },
       summary: {
         deleting: t('core.resource.view.summary.deleting', 'Deletion requested {since} ago'),

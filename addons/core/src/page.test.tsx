@@ -1351,14 +1351,16 @@ describe('an object’s view', () => {
     expect([...(related()?.querySelectorAll('dt') ?? [])].map((d) => [d.textContent, d.nextElementSibling?.textContent])).toEqual([['Node', 'n1']]);
   });
 
-  it('has the core’s action for any object: its YAML copied', async () => {
+  it('has its YAML in a tab of its own, copied there (none of the core’s in its footer)', async () => {
     const written: string[] = [];
     vi.stubGlobal('isSecureContext', true);
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async (t: string) => void written.push(t) } });
     const page = renderPage(world('web'), '/k/pods.v1?open=pods.v1/shop/web');
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.uk-modal-footer button')];
-    expect(buttons.map((b) => b.textContent)).toEqual(['Copy YAML']);
-    await page.act(async () => buttons[0]?.click());
+    expect(document.querySelectorAll('.uk-modal-footer button')).toHaveLength(0);
+    page.act(() => [...document.querySelectorAll<HTMLButtonElement>('.uk-modal [role="tab"]')].find((t) => t.textContent === 'YAML')?.click());
+    const copy = [...document.querySelectorAll<HTMLButtonElement>('.uk-yaml-bar button')].find((b) => b.textContent === 'Copy') as HTMLButtonElement;
+    await page.act(async () => copy.click());
+    expect([written[0], copy.textContent]).toContain('Copied');
     expect(written[0]).toContain('name: web');
   });
 
@@ -2037,5 +2039,119 @@ describe('what the user is told', () => {
     page.act(() => (page.container.querySelector('button[aria-label="Close"]') as HTMLButtonElement).click());
     expect([page.notifications(), page.container.querySelector('button[aria-label="Close"]')]).toEqual([[], null]);
     expect(Namespace.id).toBe('v1/Namespace');
+  });
+});
+
+describe('what the one signed in may not have', () => {
+  const { Service, ConfigMap } = kinds.core.v1;
+  /** One who may read pods, namespaces and workloads only: no events, no logs, no services. */
+  const viewer = () => {
+    const w = world('web');
+    w.cluster.rules({ cluster: [{ verbs: ['get', 'list', 'watch'], apiGroups: ['', 'apps'], resources: ['pods', 'namespaces', 'deployments', 'nodes'] }] });
+    return w;
+  };
+  const tabs = () => [...document.querySelectorAll('.uk-modal [role="tab"]')].map((t) => [t.textContent, !!t.querySelector('[data-icon="denied"]')]);
+
+  it('is not there: a kind listed nowhere, a tab it needs — hidden by the access layer, over the user’s word', async () => {
+    const w = viewer();
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    await vi.waitFor(() => expect(page.links('Kinds')).toEqual(['Overview', 'Pods', 'Deployments', 'Nodes', 'Namespaces']));
+    expect(tabs()).toEqual([
+      ['Overview', false],
+      ['YAML', false],
+    ]);
+    // Who hid it: the access layer — what the user says under it changes nothing.
+    expect(w.registry.get('KindView', Service.id)?.provenanceOf(['hidden'])?.contributor).toBe('access');
+    page.act(() => void w.user.patch('KindView', Service.id, { hidden: false }));
+    expect(page.links('Kinds')).not.toContain('Services');
+    // Allowed again (rules said anew): there again.
+    page.act(() => w.cluster.rules(null));
+    await vi.waitFor(() => expect(page.links('Kinds')).toContain('Services'));
+    expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Events', 'Logs', 'YAML']);
+  });
+
+  it('allows a namespace’s own: a tab there, not elsewhere', async () => {
+    const w = viewer();
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'api', namespace: 'dev' } }));
+    w.cluster.rules({
+      cluster: [{ verbs: ['get', 'list', 'watch'], apiGroups: [''], resources: ['pods', 'namespaces'] }],
+      namespaces: { dev: [{ verbs: ['get'], apiGroups: [''], resources: ['pods/log'] }] },
+    });
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/dev/api');
+    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Logs', 'YAML']));
+    page.navigate('/k/pods.v1?open=pods.v1/shop/web');
+    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'YAML']));
+  });
+
+  it('takes a rule of one object for that object alone: its log there, not on another', async () => {
+    const w = viewer();
+    w.cluster.add(Pod, make(Pod, { metadata: { name: 'api', namespace: 'shop' } }));
+    w.cluster.rules({
+      cluster: [
+        { verbs: ['get', 'list', 'watch'], apiGroups: [''], resources: ['pods', 'namespaces'] },
+        { verbs: ['get'], apiGroups: [''], resources: ['pods/log'], resourceNames: ['web'] },
+      ],
+    });
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Logs', 'YAML']));
+    page.navigate('/k/pods.v1?open=pods.v1/shop/api');
+    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'YAML']));
+  });
+
+  it('may not list the namespaces: those one uses added by name, kept as the user’s — what is had there shown, the rest hidden', async () => {
+    const w = world('web');
+    w.cluster.add(Namespace, make(Namespace, { metadata: { name: 'shop' } }));
+    w.cluster.state(Namespace, 'denied', { status: 403, code: 'Forbidden', message: 'namespaces is forbidden' });
+    w.cluster.rules({ cluster: [], namespaces: { shop: [{ verbs: ['get', 'list', 'watch'], apiGroups: [''], resources: ['pods'] }] } });
+    const page = renderPage(w, '/k/pods.v1');
+    const picker = () => page.container.querySelector('.uk-ms-trigger') as HTMLButtonElement;
+    const typed = (text: string) => {
+      const input = () => document.querySelector('.uk-ms-search input') as HTMLInputElement;
+      page.act(() => void fireEvent.input(input(), { target: { value: text } }));
+      page.act(() => void fireEvent.keyDown(input(), { key: 'Enter' }));
+    };
+    page.act(() => picker().click());
+    await vi.waitFor(() => expect(document.querySelector('.uk-ms-note')?.textContent).toBe('You may not list the namespaces: add those you use.'));
+    // Nothing allowed there: not added, said why.
+    typed('nope');
+    await vi.waitFor(() => expect(document.querySelector('.uk-ms-note')?.textContent).toBe('You may do nothing in nope: not added.'));
+    typed('shop');
+    await vi.waitFor(() => expect(w.user.saved().patches).toContainEqual({ kind: 'Namespaces', name: 'default', fields: { known: { shop: true } } }));
+    expect(picker().textContent).toContain('shop');
+    // What may be had in it, and nothing else, in the navigation.
+    await vi.waitFor(() => expect(page.links('Kinds')).toEqual(['Overview', 'Pods']));
+  });
+
+  it('marked (debugging): nothing hidden, what would be marked', async () => {
+    const w = viewer();
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web', { access: 'mark' });
+    await vi.waitFor(() =>
+      expect(tabs()).toEqual([
+        ['Overview', false],
+        ['Events', true],
+        ['Logs', true],
+        ['YAML', false],
+      ]),
+    );
+    const marked = [...page.container.querySelectorAll('nav a')].filter((a) => a.querySelector('[data-icon="denied"]')).map((a) => a.textContent?.trim());
+    expect(marked).toEqual(['Services', 'ConfigMaps']);
+    expect(ConfigMap.id).toBe('v1/ConfigMap');
+  });
+
+  it('says a page it may not have is forbidden, in its place', async () => {
+    const w = viewer();
+    w.addon(
+      addon('quotas', ({ contributor }) => {
+        contributor.add('Page', 'quotas.page', { path: '/quotas', title: 'Quotas', needs: [{ verb: 'list', resource: 'resourcequotas' }] });
+        contributor.add('Fill', 'quotas.page', fill(slots.page('quotas.page'), { render: () => <p>quotas</p> }));
+      }),
+    );
+    const page = renderPage(w, '/quotas');
+    await vi.waitFor(() => expect(page.container.querySelector('main')?.textContent).toContain('Forbidden'));
+    expect([page.container.textContent?.includes('quotas'), page.links('Kinds').includes('Quotas')]).toEqual([false, false]);
+    // A kind's page, by a link to it: the same.
+    page.navigate('/k/services.v1');
+    await vi.waitFor(() => expect(page.container.querySelector('main')?.textContent).toContain('Forbidden'));
+    expect(page.container.querySelector('[role="table"]')).toBeNull();
   });
 });

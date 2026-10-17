@@ -1,0 +1,34 @@
+# The stand's OpenID Connect provider (Dex), for OVERKUBE_AUTH=oidc make dev: http://dex.localhost:5556/dex
+# (a name the browser takes for this machine, and the stand's containers for Dex). Its users, password
+# "password" each (Dex's own example) — what the seed lets each do (dev/seed/70-sign-in.yaml):
+#   admin@seed.test    the whole cluster
+#   viewer@seed.test   read everything (kubectl's view)
+#   "Log in with Mock" a user of the group authors: edit in seed-shop alone (the namespaces not listed: added in the picker)
+issuer: http://dex.localhost:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+oauth2:
+  skipApprovalScreen: true
+staticClients:
+  - id: overkube
+    name: overkube (the dev stand)
+    public: true
+    redirectURIs:
+      - http://localhost:5173/auth/oidc/callback
+      - http://localhost:8080/auth/oidc/callback
+enablePasswordDB: true
+staticPasswords:
+  - email: admin@seed.test
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: admin
+    userID: 1f2a3b4c-0000-4000-8000-000000000001
+  - email: viewer@seed.test
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: viewer
+    userID: 1f2a3b4c-0000-4000-8000-000000000002
+connectors:
+  - type: mockCallback
+    id: mock
+    name: Mock

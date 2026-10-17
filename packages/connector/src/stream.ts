@@ -386,6 +386,14 @@ export class WatchStream {
     }
     const s = this.wires.get(line.f);
     if (!s) return;
+    // The API server's 401 to a watch: the token signed in with ended, or taken back — the session over.
+    if (line.type === 'ERROR' && this.http.tokenSession && (line.object as Status | undefined)?.code === 401) {
+      const status = line.object as Status;
+      const error = new ApiError(401, 'unauthorized', status.message ?? 'the cluster no longer takes the token signed in with', status);
+      this.http.expire(error);
+      this.failed(this.generation, error);
+      return;
+    }
     switch (line.type) {
       case 'OPEN':
         s.opened();

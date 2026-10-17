@@ -1,4 +1,4 @@
-import { css, Status } from '@overkube/uikit';
+import { adoptStyles, Status } from '@overkube/uikit';
 import { useEffect } from 'preact/hooks';
 import { LOOKS } from './statuses.tsx';
 
@@ -11,10 +11,7 @@ export default { title: 'core/Statuses', parameters: { controls: { disable: true
 
 /** Every look of the core's, by the kinds it is for. */
 export const Looks = () => {
-  useEffect(() => {
-    if (document.getElementById('overkube-css')) return;
-    document.head.appendChild(Object.assign(document.createElement('style'), { id: 'overkube-css', textContent: css }));
-  }, []);
+  useEffect(() => adoptStyles(document), []);
   const groups = [...new Set(LOOKS.map(([of]) => (of ? of.map((k) => k.kind).join(', ') : 'Any object')))];
   return (
     <div

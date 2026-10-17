@@ -1,4 +1,4 @@
-import { MenuItem, menuOf } from '@overkube/sdk';
+import { type AccessSubject, accessOf, MenuItem, menuOf } from '@overkube/sdk';
 import { usePage, useSay } from '@overkube/sdk/preact';
 import { ContextMenu, usePresence } from '@overkube/uikit';
 import { useDefinitions } from '@overweave/ui/preact';
@@ -6,7 +6,8 @@ import { useRef } from 'preact/hooks';
 
 /*
  * The context menu open (usePage().menu), drawn: its items for its subject,
- * in their groups (menuOf: the dangerous last), said in the page's
+ * in their groups (menuOf: the dangerous last; one marked denied, its
+ * icon so), said in the page's
  * language; one chosen run — what it throws told as its owner's.
  */
 export function Menu() {
@@ -25,7 +26,7 @@ export function Menu() {
     items: g.items.map((d) => ({
       key: d.name,
       label: say(d.spec.title),
-      icon: d.spec.icon,
+      icon: accessOf(d, menu.subject as AccessSubject) === 'marked' ? 'denied' : d.spec.icon,
       keys: d.spec.keys,
       danger: d.spec.danger,
       onSelect: () => {

@@ -1,4 +1,4 @@
-import { Appearance, closeIn, openedIn, Page, type PageProps, type PageSpec, slots, Theme, t } from '@overkube/sdk';
+import { Appearance, accessOf, closeIn, openedIn, Page, type PageProps, type PageSpec, slots, Theme, t } from '@overkube/sdk';
 import { OpenedProvider, PagePropsProvider, useCluster, useKind, usePage, useSay } from '@overkube/sdk/preact';
 import { Above, Notice, ScaleContext, SHAPE_TOKENS, SIZES, tokenStyle } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
@@ -153,10 +153,13 @@ const NO_PROPS = {} as Record<string, never>;
 const NOTHING_TO_OPEN = t('shell.nothing-to-open', 'Nothing to open at {what}.');
 const EMPTY_PAGE = t('shell.empty-page', 'Nothing is on this page.');
 const FAILED = t('shell.failed', 'This page failed to draw.');
+const FORBIDDEN = t('shell.forbidden', 'Forbidden');
+const FORBIDDEN_PAGE = t('shell.forbidden-page', 'The cluster does not allow you what this page needs.');
 
 /**
  * The Page at the path, drawn apart (what it throws is its own; tried again
- * on another path); none: said so. Over it, the resource the path opens
+ * on another path); none: said so; not for the one signed in (its access):
+ * said so in its place (marked: over it). Over it, the resource the path opens
  * (?open=: resource.view), whatever the page.
  */
 export function Outlet() {
@@ -213,13 +216,22 @@ function OfKind({ page, props }: { page: Definition<PageSpec>; props: Omit<PageP
 /** What fills a page (page.<name>), in order — nothing (and no regions), said so; then its regions, each a slot of its own — drawn when something fills it. */
 function Filled({ page, props }: { page: Definition<PageSpec>; props: PageProps }) {
   const say = useSay();
+  // Not for the one signed in (of its kind, if it is a kind's): said so in its place — marked, over it.
+  const access = accessOf(page, props.kind ? { kind: props.kind } : {});
   // The same props while the page is the same (its slots not drawn again for nothing).
   const given = useMemo(() => props, [props.path, props.kind]);
   const regions = [...(page.spec.regions ?? [])].sort((a, b) => (a.order ?? 500) - (b.order ?? 500));
   // Nothing on it (and no regions): said so — the same element while it is (the slot not drawn again for it).
   const empty = useMemo(() => (regions.length ? null : <Notice icon="puzzle">{say(EMPTY_PAGE)}</Notice>), [regions.length, say]);
+  const forbidden = access !== 'allowed' && (
+    <Notice level="error" icon="denied" title={say(FORBIDDEN)}>
+      {say(FORBIDDEN_PAGE)}
+    </Notice>
+  );
+  if (access === 'denied') return forbidden;
   return (
     <PagePropsProvider value={given}>
+      {forbidden}
       {slotElement(slots.page(page.name), given, { retryKey: given.path, children: empty })}
       {regions.map((r) => (
         <Region key={r.name} page={page.name} region={r} props={given} />

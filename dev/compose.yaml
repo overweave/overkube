@@ -44,10 +44,16 @@ services:
     environment:
       npm_config_update_notifier: "false"
       KUBECONFIG: /var/lib/kubesolo/pki/admin/admin.kubeconfig
-      # Inside its container; published on this machine only (below): its network trusted, its names this machine's.
+      # Inside its container; published on this machine only (below): its network this machine's, its names this machine's.
       OVERKUBE_HOST: 0.0.0.0
-      OVERKUBE_TRUST_NETWORK: "true"
+      OVERKUBE_LOCAL_NETWORK: "true"
       OVERKUBE_HOSTS: localhost,127.0.0.1
+      # No one signs in (loopback); OVERKUBE_AUTH=token make dev: a token of the seed's (make dev-token SA=viewer);
+      # OVERKUBE_AUTH=oidc make dev: Dex (below), its users in dev/dex.yaml.
+      OVERKUBE_AUTH: ${OVERKUBE_AUTH:-loopback}
+      OVERKUBE_OIDC_ISSUER: http://dex.localhost:5556/dex
+      OVERKUBE_OIDC_CLIENT_ID: overkube
+      OVERKUBE_OIDC_SCOPES: openid profile email groups
     ports:
       - "127.0.0.1:${OVERKUBE_PORT:-8080}:8080"
     depends_on:
@@ -64,6 +70,20 @@ services:
       - "127.0.0.1:${WEB_PORT:-5173}:5173"
     depends_on:
       - server
+
+  # The OpenID Connect provider of OVERKUBE_AUTH=oidc (its profile: started only then). Reached as dex.localhost
+  # by the browser (this machine's) and the server (an alias on the stand's network) alike: one issuer.
+  dex:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    profiles: [oidc]
+    command: [dex, serve, /etc/dex/config.yaml]
+    volumes:
+      - ./dex.yaml:/etc/dex/config.yaml:ro
+    ports:
+      - "127.0.0.1:5556:5556"
+    networks:
+      default:
+        aliases: [dex.localhost]
 
 volumes:
   kube-data:

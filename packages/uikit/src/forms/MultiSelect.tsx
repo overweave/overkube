@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { Highlight } from '../display/Highlight';
 import { Icon } from '../display/Icon';
@@ -9,7 +10,9 @@ import { Popover } from '../overlays/Popover';
  * Picking several of a list (namespaces): a button saying what is picked,
  * and a popup with a filter and the options (the ARIA combobox and
  * multi-select listbox patterns: arrows move, Space or Enter toggles,
- * Escape closes). Nothing picked means all.
+ * Escape closes). Nothing picked means all. One not among them may be
+ * added (onAdd): what is typed, offered when nothing is it; a note over
+ * the options says what the list is (or is not).
  */
 
 export interface Option {
@@ -30,9 +33,15 @@ export interface MultiSelectProps {
   icon?: string;
   /** What its filter says (its placeholder, its name): no word a browser takes for a login's (Safari offers a password for "Filter namespaces": a name). */
   search?: string;
+  /** One typed that none of them is, added (Enter, or its row); none: only those given. */
+  onAdd?: (value: string) => void;
+  /** Its row's words: "Add “seed-shop”". */
+  addLabel?: (value: string) => string;
+  /** Said over the options (why they are what they are). */
+  note?: ComponentChildren;
 }
 
-export function MultiSelect({ options, value, onChange, all, label, icon, search = 'Search…' }: MultiSelectProps) {
+export function MultiSelect({ options, value, onChange, all, label, icon, search = 'Search…', onAdd, addLabel = (v) => `Add “${v}”`, note }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [active, setActive] = useState(0);
@@ -42,6 +51,8 @@ export function MultiSelect({ options, value, onChange, all, label, icon, search
   const picked = new Set(value);
   const q = filter.trim().toLowerCase();
   const shown = options.filter((o) => !q || (o.label ?? o.value).toLowerCase().includes(q));
+  /** What is typed, to be added: none is it. */
+  const adding = onAdd && filter.trim() && !options.some((o) => o.value === filter.trim()) ? filter.trim() : undefined;
   const name = (v: string) => options.find((o) => o.value === v)?.label ?? v;
   const summary = value.length === 0 ? all : value.length <= 2 ? value.map(name).join(', ') : `${value.length} ${label.toLowerCase()}`;
 
@@ -51,12 +62,15 @@ export function MultiSelect({ options, value, onChange, all, label, icon, search
     setFilter('');
     trigger.current?.focus();
   };
+  // The rows the keys move through: the options shown, then the one to add (last).
+  const rows = shown.length + (adding ? 1 : 0);
   const key = (e: KeyboardEvent) => {
-    if (e.key === 'ArrowDown') setActive((a) => Math.min(a + 1, shown.length - 1));
+    if (e.key === 'ArrowDown') setActive((a) => Math.min(a + 1, rows - 1));
     else if (e.key === 'ArrowUp') setActive((a) => Math.max(a - 1, 0));
     else if (e.key === 'Home') setActive(0);
-    else if (e.key === 'End') setActive(shown.length - 1);
+    else if (e.key === 'End') setActive(rows - 1);
     else if ((e.key === 'Enter' || (e.key === ' ' && !filter)) && shown[active]) toggle(shown[active].value);
+    else if (e.key === 'Enter' && adding && active === shown.length) onAdd?.(adding);
     else return;
     e.preventDefault();
   };
@@ -84,7 +98,7 @@ export function MultiSelect({ options, value, onChange, all, label, icon, search
               role="combobox"
               aria-expanded="true"
               aria-controls={ids.list}
-              aria-activedescendant={shown[active] ? `${ids.option}-${active}` : undefined}
+              aria-activedescendant={active < rows ? `${ids.option}-${active}` : undefined}
               aria-label={search}
               placeholder={search}
               value={filter}
@@ -95,6 +109,7 @@ export function MultiSelect({ options, value, onChange, all, label, icon, search
               onKeyDown={key}
             />
           </div>
+          {note && <div class="uk-ms-note">{note}</div>}
           {/* Nothing picked is all of them: a row of its own, over the others. */}
           {!q && (
             <button type="button" class="uk-ms-option uk-ms-all" aria-pressed={value.length === 0} onClick={() => onChange([])}>
@@ -106,7 +121,7 @@ export function MultiSelect({ options, value, onChange, all, label, icon, search
             </button>
           )}
           <div class="uk-ms-list" role="listbox" id={ids.list} aria-multiselectable="true" aria-label={label}>
-            {shown.length === 0 && <div class="uk-ms-empty">No {label.toLowerCase()} match</div>}
+            {shown.length === 0 && !adding && <div class="uk-ms-empty">No {label.toLowerCase()} match</div>}
             {shown.map((o, i) => (
               // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard picks through the combobox (aria-activedescendant).
               <div
@@ -129,6 +144,24 @@ export function MultiSelect({ options, value, onChange, all, label, icon, search
                 {o.hint && <span class="uk-ms-hint">{o.hint}</span>}
               </div>
             ))}
+            {adding && (
+              // biome-ignore lint/a11y/useKeyWithClickEvents: the keyboard reaches it through the combobox (aria-activedescendant), as the options.
+              <div
+                id={`${ids.option}-${shown.length}`}
+                class="uk-ms-option uk-ms-add"
+                role="option"
+                aria-selected={false}
+                data-active={active === shown.length ? '' : undefined}
+                tabIndex={-1}
+                onMouseEnter={() => setActive(shown.length)}
+                onClick={() => onAdd?.(adding)}
+              >
+                <span class="uk-check" aria-hidden="true">
+                  <Icon name="plus" />
+                </span>
+                <span class="uk-ms-label">{addLabel(adding)}</span>
+              </div>
+            )}
           </div>
           {q && shown.length > 0 && (
             <div class="uk-ms-foot">

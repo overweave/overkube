@@ -1,8 +1,8 @@
 import type { StatusAnswer } from '@overkube/gateway/protocol';
 import { type KindInfo, type KubeObject, knownKinds } from '@overkube/kube-types';
-import { keyOf, type LogLine, type QueryError, type State } from '@overkube/query';
+import { ALL_ALLOWED, keyOf, type LogLine, type QueryError, type State } from '@overkube/query';
 import { type Cluster, type FieldLayer, fieldLayers, kindRef, type ObjectChange, type ObjectOfKind } from '@overkube/sdk';
-import { logKey, type MemoryState, memorySource } from '@overkube/source';
+import { logKey, type MemoryAccess, type MemoryState, memorySource } from '@overkube/source';
 import { batch, computed, type ReadonlySignal, signal } from '@preact/signals';
 
 /*
@@ -55,6 +55,8 @@ export interface FakeCluster extends Cluster {
   discover(state: 'loading' | 'ready' | 'error', error?: Refusal): void;
   /** Lines written to a pod's container's log (its time: as given, else a second after its last). */
   log(namespace: string, pod: string, container: string, ...lines: (string | LogLine)[]): void;
+  /** What the user may do, as RBAC's rules (the cluster's, a namespace's more); none: anything. Its answers are not refused by it: say so (state). */
+  rules(access: MemoryAccess | null): void;
 }
 
 export interface FakeClusterOptions {
@@ -95,9 +97,11 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
   const states = signal<Readonly<Record<string, MemoryState>>>({});
   const followed = signal<ReadonlySignal<readonly FieldLayer[]> | null>(null);
   const logs = signal<Readonly<Record<string, readonly LogLine[]>>>({});
+  const access = signal<MemoryAccess | undefined>(undefined);
   let clock = Date.parse('2026-10-17T09:00:00Z');
   const source = memorySource(objects, {
     logs,
+    access: computed(() => access.value ?? { cluster: ALL_ALLOWED }),
     kinds: options.kinds,
     states,
     layers: computed(() => followed.value?.value ?? []),
@@ -152,6 +156,9 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
     },
     get writes() {
       return writes;
+    },
+    rules(said) {
+      access.value = said ?? undefined;
     },
     refuse(op, refusal) {
       refusals.set(op, [...(refusals.get(op) ?? []), refusal]);

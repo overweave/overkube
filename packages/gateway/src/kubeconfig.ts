@@ -13,6 +13,8 @@ export interface Upstream {
   insecure?: boolean;
   /** tls-server-name: the name its certificate is checked against, when not the server's address. */
   serverName?: string;
+  /** Who it acts as (Impersonate-User, Impersonate-Group): someone signed in, the credentials' own rights aside. */
+  impersonate?: { user: string; groups: readonly string[] };
 }
 
 interface Named<T> {

@@ -39,6 +39,12 @@ describe('menuOf', () => {
     expect(menuOf(items, 'nothing', {})).toEqual([]);
   });
 
+  it('not one denied the one signed in (its access, for the subject); one marked, there', () => {
+    const items = [item('logs', { access: (s) => (s.namespace === 'dev' ? 'allowed' : 'denied') }), item('yaml', { access: () => 'marked' })];
+    expect(shape(menuOf(items, 'nav.tabs.tab.context', { namespace: 'dev' }))).toEqual(['other: logs yaml']);
+    expect(shape(menuOf(items, 'nav.tabs.tab.context', { namespace: 'shop' }))).toEqual(['other: yaml']);
+  });
+
   it('leaves out one whose when throws, telling it', () => {
     const failed: string[] = [];
     const items = [

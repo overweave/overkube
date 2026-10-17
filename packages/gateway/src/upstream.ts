@@ -74,6 +74,7 @@ export function openUpstream(req: UpstreamRequest, source: UpstreamSource, onRes
   const upstream = source();
   const headers = { ...req.headers };
   if (upstream.token) headers.authorization = `Bearer ${upstream.token}`;
+  const as = upstream.impersonate;
   if (req.body !== undefined) {
     headers['content-type'] ??= 'application/json';
     headers['content-length'] = String(Buffer.byteLength(req.body));
@@ -87,7 +88,8 @@ export function openUpstream(req: UpstreamRequest, source: UpstreamSource, onRes
       port: server.port || (server.protocol === 'http:' ? 80 : 443),
       method: req.method,
       path: server.pathname.replace(/\/$/, '') + req.path,
-      headers,
+      // A header for each group (Node sends an array as several).
+      headers: as ? { ...headers, 'impersonate-user': as.user, ...(as.groups.length ? { 'impersonate-group': [...as.groups] } : {}) } : headers,
       ca: upstream.ca,
       cert: upstream.cert,
       key: upstream.key,

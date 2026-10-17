@@ -9,5 +9,5 @@
  * has to know which.
  */
 
-export { logKey, type MemoryOptions, type MemoryState, memorySource } from './memory.ts';
+export { logKey, type MemoryAccess, type MemoryOptions, type MemoryState, memorySource } from './memory.ts';
 export { createSource, type SourceOptions } from './source.ts';

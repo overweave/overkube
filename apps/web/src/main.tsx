@@ -1,3 +1,4 @@
+import './page.css';
 import { boot } from './boot.ts';
 
 /* The page: started into #app (boot.ts: what it is made of, in order). */

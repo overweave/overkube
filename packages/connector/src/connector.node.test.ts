@@ -59,7 +59,7 @@ async function setup(
   const fetch = ((input: string, init: RequestInit) => fetcher?.(input, init) ?? globalThis.fetch(input, init)) as typeof globalThis.fetch;
   const connector = createConnector({
     ...options,
-    http: { base, fetch },
+    http: { ...options.http, base, fetch },
     stream: { retryMs: 20, debounceMs: 5, ...options.stream },
     feeds: { lingerMs: 50, retryMs: 20, ...options.feeds },
     rediscoverMs: 10,
@@ -271,6 +271,27 @@ describe('the stream', () => {
     opened[0].gateway.close();
     await until(() => feed.state.value === 'error');
     expect([feed.error.value?.code, connector.session.value]).toEqual(['unauthorized', 'expired']);
+  });
+
+  it('signed in with a token of its own: the API server’s 401 ends the session too — a request’s, a watch’s', async () => {
+    const own = await setup([pod('x')], { http: { tokenSession: true } });
+    own.kube.unauthorized.add('/api/v1/nodes');
+    await expect(own.connector.http.get('/api/v1/nodes')).rejects.toMatchObject({ status: 401, code: 'unauthorized' });
+    expect(own.connector.session.value).toBe('expired');
+    // A watch's: the token taken back while the stream is open (the watch asked again).
+    const watched = await setup([pod('x')], { http: { tokenSession: true } });
+    const { feed } = watched.feeds.use({ kind: Pod });
+    await until(() => feed.state.value === 'live');
+    watched.kube.unauthorized.add('/api/v1/pods');
+    watched.kube.endWatches();
+    await until(() => watched.connector.session.value === 'expired');
+  });
+
+  it('not signed in with a token: the API server’s 401 is that request’s (the server’s own credentials), the session goes on', async () => {
+    const { kube, connector } = await setup();
+    kube.unauthorized.add('/api/v1/nodes');
+    await expect(connector.http.get('/api/v1/nodes')).rejects.toMatchObject({ status: 401, code: 'Unauthorized' });
+    expect(connector.session.value).toBe('ok');
   });
 
   it('is closed with the connector: nothing watched', async () => {

@@ -1,6 +1,7 @@
 import { kubeKinds, type PageSpec, slots } from '@overkube/sdk';
 import { usePageProps } from '@overkube/sdk/preact';
 import { createRegistry, type Definition } from '@overweave/core';
+import { signal } from '@preact/signals';
 import { act, cleanup, render } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { matchPage, matchPath } from './match.ts';
@@ -20,6 +21,9 @@ afterEach(() => {
   vi.useRealTimers();
   window.location.hash = '';
 });
+
+/** A cluster that serves nothing yet: the frame alone is drawn. */
+const nothingServed = { discovery: { kinds: signal(null) }, source: {} } as never;
 
 const route = (name: string, path: string, order?: number, priority = 0) =>
   ({ kind: 'Page', name, spec: { path, ...(order === undefined ? {} : { order }) }, provenanceOf: () => ({ priority }) }) as unknown as Definition<PageSpec>;
@@ -154,7 +158,7 @@ describe('the frame', () => {
     const view = render(
       <Shell
         registry={registry}
-        cluster={{} as never}
+        cluster={nothingServed}
         user={new UserService({ registry, store: memoryStore() })}
         router={memoryRouter('/items/7')}
         notifications={notifications()}
@@ -179,7 +183,7 @@ describe('the frame', () => {
     app.add('Fill', 'b', { slot: slots.page('b').name, render: () => <p>at b</p> });
     const router = memoryRouter('/a');
     const view = render(
-      <Shell registry={registry} cluster={{} as never} user={new UserService({ registry, store: memoryStore() })} router={router} notifications={notifications()} />,
+      <Shell registry={registry} cluster={nothingServed} user={new UserService({ registry, store: memoryStore() })} router={router} notifications={notifications()} />,
     );
     // A new tab's click (a modifier): the browser's, not the router's.
     const link = view.container.querySelector('a[href="#/b"]') as HTMLAnchorElement;
@@ -193,7 +197,7 @@ describe('the frame', () => {
   it('says so when no page takes the path, and when no addon draws any page', () => {
     const registry = createRegistry({ kinds: kubeKinds });
     const view = render(
-      <Shell registry={registry} cluster={{} as never} user={new UserService({ registry, store: memoryStore() })} router={memoryRouter('/x')} notifications={notifications()} />,
+      <Shell registry={registry} cluster={nothingServed} user={new UserService({ registry, store: memoryStore() })} router={memoryRouter('/x')} notifications={notifications()} />,
     );
     expect(view.container.textContent).toContain('No addon draws a page');
     act(() => void registry.contributor('app', { priority: 0, rights: ['behaviour'] }).add('Page', 'home', { path: '/' }));

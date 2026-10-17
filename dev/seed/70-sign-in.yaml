@@ -1,0 +1,81 @@
+# Whom to sign in as with a token (OVERKUBE_AUTH=token): make dev-token SA=<one of them>.
+# admin: the whole cluster; viewer: read everything (no Secrets, no logs: kubectl's view);
+# shop-dev: edit in seed-shop alone — what the page hides from each is theirs.
+# With OIDC (OVERKUBE_AUTH=oidc, Dex: dev/dex.yaml) the same, impersonated: oidc:admin@seed.test,
+# oidc:viewer@seed.test, and the group oidc:authors (Dex's mock user) in seed-shop.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: viewer
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shop-dev
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: seed-sign-in-admin
+  labels: { overkube.dev/seed: "true" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin }
+subjects:
+  - { kind: ServiceAccount, name: admin, namespace: seed-ops }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: seed-sign-in-viewer
+  labels: { overkube.dev/seed: "true" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: view }
+subjects:
+  - { kind: ServiceAccount, name: viewer, namespace: seed-ops }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: seed-sign-in-shop-dev
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: edit }
+subjects:
+  - { kind: ServiceAccount, name: shop-dev, namespace: seed-ops }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: seed-oidc-admin
+  labels: { overkube.dev/seed: "true" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin }
+subjects:
+  - { kind: User, apiGroup: rbac.authorization.k8s.io, name: "oidc:admin@seed.test" }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: seed-oidc-viewer
+  labels: { overkube.dev/seed: "true" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: view }
+subjects:
+  - { kind: User, apiGroup: rbac.authorization.k8s.io, name: "oidc:viewer@seed.test" }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: seed-oidc-authors
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: edit }
+subjects:
+  - { kind: Group, apiGroup: rbac.authorization.k8s.io, name: "oidc:authors" }

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { configOf, isLoopback } from './config.ts';
+import { testCertificate } from './testing.ts';
 
 describe('configOf', () => {
   it('listens on this machine only, at 8080, the gateway at /kube (always: where the page asks it), unless told otherwise', () => {
@@ -14,8 +15,19 @@ describe('configOf', () => {
       ui: undefined,
       cluster: { from: 'kubeconfig', path: '/home/me/.kube/config' },
       hosts: ['localhost', '127.0.0.1', '::1'],
+      local: true,
+      auth: { mode: 'loopback' },
     });
-    const told = configOf({ OVERKUBE_HOST: '0.0.0.0', OVERKUBE_PORT: '9000', OVERKUBE_PREFIX: 'api/kube/', OVERKUBE_READ_ONLY: 'TRUE' }, '/h');
+    const told = configOf(
+      {
+        OVERKUBE_HOST: '0.0.0.0',
+        OVERKUBE_PORT: '9000',
+        OVERKUBE_READ_ONLY: 'TRUE',
+        OVERKUBE_HOSTS: 'dash.example.org',
+        OVERKUBE_LOCAL_NETWORK: 'true',
+      },
+      '/h',
+    );
     expect([told.host, told.port, told.prefix, told.readOnly]).toEqual(['0.0.0.0', 9000, '/kube', true]);
   });
 
@@ -34,7 +46,8 @@ describe('configOf', () => {
 
   it('tells this machine’s addresses', () => {
     expect(['127.0.0.1', '127.1.2.3', '::1', 'localhost'].every(isLoopback)).toBe(true);
-    expect(['0.0.0.0', '::', '192.168.1.5'].some(isLoopback)).toBe(false);
+    expect(['0.0.0.0', '::', '192.168.1.5', '127.example.org', '127.0.0.1.nip.io', 'localhost.example.org'].some(isLoopback)).toBe(false);
+    expect(isLoopback('[::1]')).toBe(true);
   });
 
   it('reads a flag strictly: neither yes nor no is a mistake, never a no', () => {
@@ -44,14 +57,52 @@ describe('configOf', () => {
       false,
     ]);
     expect(() => configOf({ OVERKUBE_READ_ONLY: 'tru' })).toThrow('OVERKUBE_READ_ONLY: "tru" is neither true nor false');
-    expect(() => configOf({ OVERKUBE_TRUST_NETWORK: 'enabled' })).toThrow(/OVERKUBE_TRUST_NETWORK/);
+    expect(() => configOf({ OVERKUBE_LOCAL_NETWORK: 'enabled' })).toThrow(/OVERKUBE_LOCAL_NETWORK/);
     expect(configOf({ OVERKUBE_PORT: ' ' }).port).toBe(8080);
   });
 
   it('is reached by its own names: this machine’s by default, those given, any when it listens beyond and was given none', () => {
-    expect(configOf({ OVERKUBE_HOST: '0.0.0.0' }).hosts).toBeUndefined();
-    expect(configOf({ OVERKUBE_HOST: '0.0.0.0', OVERKUBE_HOSTS: 'Dash.example.org, localhost' }).hosts).toEqual(['dash.example.org', 'localhost']);
-    expect(configOf({ OVERKUBE_TRUST_NETWORK: 'true' }).trustNetwork).toBe(true);
+    expect(() => configOf({ OVERKUBE_HOST: '0.0.0.0' })).toThrow('OVERKUBE_HOSTS: it listens on 0.0.0.0: say the names it is reached by (dash.example.org,localhost)');
+    expect(configOf({ OVERKUBE_HOST: '0.0.0.0', OVERKUBE_HOSTS: 'Dash.example.org, localhost', OVERKUBE_LOCAL_NETWORK: 'true' }).hosts).toEqual(['dash.example.org', 'localhost']);
+  });
+
+  it('lets no one in unsigned but this machine: loopback only where only it reaches the server', () => {
+    const beyond = { OVERKUBE_HOST: '0.0.0.0', OVERKUBE_HOSTS: 'dash.example.org' };
+    expect(() => configOf(beyond)).toThrow(/^OVERKUBE_AUTH=loopback: it listens on 0.0.0.0, and anyone who reaches it would use the cluster as its credentials/);
+    expect(configOf({ ...beyond, OVERKUBE_LOCAL_NETWORK: 'true' }).local).toBe(true);
+    expect(() => configOf({ OVERKUBE_AUTH: 'basic' })).toThrow('OVERKUBE_AUTH: "basic" is none of loopback, token, oidc');
+  });
+
+  it('signs in off this machine only over HTTPS: its own certificate, or a proxy’s in front', () => {
+    const beyond = { OVERKUBE_HOST: '0.0.0.0', OVERKUBE_HOSTS: 'dash.example.org', OVERKUBE_AUTH: 'token' };
+    expect(() => configOf(beyond)).toThrow(/^OVERKUBE_AUTH=token: signing in off this machine needs HTTPS/);
+    const { cert, key } = testCertificate();
+    const files = { OVERKUBE_TLS_CERT: cert, OVERKUBE_TLS_KEY: key };
+    expect(configOf({ ...beyond, ...files }).tls).toEqual({ cert: files.OVERKUBE_TLS_CERT, key: files.OVERKUBE_TLS_KEY });
+    expect(configOf({ ...beyond, OVERKUBE_TLS: 'off' })).toMatchObject({ tls: 'off', auth: { mode: 'token', hours: 8 } });
+    // On this machine: http://localhost is no less safe.
+    expect(configOf({ OVERKUBE_AUTH: 'token', OVERKUBE_SESSION_HOURS: '1' }).auth).toEqual({ mode: 'token', hours: 1 });
+    expect(() => configOf({ ...beyond, OVERKUBE_TLS_CERT: files.OVERKUBE_TLS_CERT })).toThrow('OVERKUBE_TLS_CERT and OVERKUBE_TLS_KEY: both, or neither');
+    expect(() => configOf({ ...beyond, ...files, OVERKUBE_TLS: 'off' })).toThrow(/a proxy ends TLS, yet a certificate is given/);
+    expect(() => configOf({ OVERKUBE_TLS: 'on' })).toThrow(/OVERKUBE_TLS: "on" is not off/);
+    expect(() => configOf({ OVERKUBE_TLS_CERT: '/no/cert', OVERKUBE_TLS_KEY: '/no/key' })).toThrow('OVERKUBE_TLS_CERT: no file /no/cert');
+    expect(() => configOf({ OVERKUBE_AUTH: 'token', OVERKUBE_SESSION_HOURS: '0' })).toThrow(/OVERKUBE_SESSION_HOURS/);
+  });
+
+  it('signs in with an OIDC provider: its issuer (https), its client; its claims as said, prefixed', () => {
+    const oidc = { OVERKUBE_AUTH: 'oidc', OVERKUBE_OIDC_ISSUER: 'https://id.example.org', OVERKUBE_OIDC_CLIENT_ID: 'overkube' };
+    expect(configOf(oidc).auth).toEqual({
+      mode: 'oidc',
+      hours: 8,
+      oidc: { issuer: 'https://id.example.org', clientId: 'overkube', scopes: 'openid profile email', userClaim: 'email', groupsClaim: 'groups', prefix: 'oidc:' },
+    });
+    expect(configOf({ ...oidc, OVERKUBE_OIDC_CLIENT_SECRET: 's', OVERKUBE_OIDC_PREFIX: 'sso:' }).auth).toMatchObject({ oidc: { clientSecret: 's', prefix: 'sso:' } });
+    expect(() => configOf({ OVERKUBE_AUTH: 'oidc' })).toThrow(/say the provider/);
+    expect(() => configOf({ ...oidc, OVERKUBE_OIDC_ISSUER: 'http://id.example.org' })).toThrow(/is not https/);
+    expect(configOf({ ...oidc, OVERKUBE_OIDC_ISSUER: 'http://127.0.0.1:5556' }).auth.mode).toBe('oidc');
+    expect(configOf({ ...oidc, OVERKUBE_OIDC_ISSUER: 'http://dex.localhost:5556/dex' }).auth.mode).toBe('oidc');
+    expect(() => configOf({ ...oidc, OVERKUBE_OIDC_ISSUER: 'http://dex.localhost.example.org' })).toThrow(/is not https/);
+    expect(() => configOf({ ...oidc, OVERKUBE_OIDC_PREFIX: 'system:' })).toThrow(/never the cluster’s own names/);
   });
 
   it('takes the page’s folder where it really is', () => {

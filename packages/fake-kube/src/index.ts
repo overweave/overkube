@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
-import { logTimeKey } from '@overkube/query';
+import { type AccessRule, ALL_ALLOWED, logTimeKey } from '@overkube/query';
 
 /*
  * A fake Kubernetes API server for overkube's tests, behaving as the real
@@ -18,7 +18,10 @@ import { logTimeKey } from '@overkube/query';
  *   as ADDED; then every change;
  * - only metadata, asked as PartialObjectMetadata(List);
  * - how many past a page (remainingItemCount), of a list not selected;
- * - 403 for the paths forbidden (a collection in every namespace, or one namespace's);
+ * - 403 for the paths forbidden (a collection in every namespace, or one namespace's); 401 for
+ *   those whose asker the API server no longer takes (a token ended: unauthorized);
+ * - what the user may do (SelfSubjectRulesReview): the rules said (rules: the
+ *   cluster's, and a namespace's more), as RBAC tells them — anything, by default;
  * - a container's log (written by the test: writeLog), as the kubelet gives
  *   it: from a time (to the second, as the API server passes it on), its
  *   last lines, so many bytes, each line's time before
@@ -65,6 +68,10 @@ export class FakeKube {
   readonly served: KindInfo[];
   /** Collection paths the user may not list or watch (/api/v1/pods, /api/v1/namespaces/a/pods). */
   readonly forbidden = new Set<string>();
+  /** Collection paths answered 401: the asker's token not taken (ended, taken back). */
+  readonly unauthorized = new Set<string>();
+  /** What the user may do, as a SelfSubjectRulesReview tells it: in the cluster, and more in a namespace. */
+  rules: { cluster: readonly AccessRule[]; namespaces?: Record<string, readonly AccessRule[]>; incomplete?: boolean } = { cluster: ALL_ALLOWED };
   private readonly objects = new Map<string, Map<string, KubeObject>>();
   private readonly history = new Map<string, Logged[]>();
   private readonly watches = new Set<Watch>();
@@ -178,6 +185,7 @@ export class FakeKube {
     if (url.pathname === '/api' || url.pathname === '/apis') return json(res, 200, this.discovery(url.pathname === '/api'));
     const log = /^\/api\/v1\/namespaces\/([^/]+)\/pods\/([^/]+)\/log$/.exec(url.pathname);
     if (log) return this.answerLog(log[1], log[2], url.searchParams, req.headers.accept ?? '', res);
+    if (req.method === 'POST' && url.pathname === '/apis/authorization.k8s.io/v1/selfsubjectrulesreviews') return this.review(req, res);
     const at = this.locate(url.pathname);
     if (!at) {
       // One object, by its name (its collection's path and its name).
@@ -188,6 +196,7 @@ export class FakeKube {
       return object ? json(res, 200, object) : json(res, 404, { kind: 'Status', code: 404, reason: 'NotFound' });
     }
     if (this.forbidden.has(url.pathname)) return json(res, 403, { kind: 'Status', code: 403, reason: 'Forbidden', message: `${url.pathname} is forbidden` });
+    if (this.unauthorized.has(url.pathname)) return json(res, 401, { kind: 'Status', code: 401, reason: 'Unauthorized', message: 'Unauthorized' });
     const labels = (url.searchParams.get('labelSelector') ?? '')
       .split(',')
       .filter(Boolean)
@@ -196,6 +205,24 @@ export class FakeKube {
     const watch: Watch = { root: at.root, namespace: at.namespace, name, labels, meta: /PartialObjectMetadata/.test(req.headers.accept ?? ''), res };
     if (url.searchParams.get('watch') === '1') return this.watch(watch, url.searchParams.get('resourceVersion') ?? '');
     this.list(watch, url.searchParams);
+  }
+
+  /** What the user may do in a namespace: the cluster's rules and the namespace's. */
+  private review(req: IncomingMessage, res: ServerResponse): void {
+    let body = '';
+    req.on('data', (c) => {
+      body += c;
+    });
+    req.on('end', () => {
+      const namespace = (JSON.parse(body || '{}') as { spec?: { namespace?: string } }).spec?.namespace;
+      if (!namespace) return json(res, 400, { kind: 'Status', code: 400, reason: 'BadRequest', message: 'no namespace on request' });
+      const resourceRules = [...this.rules.cluster, ...(this.rules.namespaces?.[namespace] ?? [])];
+      json(res, 201, {
+        kind: 'SelfSubjectRulesReview',
+        apiVersion: 'authorization.k8s.io/v1',
+        status: { resourceRules, nonResourceRules: [], incomplete: this.rules.incomplete === true },
+      });
+    });
   }
 
   /** A container's log, as the kubelet gives it. */

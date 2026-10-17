@@ -1,0 +1,113 @@
+/* The page around the app: what index.html holds (its own file: the page's CSP takes no inline style). */
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+#app {
+  min-height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+  /* A glow of the accent over the top of the page (the sign-in screen's too). */
+  background:
+    radial-gradient(ellipse 60% 45vh at 50% 0%, color-mix(in srgb, var(--uk-accent) 14%, transparent), transparent 70%) no-repeat,
+    var(--uk-bg);
+}
+
+/* Signing in (session.tsx): a card in the middle of the window. */
+.ok-signin {
+  min-height: calc(100vh - 32px);
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  color: var(--uk-text);
+}
+.ok-signin-card {
+  width: min(420px, 100%);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px;
+  background: var(--uk-panel);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  box-shadow: var(--uk-shadow);
+}
+.ok-signin-title h2 {
+  margin: 4px 0 2px;
+  font-size: 20px;
+  font-weight: 600;
+}
+.ok-signin-title p,
+.ok-signin-note,
+.ok-signin-make p {
+  margin: 0;
+  color: var(--uk-muted);
+  font-size: 12px;
+}
+.ok-signin-note {
+  text-align: center;
+}
+.ok-signin form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ok-signin label {
+  margin-bottom: -6px;
+  color: var(--uk-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ok-signin textarea {
+  font: 12px / 1.5 var(--uk-mono);
+  padding: 10px;
+  min-height: 84px;
+  resize: vertical;
+  word-break: break-all;
+  color: var(--uk-text);
+  background: var(--uk-bg);
+  border: 1px solid var(--uk-border);
+  border-radius: var(--uk-radius);
+}
+.ok-signin textarea:focus-visible {
+  outline: 2px solid var(--uk-focus);
+  outline-offset: 1px;
+}
+.ok-signin-make {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ok-signin-command {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
+  background: var(--uk-panel-2);
+  border-radius: var(--uk-radius);
+}
+.ok-signin-command code {
+  flex: 1;
+  min-width: 0;
+  font: 11px / 1.5 var(--uk-mono);
+  color: var(--uk-text);
+  overflow-wrap: anywhere;
+}
+.ok-signin .uk-button[data-variant="primary"] {
+  width: 100%;
+  justify-content: center;
+  height: 36px;
+}
+/* Who the page is signed in as, at the header's end. */
+.ok-signed-in {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--uk-muted);
+  font-size: 12px;
+}

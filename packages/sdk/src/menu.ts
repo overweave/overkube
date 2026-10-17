@@ -1,9 +1,9 @@
 import type { Definition } from '@overweave/core';
-import type { MenuItemSpec } from './kinds.ts';
+import { type AccessSubject, accessOf, type MenuItemSpec } from './kinds.ts';
 
 /*
  * A context menu, as its items make it: those on its subject, not hidden,
- * whose when says so — in groups: open, state, copy, then each of the
+ * not denied the one signed in, whose when says so — in groups: open, state, copy, then each of the
  * addons' own (by their first item's order), the dangerous last whatever
  * they say; in a group, by order, then name. A group none is in is not
  * there (nor a line for it). The same for whoever draws it.
@@ -28,7 +28,8 @@ export function menuOf(
   failed?: (definition: Definition<MenuItemSpec>, error: unknown) => void,
 ): MenuGroupOf[] {
   const shown = items.filter((d) => {
-    if (d.spec.on !== on || d.spec.hidden) return false;
+    // Not for the one signed in (the access layer's word): not there.
+    if (d.spec.on !== on || d.spec.hidden || accessOf(d, subject as AccessSubject) === 'denied') return false;
     try {
       return d.spec.when?.(subject) ?? true;
     } catch (error) {

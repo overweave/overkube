@@ -66,7 +66,14 @@ describe('proxy', () => {
   it('forwards method, path, query and body with the kubeconfig credentials; returns status and body', async () => {
     let seen: Record<string, unknown> = {};
     const config = await fakeApiServer((req, body, res) => {
-      seen = { method: req.method, url: req.url, body, authorization: req.headers.authorization, cookie: req.headers.cookie };
+      seen = {
+        method: req.method,
+        url: req.url,
+        body,
+        authorization: req.headers.authorization,
+        cookie: req.headers.cookie,
+        impersonate: Object.keys(req.headers).filter((h) => h.startsWith('impersonate-')),
+      };
       res.writeHead(201, { 'content-type': 'application/json' });
       res.end('{"kind":"Namespace"}');
     });
@@ -74,7 +81,13 @@ describe('proxy', () => {
     const res = await fetch(`${await gateway(config)}/api/v1/namespaces?fieldManager=overkube`, {
       method: 'POST',
       body: '{"metadata":{"name":"a"}}',
-      headers: { cookie: 'session=secret', 'content-type': 'application/json', authorization: 'Bearer the-page-session' },
+      headers: {
+        cookie: 'session=secret',
+        'content-type': 'application/json',
+        authorization: 'Bearer the-page-session',
+        'impersonate-user': 'system:admin',
+        'impersonate-group': 'system:masters',
+      },
     });
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ kind: 'Namespace' });
@@ -84,6 +97,8 @@ describe('proxy', () => {
       body: '{"metadata":{"name":"a"}}',
       authorization: 'Bearer the-token', // the kubeconfig's, not the client's
       cookie: undefined,
+      // Whom it acts as is never the client's to say.
+      impersonate: [],
     });
   });
 

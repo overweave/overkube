@@ -36,7 +36,12 @@ export interface PatchRequest {
   dryRun: boolean;
 }
 
-/** Who made the change, as the API server records it (managedFields), unless the page or the gateway's options say otherwise. */
+/**
+ * Who made the change, as the API server records it (managedFields): the
+ * gateway's (its options'), or one of its own the page names (an addon's:
+ * overkube-images) — never another's (kubectl, helm, a controller), whose
+ * fields an apply with force would take over.
+ */
 export const FIELD_MANAGER = 'overkube';
 const NAME = /^[\w.:-]{1,128}$/;
 
@@ -57,6 +62,8 @@ export function parsePatch(body: unknown, fieldManager = FIELD_MANAGER): PatchRe
     return `patch: ${type === 'apply' ? 'an' : 'a'} ${type} patch is a JSON object`;
   }
   if (b.fieldManager !== undefined && (typeof b.fieldManager !== 'string' || !NAME.test(b.fieldManager))) return 'fieldManager: a name of up to 128 letters, digits and .:-_';
+  if (b.fieldManager !== undefined && b.fieldManager !== fieldManager && !(b.fieldManager as string).startsWith(`${fieldManager}-`))
+    return `fieldManager: the gateway's (${fieldManager}) or one of its own (${fieldManager}-<name>)`;
   if (b.force !== undefined && typeof b.force !== 'boolean') return 'force: true or false';
   if (b.force && type !== 'apply') return 'force: only for an apply';
   if (b.dryRun !== undefined && typeof b.dryRun !== 'boolean') return 'dryRun: true or false';

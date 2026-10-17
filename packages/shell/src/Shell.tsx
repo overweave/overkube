@@ -1,11 +1,12 @@
 import { type Addons, type Cluster, kindMatcher, type UserChanges } from '@overkube/sdk';
-import { AddonsProvider, KubeProvider, type OpenMenu, PageProvider, type PageValue, UserProvider } from '@overkube/sdk/preact';
+import { AddonsProvider, KubeProvider, type OpenMenu, PageProvider, type PageValue, UserProvider, useCluster } from '@overkube/sdk/preact';
 import type { Registry } from '@overweave/core';
 import type { Failure } from '@overweave/ui';
-import { OverweaveProvider, type SlotTrace } from '@overweave/ui/preact';
+import { OverweaveProvider, type SlotTrace, useOverweave } from '@overweave/ui/preact';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef } from 'preact/hooks';
+import { startAccess } from './access.tsx';
 import { Frame } from './Frame.tsx';
 import type { Notifications } from './notifications.ts';
 import type { Router } from './router.ts';
@@ -18,12 +19,18 @@ export interface ShellOptions {
   notifications: Notifications;
   /** A definition's function failed (none: said in the console). */
   onFailure?: OnFailure;
+  /** What the one signed in may not have: hidden (none said), or shown marked (debugging). */
+  access?: 'hide' | 'mark';
 }
 
 const warn: OnFailure = (d, field, error) => console.warn(`[overkube] ${d.kind}/${d.name} (${field}):`, error);
 
 /** What the page gives its components (PageValue), of a router and notifications: under a test's or a story's own providers too. */
-export function ShellProvider({ router, notifications, onFailure = warn, children }: ShellOptions & { children?: ComponentChildren }) {
+export function ShellProvider({ router, notifications, onFailure = warn, access = 'hide', children }: ShellOptions & { children?: ComponentChildren }) {
+  // What the one signed in may not have, taken out of the page (the access layer: over everyone's word).
+  const { registry } = useOverweave();
+  const cluster = useCluster();
+  useEffect(() => startAccess(registry as never, cluster, { mark: access === 'mark' }), [registry, cluster, access]);
   // A definition's failure told once the drawing is done (a status written while drawing would draw again), each once.
   const pending = useRef<Map<string, [{ kind: string; name: string }, string, unknown]> | null>(null);
   const told = useRef(onFailure);

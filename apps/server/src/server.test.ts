@@ -1,16 +1,19 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, request, type Server } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import type { AddressInfo } from 'node:net';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { Config } from './config.ts';
-import { type Running, startServer } from './server.ts';
+import { type Config, LOOPBACK_NAMES } from './config.ts';
+import { PAGE_HEADERS, type Running, startServer } from './server.ts';
+import { testCertificate } from './testing.ts';
 
 /*
  * The server over real HTTP, a fake API server behind it: health, the
- * gateway under its prefix, the page and its routes, the warning when it
- * listens beyond this machine, and stopping with a watch still open.
+ * gateway under its prefix, the page and its routes, HTTPS with its
+ * certificate, and stopping with a watch still open.
  */
 
 let api: Server;
@@ -44,7 +47,17 @@ afterEach(async () => {
 
 async function start(config: Partial<Config> = {}, log: (m: string) => void = () => {}) {
   const r = await startServer(
-    { host: '127.0.0.1', port: 0, prefix: '/kube', readOnly: false, cluster: { from: 'kubeconfig', path: kubeconfig }, ...config },
+    {
+      host: '127.0.0.1',
+      port: 0,
+      prefix: '/kube',
+      readOnly: false,
+      cluster: { from: 'kubeconfig', path: kubeconfig },
+      hosts: LOOPBACK_NAMES,
+      local: true,
+      auth: { mode: 'loopback' },
+      ...config,
+    },
     { version: '0.1.0', log },
   );
   running.push(r);
@@ -52,11 +65,11 @@ async function start(config: Partial<Config> = {}, log: (m: string) => void = ()
 }
 
 describe('the server', () => {
-  it('answers its health: the process, and whether the cluster answers', async () => {
+  it('answers its health: the process, and whether the cluster answers — not what it says', async () => {
     const base = await start();
     expect(await (await fetch(`${base}/healthz`)).text()).toBe('ok');
     const ready = await fetch(`${base}/readyz`);
-    expect([ready.status, (await ready.json()).version]).toEqual([200, 'v1.35.7']);
+    expect([ready.status, await ready.text()]).toEqual([200, 'ok']);
     const nowhere = await start({ cluster: { from: 'kubeconfig', path: join(tmpdir(), 'no-such-kubeconfig') } });
     expect((await fetch(`${nowhere}/readyz`)).status).toBe(503);
   });
@@ -71,6 +84,13 @@ describe('the server', () => {
     const base = await start({ ui });
     const asset = await fetch(`${base}/assets/app.js`);
     expect([asset.headers.get('content-type'), await asset.text()]).toEqual(['text/javascript; charset=utf-8', 'export {};']);
+    // Its own origin only: nothing from elsewhere, nothing inline, framed by none but itself.
+    expect([asset.headers.get('content-security-policy'), asset.headers.get('referrer-policy'), asset.headers.get('cross-origin-opener-policy')]).toEqual([
+      PAGE_HEADERS['content-security-policy'],
+      'no-referrer',
+      'same-origin',
+    ]);
+    expect(PAGE_HEADERS['content-security-policy']).toMatch(/default-src 'none'.*script-src 'self'; style-src 'self';.*connect-src 'self'.*frame-ancestors 'self'/);
     const route = await fetch(`${base}/pods/web`);
     expect([route.headers.get('cache-control'), await route.text()]).toEqual(['no-cache', '<p>page</p>']);
     // A file beside the folder, known: asked for by way of "..", it is not given.
@@ -86,16 +106,20 @@ describe('the server', () => {
     expect([res.status, await res.text()]).toEqual([404, 'overkube: no page here (OVERKUBE_UI); the gateway is at /kube']);
   });
 
-  it('warns, loudly, when it listens beyond this machine with no sign-in', async () => {
-    const said: string[] = [];
-    await start({}, (m) => said.push(m));
-    expect(said.some((m) => m.startsWith('WARNING'))).toBe(false);
-    await start({ host: '0.0.0.0', readOnly: true }, (m) => said.push(m));
-    expect(said.find((m) => m.startsWith('WARNING'))).toMatch(/0\.0\.0\.0 with no sign-in: anyone who reaches it reads the cluster/);
-  });
-
   it('stops even with a stream open', async () => {
-    const r = await startServer({ host: '127.0.0.1', port: 0, prefix: '/kube', readOnly: false, cluster: { from: 'kubeconfig', path: kubeconfig } }, { log: () => {} });
+    const r = await startServer(
+      {
+        host: '127.0.0.1',
+        hosts: LOOPBACK_NAMES,
+        local: true,
+        auth: { mode: 'loopback' },
+        port: 0,
+        prefix: '/kube',
+        readOnly: false,
+        cluster: { from: 'kubeconfig', path: kubeconfig },
+      },
+      { log: () => {} },
+    );
     const res = await fetch(`${r.url}/kube/stream`);
     const reader = (res.body as ReadableStream<Uint8Array>).getReader();
     await reader.read();
@@ -142,9 +166,52 @@ describe('the server', () => {
     expect(await asked('/kube/status', 'localhost:8080')).toBe(200);
   });
 
-  it('says nothing of its sign-in where its network is trusted', async () => {
-    const said: string[] = [];
-    await start({ host: '0.0.0.0', trustNetwork: true }, (m) => said.push(m));
-    expect(said.some((m) => m.startsWith('WARNING'))).toBe(false);
+  it('serves HTTPS with its certificate, and plain HTTP on its port sent there — health aside', async () => {
+    const tls = testCertificate();
+    const base = await start({ tls });
+    expect(base).toMatch(/^https:\/\/127\.0\.0\.1:\d+$/);
+    const plain = base.replace('https:', 'http:');
+    const asked = (url: string) =>
+      new Promise<[number, string | undefined, string | undefined]>((done, failed) => {
+        const out = (url.startsWith('https:') ? httpsRequest : request)(url, { ca: readFileSync(tls.cert), headers: { host: 'localhost' } }, (res) => {
+          res.resume();
+          done([res.statusCode ?? 0, res.headers.location, res.headers['strict-transport-security']]);
+        });
+        out.on('error', failed);
+        out.end();
+      });
+    expect(await asked(`${base}/kube/status`)).toEqual([200, undefined, 'max-age=31536000']);
+    expect(await asked(`${plain}/kube/status?x=1`)).toEqual([308, 'https://localhost/kube/status?x=1', undefined]);
+    expect(await asked(`${plain}/healthz`)).toEqual([200, undefined, undefined]);
+  });
+
+  it('cuts a connection that says nothing, or begins a handshake and leaves it: neither holds its close', async () => {
+    const r = await startServer(
+      {
+        host: '127.0.0.1',
+        hosts: LOOPBACK_NAMES,
+        local: true,
+        auth: { mode: 'loopback' },
+        port: 0,
+        prefix: '/kube',
+        readOnly: false,
+        cluster: { from: 'kubeconfig', path: kubeconfig },
+        tls: testCertificate(),
+      },
+      { log: () => {} },
+    );
+    const port = Number(new URL(r.url).port);
+    const silent = connect(port, '127.0.0.1');
+    await new Promise((done) => silent.once('connect', done));
+    // A TLS handshake begun and left: handed over, never ended.
+    const begun = connect(port, '127.0.0.1');
+    await new Promise((done) => begun.once('connect', done));
+    begun.write(Buffer.from([0x16]));
+    begun.on('error', () => {});
+    const started = Date.now();
+    await r.close(100);
+    expect(Date.now() - started).toBeLessThan(2000);
+    silent.destroy();
+    begun.destroy();
   });
 });

@@ -46,6 +46,10 @@ export const ICONS = {
   'file-text': 'file-text',
   wrap: 'text-wrap',
   'arrow-down': 'arrow-down',
+  // What the one signed in may not have (shown marked: debugging), a page refused.
+  denied: 'lock',
+  // Signing out (of a session the page is signed in with).
+  'sign-out': 'logout',
   // States
   'circle-play': 'circle-caret-right',
   'circle-check': 'circle-check',

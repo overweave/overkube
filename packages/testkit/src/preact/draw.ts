@@ -65,12 +65,16 @@ const textOf = (el: Element) => (el.textContent ?? '').trim();
  * hash); what addons tell the user is the world's. Read by roles and names
  * (a table's, a navigation's), not by how the core lays them out.
  */
-export function renderPage(world: KubeWorld, path = '/', given?: MountOptions): RenderedPage {
+export function renderPage(world: KubeWorld, path = '/', given?: MountOptions & { access?: 'hide' | 'mark' }): RenderedPage {
   const router = memoryRouter(path);
   const reported: Reported[] = [];
   const onFailure = (definition: Reported['definition'], field: string, error: unknown) => void reported.push({ definition, field, error });
   // In the kit's root, as the page is: its defaults, the theme over them.
-  const view = mount(world, h('div', { class: 'uk-root' }, h(ShellProvider, { router, notifications: world.notifications, onFailure }, h(Frame, null))), given);
+  const view = mount(
+    world,
+    h('div', { class: 'uk-root' }, h(ShellProvider, { router, notifications: world.notifications, onFailure, access: given?.access }, h(Frame, null))),
+    given,
+  );
   // A drawing's failures (overweave's: a render, a condition) and the page's (a column's value), as one list.
   const drawn = view.failures;
   const failures = (): Reported[] => [

@@ -15,12 +15,15 @@ import { isDown, openUpstream, type UpstreamSource } from './upstream.ts';
  * to show the cluster or why it cannot; a host, whether the gateway is up.
  */
 
+/** A small answer of the API server read whole: its status and body, or why there is none. */
+export type Asked = { status: number; body: string } | { error: { code: ErrorCode; message: string } };
+
 /**
- * Ask the API server its version. The status must not hang: the whole of it
- * — connecting, the answer, its body — has timeoutMs, and an answer broken
+ * Ask the API server something small. It must not hang: the whole of it —
+ * connecting, the answer, its body — has timeoutMs, and an answer broken
  * off is an answer too.
  */
-export function kubeState(upstream: UpstreamSource, timeoutMs = 3000): Promise<KubeState> {
+export function ask(upstream: UpstreamSource, request: { method: string; path: string; body?: string }, timeoutMs = 3000): Promise<Asked> {
   return new Promise((done) => {
     let out: ReturnType<typeof openUpstream> | undefined;
     let settled = false;
@@ -28,36 +31,25 @@ export function kubeState(upstream: UpstreamSource, timeoutMs = 3000): Promise<K
       down('kube_timeout', `the API server did not answer in ${timeoutMs} ms`);
       out?.destroy();
     }, timeoutMs);
-    const resolve = (state: KubeState) => {
+    const resolve = (asked: Asked) => {
       if (settled) return;
       settled = true;
       clearTimeout(deadline);
-      done(state);
+      done(asked);
     };
-    const down = (code: ErrorCode, message: string) => resolve({ reachable: false, error: { code, message } });
+    const down = (code: ErrorCode, message: string) => resolve({ error: { code, message } });
     try {
-      out = openUpstream(
-        { method: 'GET', path: '/version', headers: { accept: 'application/json' }, connectTimeoutMs: timeoutMs, idleTimeoutMs: timeoutMs },
-        upstream,
-        (answer) => {
-          let body = '';
-          answer.setEncoding('utf8');
-          answer.on('data', (c: string) => {
-            body += c;
-          });
-          answer.on('close', () => {
-            if (!answer.complete) down('kube_error', 'the API server broke its answer off');
-          });
-          answer.on('end', () => {
-            if (answer.statusCode !== 200) return down('kube_error', `the API server answered ${answer.statusCode}`);
-            try {
-              resolve({ reachable: true, version: (JSON.parse(body) as { gitVersion?: string }).gitVersion ?? 'unknown' });
-            } catch {
-              down('kube_error', 'the API server answered something that is not its version');
-            }
-          });
-        },
-      );
+      out = openUpstream({ ...request, headers: { accept: 'application/json' }, connectTimeoutMs: timeoutMs, idleTimeoutMs: timeoutMs }, upstream, (answer) => {
+        let body = '';
+        answer.setEncoding('utf8');
+        answer.on('data', (c: string) => {
+          body += c;
+        });
+        answer.on('close', () => {
+          if (!answer.complete) down('kube_error', 'the API server broke its answer off');
+        });
+        answer.on('end', () => resolve({ status: answer.statusCode ?? 502, body }));
+      });
       out.on('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'ETIMEDOUT') down('kube_timeout', err.message);
         else down(isDown(err) ? 'kube_down' : 'kube_error', isDown(err) ? 'the Kubernetes API server is not answering' : err.message);
@@ -66,6 +58,18 @@ export function kubeState(upstream: UpstreamSource, timeoutMs = 3000): Promise<K
       down('kube_down', `no cluster to reach: ${(err as Error).message}`);
     }
   });
+}
+
+/** Ask the API server its version. */
+export async function kubeState(upstream: UpstreamSource, timeoutMs = 3000): Promise<KubeState> {
+  const asked = await ask(upstream, { method: 'GET', path: '/version' }, timeoutMs);
+  if ('error' in asked) return { reachable: false, error: asked.error };
+  if (asked.status !== 200) return { reachable: false, error: { code: 'kube_error', message: `the API server answered ${asked.status}` } };
+  try {
+    return { reachable: true, version: (JSON.parse(asked.body) as { gitVersion?: string }).gitVersion ?? 'unknown' };
+  } catch {
+    return { reachable: false, error: { code: 'kube_error', message: 'the API server answered something that is not its version' } };
+  }
 }
 
 /** Answer GET /status. */

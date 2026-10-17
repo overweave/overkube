@@ -3,6 +3,9 @@ import { type Connector, type Counted, type Feed, type FeedHold, type FeedSpec, 
 import type { CrdLike } from '@overkube/kube-fields';
 import { type KindInfo, type KubeObject, kinds as known } from '@overkube/kube-types';
 import {
+  type AccessQuery,
+  type AccessResult,
+  type AccessRule,
   type CountQuery,
   type CountResult,
   canonical,
@@ -45,6 +48,15 @@ import { answer, itemOf, SEARCH_MAX, SEARCH_MS, searchedKinds } from './search.t
 
 /** How long a kind's count (not watched) is kept fresh. */
 const SIZE_MS = 60_000;
+/** How long what the one signed in may do is kept fresh. */
+const ACCESS_MS = 5 * 60_000;
+/** A namespace none can be (a ":" in it): a review there tells the cluster's rules alone. */
+const NO_NAMESPACE = 'overkube:cluster';
+
+/** A SelfSubjectRulesReview's answer, what of it is read. */
+interface RulesReview {
+  status?: { resourceRules?: AccessRule[]; incomplete?: boolean };
+}
 
 /*
  * Queries answered by the page, from the cluster's data as it watches it.
@@ -72,8 +84,8 @@ const SIZE_MS = 60_000;
  */
 
 export interface SourceOptions {
-  /** Namespaces to ask one by one when the user may list a kind neither in every namespace nor list the namespaces (a kubeconfig's namespace, say). */
-  namespaces?: readonly string[];
+  /** Namespaces to ask one by one when the user may list a kind neither in every namespace nor list the namespaces (those they said they use): read where they are used, as they change (a signal's). */
+  namespaces?: () => readonly string[];
   /** Fields (and CEL functions) addons add, over the kinds' own: read as they change (a new array: every kind's fields made anew). */
   layers?: ReadonlySignal<readonly Layer[]>;
   /** The most namespaces asked one by one when every one cannot be (default 150: the stream's watches are few); past them, partial. */
@@ -110,6 +122,7 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
   const queue = new Queue();
   const counts = new Kept<Counted>({ queue, lane: 'now', ttl: SIZE_MS });
   const lists = new Kept<{ items: readonly SearchItem[]; truncated: boolean }>({ queue, lane: 'later', ttl: SEARCH_MS });
+  const rules = new Kept<{ rules: readonly AccessRule[]; incomplete: boolean }>({ queue, lane: 'now', ttl: ACCESS_MS });
   /** The queries read now, by what they ask. */
   const lives = new Map<string, Live<unknown>>();
   /** Lists ordered whole, by query (its window aside) and what it read: windows of one query read of it while its objects are as they were. */
@@ -257,7 +270,8 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
         // Its columns as last read: the CRD read again once it changed (till then, those it had).
         crd = read.crd;
         if (!crd) return read.error ? { state: 'error', error: read.error } : LOADING;
-      } else if (crds && !crds.whole.value) return LOADING;
+        // Not known yet whether it is one — unless the CRDs cannot be had (refused): then it is taken as none, its own columns aside.
+      } else if (crds && !crds.whole.value && crds.state.value !== 'error') return LOADING;
     }
     const made = fields.of(kind, crd, options.layers?.value ?? NO_LAYERS);
     if (ask.as === 'fields') return { parts: [], fields: made, namespaces: 'all' };
@@ -303,7 +317,7 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     spaces.revision.value;
     if (spaces.state.value === 'loading') return LOADING;
     if (spaces.state.value === 'error' && !forbidden(spaces)) return { state: 'error', error: queryErrorOf(spaces.error.value) };
-    const names = forbidden(spaces) ? [...new Set(options.namespaces ?? [])] : [...spaces.objects.values()].map((o) => o.metadata?.name ?? '').filter(Boolean);
+    const names = forbidden(spaces) ? [...new Set(options.namespaces?.() ?? [])] : [...spaces.objects.values()].map((o) => o.metadata?.name ?? '').filter(Boolean);
     if (forbidden(spaces) && names.length === 0) return { state: 'denied', error: queryErrorOf(cluster.error.value) };
     // More than may be watched one by one: the first of them (by name), the rest not had — said so (partial).
     const asked = names.length > maxNamespaces ? [...names].sort().slice(0, maxNamespaces) : names;
@@ -392,7 +406,7 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     if (!listed) return undefined;
     // Not listed for another reason than a refusal: that is the trouble (not the kind's).
     if ('error' in listed && !refusedBy(listed.error)) return { error: listed.error };
-    const all = [...new Set('error' in listed ? (options.namespaces ?? []) : listed.value.items.map((i) => i.name))].sort();
+    const all = [...new Set('error' in listed ? (options.namespaces?.() ?? []) : listed.value.items.map((i) => i.name))].sort();
     return { names: all.slice(0, maxNamespaces), skipped: Math.max(0, all.length - maxNamespaces) };
   }
 
@@ -473,6 +487,23 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     log(query: LogQuery): Live<LogResult> {
       // The pod it is of, as the page watches it: its runs, its start.
       return pageLog(connector, () => this.get({ kind: 'pods.v1', namespace: query.namespace, name: query.name }), query, troubleOf);
+    },
+    access(query: AccessQuery): Live<AccessResult> {
+      return computed((): AccessResult => {
+        if (connector.session.value === 'expired') return { state: 'error', rules: [], error: { code: 'unauthorized', message: 'signed out: sign in again and reload the page' } };
+        // The cluster's own (its reviews): as the one signed in.
+        const held = rules.read(query.namespace ?? '', (signal) =>
+          connector.http
+            .request<RulesReview>('POST', '/apis/authorization.k8s.io/v1/selfsubjectrulesreviews', {
+              body: { apiVersion: 'authorization.k8s.io/v1', kind: 'SelfSubjectRulesReview', spec: { namespace: query.namespace ?? NO_NAMESPACE } },
+              signal,
+            })
+            .then((r) => ({ rules: r.status?.resourceRules ?? [], incomplete: r.status?.incomplete === true })),
+        );
+        if (!held) return { state: 'loading', rules: [] };
+        if ('error' in held) return { state: 'error', rules: [], error: held.error };
+        return { state: 'live', rules: held.value.rules, ...(held.value.incomplete ? { incomplete: true } : {}) };
+      });
     },
     size(kind: KindRef, scope?: Scope): Live<SizeResult> {
       return computed((): SizeResult => {

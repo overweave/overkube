@@ -1,7 +1,19 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
-import { Action, type ActionSpec, kindRef, type MissingState, type ResourceProps, type ResourceRef, ResourceTab, type ResourceTabSpec, slots, takes } from '@overkube/sdk';
+import {
+  Action,
+  type ActionSpec,
+  accessOf,
+  kindRef,
+  type MissingState,
+  type ResourceProps,
+  type ResourceRef,
+  ResourceTab,
+  type ResourceTabSpec,
+  slots,
+  takes,
+} from '@overkube/sdk';
 import { useGet, useMenu, useNotify, useOpened, usePage, useSay } from '@overkube/sdk/preact';
-import { Button, Code, Modal, Notice, Segmented, TabBar, Tip, toYaml } from '@overkube/uikit';
+import { Button, Modal, Notice, Segmented, TabBar, Tip, toYaml, YamlView } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { slotElement, useDefinitions } from '@overweave/ui/preact';
@@ -60,7 +72,7 @@ export function ResourceView({ kind, namespace, name, layout }: ResourceRef & { 
         tabs.length > 1 && (
           <TabBar
             label={say(T.resource.view.tabs.label)}
-            tabs={tabs.map((t) => ({ key: t.name, label: say(t.spec.title), icon: t.spec.icon }))}
+            tabs={tabs.map((t) => ({ key: t.name, label: say(t.spec.title), icon: accessOf(t, props) === 'marked' ? 'denied' : t.spec.icon }))}
             active={shown?.name}
             onSelect={(tab) => choose({ of: named, tab })}
             panel={panel}
@@ -86,11 +98,11 @@ export function ResourceView({ kind, namespace, name, layout }: ResourceRef & { 
   );
 }
 
-/** Its tabs: the ResourceTabs for its kind and object, not hidden, in order. */
+/** Its tabs: the ResourceTabs for its kind and object, not hidden, not denied the one signed in, in order. */
 function useTabs(kind: KindInfo, object: KubeObject | undefined): Definition<ResourceTabSpec>[] {
   const page = usePage();
   return inOrder(useDefinitions(ResourceTab)).filter((t) => {
-    if (t.spec.hidden || !object || !takes(t.spec.target, kind)) return false;
+    if (t.spec.hidden || !object || !takes(t.spec.target, kind) || accessOf(t, { kind, object }) === 'denied') return false;
     try {
       return t.spec.when ? t.spec.when(object) : true;
     } catch (error) {
@@ -162,7 +174,24 @@ export function ResourceMissing({ kind, name, state, error }: ResourceRef & Miss
 
 /** The object as YAML (the core's, in its tab). */
 export function Yaml({ object }: ResourceProps) {
-  return <Code>{toYaml(object)}</Code>;
+  const say = useSay();
+  const y = T.resource.view.yaml;
+  const text = useMemo(() => toYaml(object), [object]);
+  return (
+    <YamlView
+      text={text}
+      name={object.metadata?.name}
+      labels={{
+        size: (count, size) => say(y.size, { count, size }),
+        copy: say(y.copy),
+        copied: say(y.copied),
+        download: say(y.download),
+        wrap: say(y.wrap),
+        folded: (count) => say(y.folded, { count }),
+        fold: say(y.fold),
+      }}
+    />
+  );
 }
 
 /** An action asked about: which, for which object (its uid), the object as it was asked about. */
@@ -184,7 +213,7 @@ export function Actions({ kind, object }: { kind: KindInfo; object: KubeObject }
   // Asked about another object (one made anew under its name): asked about nothing.
   const asking = asked && asked.uid === uid ? asked.action : null;
   const actions = inOrder(useDefinitions(Action)).filter((a) => {
-    if (!takes(a.spec.target, kind)) return false;
+    if (!takes(a.spec.target, kind) || accessOf(a, { kind, object }) === 'denied') return false;
     try {
       return a.spec.when ? a.spec.when(object) : true;
     } catch (error) {
@@ -223,7 +252,13 @@ export function Actions({ kind, object }: { kind: KindInfo; object: KubeObject }
       )}
       <div class="uk-bar">
         {actions.map((a) => (
-          <Button key={a.name} variant={a.spec.dangerous ? 'danger' : undefined} icon={a.spec.icon} busy={busy === a.name} onClick={() => press(a)}>
+          <Button
+            key={a.name}
+            variant={a.spec.dangerous ? 'danger' : undefined}
+            icon={accessOf(a, { kind, object }) === 'marked' ? 'denied' : a.spec.icon}
+            busy={busy === a.name}
+            onClick={() => press(a)}
+          >
             {asking === a.name ? say(T.resource.view.actions.sure, { action: say(a.spec.title) }) : say(a.spec.title)}
           </Button>
         ))}

@@ -18,6 +18,7 @@ import { canonicalLocale, isLabel, isPhrase, KEY, type Label, type Phrase } from
  *
  *   configure    how things look: titles, order, widths, what is hidden (everyone, the user too)
  *   behaviour    what they do: fields, formats, renders, actions (addons, not the user)
+ *   access       whether the one signed in may have it (the access layer's alone, over everyone's)
  *
  * Adding something that does anything (a Column, an Action, a kind's views,
  * the UI's Fill and Wrap) is behaviour too — an add says every field at
@@ -31,7 +32,7 @@ import { canonicalLocale, isLabel, isPhrase, KEY, type Label, type Phrase } from
  * know of — so what each says of a kind is layered by overweave itself.
  */
 
-export const RIGHTS = { configure: 'configure', behaviour: 'behaviour' } as const;
+export const RIGHTS = { configure: 'configure', behaviour: 'behaviour', access: 'access' } as const;
 export type Right = (typeof RIGHTS)[keyof typeof RIGHTS];
 
 /** Which kinds of the cluster something is for, by their ids ('v1/Pod'); no kinds: every one. */
@@ -40,9 +41,41 @@ export interface Target {
 }
 
 /** The UI's own kinds (Slot, Fill, Wrap), drawn with Preact, their targets kinds of the cluster; strict: a render is behaviour all through. */
-export const ui = uiKinds<PreactComponent, Target>()(RIGHTS, { strict: true });
+export const ui = uiKinds<PreactComponent, Target>()({ configure: RIGHTS.configure, behaviour: RIGHTS.behaviour }, { strict: true });
 
-const { configure, behaviour } = RIGHTS;
+const { configure, behaviour, access } = RIGHTS;
+
+/**
+ * What something needs of the cluster to be of use: a verb on a resource
+ * (none: the kind it is shown for), its subresource ('log'), of an API
+ * group ('' the core's; none: the kind's). Its definer says it; the access
+ * layer says whether the one signed in may (its access).
+ */
+export interface Need {
+  verb: string;
+  group?: string;
+  resource?: string;
+  subresource?: string;
+}
+
+/** Whether it is shown, as the one signed in may: allowed; denied (not shown); marked (shown, marked as denied: debugging). */
+export type Access = 'allowed' | 'denied' | 'marked';
+
+/** What access is asked of: a kind's object, or a kind (in a namespace; none: anywhere). */
+export interface AccessSubject {
+  kind?: KindInfo;
+  object?: KubeObject;
+  namespace?: string;
+}
+
+/** Whether a definition is shown for this, as its access says (none, or one that throws: allowed — the API server still decides). */
+export function accessOf(definition: { spec: { access?: (subject: AccessSubject) => Access } }, subject: AccessSubject): Access {
+  try {
+    return definition.spec.access?.(subject) ?? 'allowed';
+  } catch {
+    return 'allowed';
+  }
+}
 
 // ── Checks of the fields' values ───────────────────────────────────────────
 
@@ -60,6 +93,11 @@ const target: Check = (v) => typeof v === 'object' && v !== null && !Array.isArr
 const sort: Check = (v) =>
   typeof v === 'object' && v !== null && text((v as { column?: unknown }).column) && [undefined, true, false].includes((v as { descending?: unknown }).descending as never);
 /** A region's name: its slot's last part (page.<page>.<region>), so no "." or ":"; its title, a label. */
+const needs: Check = (v) =>
+  Array.isArray(v) &&
+  v.every(
+    (n) => typeof n === 'object' && n !== null && typeof n.verb === 'string' && ['group', 'resource', 'subresource'].every((k) => n[k] === undefined || typeof n[k] === 'string'),
+  );
 const regions: Check = (v) => Array.isArray(v) && v.every((r) => typeof r?.name === 'string' && /^[^.:]+$/.test(r.name) && (r.title === undefined || isLabel(r.title)));
 /** A path: from the root, its parts fixed or :named, a last * taking the rest (no query: that is the page's own). */
 const path: Check = (v) => typeof v === 'string' && /^\/([^/*:?]+\/|:[\w-]+\/)*([^/*:?]*|:[\w-]+|\*)$/.test(v);
@@ -305,13 +343,25 @@ export interface PageSpec {
   /** Not listed in the navigation (still there at its path). */
   hidden?: boolean;
   regions?: Region[];
+  /** What it needs of the cluster (each). */
+  needs?: Need[];
+  /** Whether the one signed in may have it (the access layer's): denied, its place says so. */
+  access?: (subject: AccessSubject) => Access;
 }
 
 export const Page = defineKind<PageSpec>()('Page', {
   required: ['path'],
   createRight: behaviour,
-  validate: fields({ ...looks, path: [path, 'notAPath'], pinned: [flag, 'notAFlag'], hidden: [flag, 'notAFlag'], regions: [regions, 'notRegions'] }),
-  patchRights: { title: configure, icon: configure, order: configure, pinned: configure, hidden: configure, regions: configure },
+  validate: fields({
+    ...looks,
+    path: [path, 'notAPath'],
+    pinned: [flag, 'notAFlag'],
+    hidden: [flag, 'notAFlag'],
+    regions: [regions, 'notRegions'],
+    needs: [needs, 'notNeeds'],
+    access: [fn, 'notAFunction'],
+  }),
+  patchRights: { title: configure, icon: configure, order: configure, pinned: configure, hidden: configure, regions: configure, needs: behaviour, access },
   merge: { lists: { regions: { key: 'name' } } },
 });
 
@@ -330,13 +380,17 @@ export interface ResourceTabSpec {
   hidden?: boolean;
   /** Whether it is for this object (none: always). */
   when?: (object: KubeObject) => boolean;
+  /** What it needs of the cluster (each), for the object's kind unless it says. */
+  needs?: Need[];
+  /** Whether the one signed in may have it, for an object (the access layer's). */
+  access?: (subject: AccessSubject) => Access;
 }
 
 export const ResourceTab = defineKind<ResourceTabSpec>()('ResourceTab', {
   required: ['target', 'title'],
   createRight: behaviour,
-  validate: fields({ ...looks, target: [target, 'notATarget'], hidden: [flag, 'notAFlag'], when: [fn, 'notAFunction'] }),
-  patchRights: { target: behaviour, title: configure, icon: configure, order: configure, hidden: configure, when: behaviour },
+  validate: fields({ ...looks, target: [target, 'notATarget'], hidden: [flag, 'notAFlag'], when: [fn, 'notAFunction'], needs: [needs, 'notNeeds'], access: [fn, 'notAFunction'] }),
+  patchRights: { target: behaviour, title: configure, icon: configure, order: configure, hidden: configure, when: behaviour, needs: behaviour, access },
 });
 
 /** Something done to an object (its view's actions): the page draws its button, asks first when it is dangerous, tells the cluster's refusal. */
@@ -349,13 +403,25 @@ export interface ActionSpec {
   /** Whether it applies to this object (none: always). */
   when?: (object: KubeObject) => boolean;
   run: (object: KubeObject) => Promise<unknown> | unknown;
+  /** What it needs of the cluster (each), for the object's kind unless it says. */
+  needs?: Need[];
+  /** Whether the one signed in may, for an object (the access layer's). */
+  access?: (subject: AccessSubject) => Access;
 }
 
 export const Action = defineKind<ActionSpec>()('Action', {
   required: ['target', 'title', 'run'],
   createRight: behaviour,
-  validate: fields({ ...looks, target: [target, 'notATarget'], dangerous: [flag, 'notAFlag'], when: [fn, 'notAFunction'], run: [fn, 'notAFunction'] }),
-  patchRights: { target: behaviour, title: configure, icon: configure, order: configure, dangerous: behaviour, when: behaviour, run: behaviour },
+  validate: fields({
+    ...looks,
+    target: [target, 'notATarget'],
+    dangerous: [flag, 'notAFlag'],
+    when: [fn, 'notAFunction'],
+    run: [fn, 'notAFunction'],
+    needs: [needs, 'notNeeds'],
+    access: [fn, 'notAFunction'],
+  }),
+  patchRights: { target: behaviour, title: configure, icon: configure, order: configure, dangerous: behaviour, when: behaviour, run: behaviour, needs: behaviour, access },
 });
 
 /**
@@ -402,6 +468,10 @@ export interface MenuItemSpec {
   when?: (subject: any) => boolean;
   // biome-ignore lint/suspicious/noExplicitAny: given its subject's (menuItem() types it).
   run: (subject: any, page: MenuPage) => Promise<unknown> | unknown;
+  /** What it needs of the cluster (each), for its subject's kind unless it says (a subject with a kind: a resource's menu). */
+  needs?: Need[];
+  /** Whether the one signed in may, for its subject (the access layer's). */
+  access?: (subject: AccessSubject) => Access;
 }
 
 /** What a menu's item may do on the page: where it is, go elsewhere, tell the user (in the page's language: say). */
@@ -424,6 +494,8 @@ export const MenuItem = defineKind<MenuItemSpec>()('MenuItem', {
     hidden: [flag, 'notAFlag'],
     when: [fn, 'notAFunction'],
     run: [fn, 'notAFunction'],
+    needs: [needs, 'notNeeds'],
+    access: [fn, 'notAFunction'],
   }),
   patchRights: {
     on: behaviour,
@@ -436,6 +508,8 @@ export const MenuItem = defineKind<MenuItemSpec>()('MenuItem', {
     danger: behaviour,
     when: behaviour,
     run: behaviour,
+    needs: behaviour,
+    access,
   },
 });
 
@@ -448,6 +522,30 @@ export interface NavViewSpec {
   /** Those the KindViews and Pages pin, unpinned. */
   unpinned?: string[];
 }
+
+/**
+ * The namespaces one may use without listing them (the one signed in may
+ * not list the cluster's): each by name, true — false: taken back. The
+ * page's guess (a ServiceAccount's own namespace, where it has rights) and
+ * those the user adds, layered key by key. One, named 'default'.
+ */
+export interface NamespacesSpec {
+  known?: Record<string, boolean>;
+}
+
+export const Namespaces = defineKind<NamespacesSpec>()('Namespaces', {
+  createRight: behaviour,
+  validate: fields({ known: [mapOf(flag), 'notFlags'] }),
+  patchRights: { known: configure },
+  merge: { maps: ['known'] },
+});
+
+/** The namespaces one may use without listing them, of a Namespaces definition: those said true, in order. */
+export const knownNamespaces = (spec: NamespacesSpec | undefined): string[] =>
+  Object.entries(spec?.known ?? {})
+    .filter(([, on]) => on)
+    .map(([name]) => name)
+    .sort();
 
 export const NavView = defineKind<NavViewSpec>()('NavView', {
   validate: fields({
@@ -542,6 +640,7 @@ export const kubeOwnKinds = [
   Action,
   MenuItem,
   NavView,
+  Namespaces,
   Theme,
   Appearance,
   Messages,

@@ -8,6 +8,7 @@
  * and nothing that asks has to know which.
  */
 
+export { type AccessAsk, type AccessQuery, type AccessResult, type AccessRule, ALL_ALLOWED, allowed, grantsAny, ruleAllows } from './access.ts';
 export { type CompileCel, checkFieldDef, defineField, FIELD_LIMITS, fieldsOf, fieldVersion } from './def.ts';
 export { canonical, fnv1a, fnv1a64 } from './hash.ts';
 export { cursorOf, entriesBefore, entriesOf, type LogEntry, logTimeKey, logWindow, readCursor } from './logs.ts';

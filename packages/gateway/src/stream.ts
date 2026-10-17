@@ -21,7 +21,8 @@ import { Channel, type Feed, overBudget, type Settings, type Spec, Stream, setti
  * (another connection), is where it ends. A 410 ends it (ERROR): the client
  * lists again, removes it and subscribes anew. The stream's name is its
  * key: whoever has it may change it — it never leaves the page that opened
- * it.
+ * it — if it is theirs (the one signed in who opened it: to anyone else it
+ * is not there).
  */
 
 /** The streams of one gateway, by name. */
@@ -36,19 +37,20 @@ const CONTAINER = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
 const METADATA = 'application/json;as=PartialObjectMetadata;g=meta.k8s.io;v=v1,application/json';
 
 /** Serve one changing stream until the client leaves. */
-export function stream(res: ServerResponse, options: WatchOptions, streams: Streams): void {
+export function stream(res: ServerResponse, options: WatchOptions, streams: Streams, owner = ''): void {
   if (res.destroyed || res.writableEnded) return;
   const settings = settingsOf(options);
   const full = tooManyStreams(settings);
   if (full) fail(res, 503, 'too_many_watches', full);
-  else new Changing(res, settings, streams);
+  else new Changing(res, settings, streams, owner);
 }
 
 const gone = (name: string): Wrong => ({ status: 404, code: 'no_stream', message: `no stream ${name.slice(0, STREAM.idLength)}: it ended, or never was` });
 
 /** A change to a stream (its body parsed), answered. */
-export function change(name: string, body: unknown, res: ServerResponse, streams: Streams): void {
-  const s = streams.get(name);
+export function change(name: string, body: unknown, res: ServerResponse, streams: Streams, owner = ''): void {
+  const found = streams.get(name);
+  const s = found?.owner === owner ? found : undefined;
   const wrong = s ? s.change(body) : gone(name);
   if (wrong) fail(res, wrong.status, wrong.code, wrong.message, { f: wrong.f });
   else res.writeHead(204).end();
@@ -98,14 +100,17 @@ function checkLog(sub: Record<string, unknown>): string | undefined {
 }
 
 /** A stream changed while it is open: subscriptions added and removed. */
-class Changing extends Stream {
+export class Changing extends Stream {
   readonly name = randomUUID();
   private readonly subscriptions = new Map<string, Feed>();
   private readonly streams: Streams;
+  /** Whose it is: the one signed in who opened it ('': no one is). */
+  readonly owner: string;
 
-  constructor(res: ServerResponse, settings: Settings, streams: Streams) {
+  constructor(res: ServerResponse, settings: Settings, streams: Streams, owner: string) {
     super(res, settings);
     this.streams = streams;
+    this.owner = owner;
     streams.set(this.name, this);
     this.send({ type: 'HELLO', stream: this.name });
   }

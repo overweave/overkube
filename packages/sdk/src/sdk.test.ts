@@ -5,7 +5,7 @@ import { mount, renderSlot } from '@overweave/testkit/preact';
 import { signal } from '@preact/signals';
 import { h } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
-import { action, type Cluster, column, defineAddon, kindMatcher, kubeOwnKinds, section, slots, standingOf, takes, tile, ui, wrap } from './index.ts';
+import { accessOf, action, type Cluster, column, defineAddon, kindMatcher, kubeOwnKinds, section, slots, standingOf, takes, tile, ui, wrap } from './index.ts';
 import { KubeProvider, useList } from './preact/index.ts';
 
 /*
@@ -155,6 +155,39 @@ describe('the usual definitions', () => {
     expect(() => slots.page('')).toThrow(/not empty/);
     expect(() => slots.page('a', 'b.c')).toThrow(/no "\." or ":"/);
     expect(() => slots.page('a', '')).toThrow(/not empty/);
+  });
+});
+
+describe('access: whether the one signed in may have something', () => {
+  it('is the access layer’s word alone, over everyone’s; what is needed, its definer’s', () => {
+    const { w, core, user } = dashboard();
+    const access = w.as('access', standingOf('access'));
+    core.add('ResourceTab', 'core.logs', { target: {}, title: 'Logs', needs: [{ verb: 'get', resource: 'pods', subresource: 'log' }] });
+    // An addon, the user: no say in it.
+    expect(core.patch('ResourceTab', 'core.logs', { access: () => 'allowed' }).status).toBe('rejected');
+    expect(user.patch('ResourceTab', 'core.logs', { hidden: false }).status).toBe('included');
+    assertResult(access.patch('ResourceTab', 'core.logs', { access: () => 'denied', hidden: true }), 'included');
+    const tab = w.registry.get('ResourceTab', 'core.logs');
+    expect([accessOf(tab as never, {}), tab?.spec.hidden, tab?.provenanceOf(['hidden'])?.contributor]).toEqual(['denied', true, 'access']);
+    // Needs as they are: a verb each.
+    expect(core.add('ResourceTab', 'bad', { target: {}, title: 'x', needs: [{ resource: 'pods' }] as never }).status).toBe('rejected');
+    expect(standingOf('access')).toEqual({ priority: 2000, rights: ['configure', 'behaviour', 'access'] });
+  });
+
+  it('allowed where none says, or where what says throws (the API server still decides)', () => {
+    expect(accessOf({ spec: {} }, {})).toBe('allowed');
+    expect(
+      accessOf(
+        {
+          spec: {
+            access: () => {
+              throw new Error('x');
+            },
+          },
+        },
+        {},
+      ),
+    ).toBe('allowed');
   });
 });
 

@@ -1,6 +1,6 @@
 import type { AddonStatus, UserChanges } from '@overkube/sdk';
 import { hashRouter, notifications, Shell } from '@overkube/shell';
-import { css, Notice } from '@overkube/uikit';
+import { adoptStyles, Notice } from '@overkube/uikit';
 import type { Registry } from '@overweave/core';
 import { mountSlotOverlay } from '@overweave/ui/overlay';
 import { slotTrace } from '@overweave/ui/preact';
@@ -15,17 +15,8 @@ export interface Page {
   cluster: ClusterAccess;
   /** Where the user's changes are made. */
   user: UserChanges;
-  /** The slots over the page (where each is, the empty ones): its overlay open, ctrl+shift+s to close it. */
+  /** The slots over the page (where each is, the empty ones): its overlay open, ctrl+shift+s to close it; what the one signed in may not have, shown marked rather than hidden. */
   debug?: boolean;
-}
-
-/** The kit's styles, once per document. */
-function styles(doc: Document): void {
-  if (doc.getElementById('overkube-css')) return;
-  const style = doc.createElement('style');
-  style.id = 'overkube-css';
-  style.textContent = css;
-  doc.head.appendChild(style);
 }
 
 /** The core, not running: said over the page (all it draws is its, so a page without it is empty). */
@@ -51,7 +42,7 @@ function CoreDown({ host }: { host: AddonHost }) {
 export function mount(element: HTMLElement, page: Page, told = notifications()): () => void {
   const doc = element.ownerDocument;
   const win = doc.defaultView as Window;
-  styles(doc);
+  adoptStyles(doc);
   // The kit's root: its tokens' defaults; the shell sets the theme's over them (dark, light, as the system is).
   element.classList.add('uk-root');
   const router = hashRouter(win);
@@ -68,6 +59,7 @@ export function mount(element: HTMLElement, page: Page, told = notifications()):
         router={router}
         notifications={told}
         trace={trace}
+        access={page.debug ? 'mark' : 'hide'}
         onFailure={(definition, field, error) => page.host.failed(definition, field, error)}
       />
     </>,

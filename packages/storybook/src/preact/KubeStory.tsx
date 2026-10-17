@@ -3,7 +3,7 @@ import { type Addon, type AddonStatus, type Addons, defineAddon, kindMatcher, ku
 import { AddonsProvider, fill, KubeProvider, UserProvider, usePage } from '@overkube/sdk/preact';
 import { Frame, memoryRouter, memoryStore, ShellProvider, UserService } from '@overkube/shell';
 import { type AddonEnv, addonEnv, addonRun, type FakeCluster, fakeCluster } from '@overkube/testkit';
-import { css } from '@overkube/uikit';
+import { adoptStyles } from '@overkube/uikit';
 import { WorldStory } from '@overweave/storybook/preact';
 import type { AddonRun } from '@overweave/testkit';
 import { signal } from '@preact/signals';
@@ -38,20 +38,13 @@ export interface KubeStoryProps {
   locale?: string;
   /** How its addons are said to be doing, by id (none: running): { nord: { state: 'crashloop', error: '…' } }. */
   states?: Readonly<Record<string, Partial<AddonStatus>>>;
+  /** What the user may not have (c.rules): hidden (none said), or shown marked — debugging. */
+  access?: 'hide' | 'mark';
   /**
    * cluster, served, kinds, user and states are the story's start: read once. Another
    * resetKey starts it anew with what they are then (a control's value: its key).
    */
   resetKey?: unknown;
-}
-
-/** The kit's styles, once per document. */
-function styles(doc: Document): void {
-  if (doc.getElementById('overkube-css')) return;
-  const style = doc.createElement('style');
-  style.id = 'overkube-css';
-  style.textContent = css;
-  doc.head.appendChild(style);
 }
 
 /** Where the page is, and a way elsewhere: a path typed in. */
@@ -83,10 +76,10 @@ const bar = defineAddon({
 /** A story of the page: started anew (its cluster, its world, its path) whenever its resetKey changes. */
 export function KubeStory(props: KubeStoryProps) {
   // Another theme, another start (the story's world made anew with it).
-  return <Story key={`${String(props.resetKey)}:${props.theme ?? ''}:${props.locale ?? ''}`} {...props} />;
+  return <Story key={`${String(props.resetKey)}:${props.theme ?? ''}:${props.locale ?? ''}:${props.access ?? ''}`} {...props} />;
 }
 
-function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale, states }: KubeStoryProps) {
+function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale, states, access }: KubeStoryProps) {
   // The story's own, kept while it is shown: its cluster (filled once), its notifications and services, its path.
   const [env] = useState<AddonEnv>(() => {
     const c = fakeCluster({ served, kinds });
@@ -131,7 +124,7 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
     runs.current.set(a, made);
     return made;
   };
-  useEffect(() => styles(document), []);
+  useEffect(() => adoptStyles(document), []);
   // A definition's function failing as the page is drawn (a column's value): listed under the story, each once.
   const [failures, setFailures] = useState<readonly string[]>([]);
   const onFailure = (definition: { kind: string; name: string }, field: string, error: unknown) => {
@@ -161,7 +154,7 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
       >
         <KubeProvider cluster={env.cluster}>
           <UserProvider user={changes}>
-            <ShellProvider router={router} notifications={env.notifications} onFailure={onFailure}>
+            <ShellProvider router={router} notifications={env.notifications} onFailure={onFailure} access={access}>
               <AddonsProvider addons={host}>
                 <Frame />
               </AddonsProvider>

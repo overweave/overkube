@@ -1,6 +1,6 @@
 /**
  * overkube's UI kit: what its page and its addons are drawn with, so that
- * they look one. Styles (css) go into the page's shadow root; colours are
+ * they look one. Its styles are adopted by a document or shadow root (adoptStyles); colours are
  * dark, or light with data-theme='light' on .uk-root. By what they are for:
  * actions, status, data, display, layout, forms, navigation, overlays.
  */
@@ -17,6 +17,7 @@ export { Meter } from './data/Meter';
 export { Ratio, ratioTone } from './data/Ratio';
 export { Split, type SplitPart } from './data/Split';
 export { Table, type TableColumn, type TableProps, type TableSort } from './data/Table';
+export { YamlView, type YamlViewLabels } from './data/YamlView';
 export { EmptyState } from './display/EmptyState';
 export { Highlight } from './display/Highlight';
 export { ICONS, Icon, type IconData, registerIcons } from './display/Icon';
@@ -53,6 +54,7 @@ export { Panel } from './layout/Panel';
 export { Row, type RowProps, Rows } from './layout/Rows';
 export { Section } from './layout/Section';
 export { LEAVE_MS, PEEK_MS, SIDE_RAIL_LABELS, SideRail, type SideRailLabels, type SideRailProps, type SideRailState } from './layout/SideRail';
+export { adoptStyles } from './lib/adopt';
 export { copyText } from './lib/clipboard';
 export { Above, Layer, type LayerProps, type Placing, placeAt, usePlacedBy } from './lib/layers';
 export type { Level } from './lib/level';
@@ -89,5 +91,4 @@ export { Badge } from './status/Badge';
 export { Dot } from './status/Dot';
 export { Notice } from './status/Notice';
 export { Status, TONES, type Tone } from './status/Status';
-export { css } from './styles';
 export { DEFAULT_TOKENS, KNOBS, knobsOf, madeTheme, SHAPE_TOKENS, SIZES, type Size, type ThemeKnobs, TOKENS, type Token, type Tokens, tokenStyle } from './theme';

@@ -62,8 +62,8 @@ describe('parsePatch', () => {
       dryRun: false,
     });
     expect(parsePatch({ path: `${DEPLOYMENT}/scale`, type: 'merge', patch: { spec: { replicas: 0 } } })).toMatchObject({ path: `${DEPLOYMENT}/scale` });
-    expect(parsePatch({ path: DEPLOYMENT, type: 'apply', patch: { apiVersion: 'apps/v1' }, fieldManager: 'me', force: true, dryRun: true })).toMatchObject({
-      fieldManager: 'me',
+    expect(parsePatch({ path: DEPLOYMENT, type: 'apply', patch: { apiVersion: 'apps/v1' }, fieldManager: 'overkube-images', force: true, dryRun: true })).toMatchObject({
+      fieldManager: 'overkube-images',
       force: true,
       dryRun: true,
     });
@@ -85,6 +85,9 @@ describe('parsePatch', () => {
       [{ path: DEPLOYMENT, type: 'merge', patch: [] }, /a merge patch is a JSON object/],
       [{ path: DEPLOYMENT, type: 'apply', patch: 'kind: Deployment' }, /an apply patch is a JSON object/],
       [{ path: DEPLOYMENT, type: 'merge', patch: {}, fieldManager: 'a b' }, /^fieldManager:/],
+      // Another's, whose fields an apply with force would take over.
+      [{ path: DEPLOYMENT, type: 'apply', patch: {}, fieldManager: 'helm', force: true }, /^fieldManager: the gateway's \(overkube\) or one of its own \(overkube-<name>\)$/],
+      [{ path: DEPLOYMENT, type: 'merge', patch: {}, fieldManager: 'overkubex' }, /^fieldManager: the gateway's/],
       [{ path: DEPLOYMENT, type: 'merge', patch: {}, force: true }, /only for an apply/],
       [{ path: DEPLOYMENT, type: 'apply', patch: {}, force: 'yes' }, /^force:/],
       [{ path: DEPLOYMENT, type: 'merge', patch: {}, dryRun: 1 }, /^dryRun:/],
@@ -121,8 +124,8 @@ describe('patch', () => {
   it('passes force (an apply) and a dry run on as the API server takes them', async () => {
     const api = await fakeApiServer((_req, _body, res) => res.end('{}'));
     const send = await gateway(api.kubeconfig);
-    await send({ path: DEPLOYMENT, type: 'apply', patch: {}, fieldManager: 'editor', force: true, dryRun: true });
-    expect(api.seen[0].url).toBe(`${DEPLOYMENT}?fieldManager=editor&force=true&dryRun=All`);
+    await send({ path: DEPLOYMENT, type: 'apply', patch: {}, fieldManager: 'overkube-editor', force: true, dryRun: true });
+    expect(api.seen[0].url).toBe(`${DEPLOYMENT}?fieldManager=overkube-editor&force=true&dryRun=All`);
   });
 
   it("brings the API server's answer back as it is, errors included", async () => {

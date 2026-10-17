@@ -7,12 +7,14 @@
  * types the page speaks it in: '@overkube/gateway/protocol'.
  */
 
-export { createGateway, type Gateway, type GatewayOptions, type Given } from './gateway.ts';
+export { createGateway, fromAnotherSite, type Gateway, type GatewayOptions, type Given } from './gateway.ts';
+export { actingAs, type Identity, identityError } from './identity.ts';
 export type { Upstream } from './kubeconfig.ts';
 export { readKubeconfig } from './kubeconfig.ts';
+export { whoAmI } from './me.ts';
 export { FIELD_MANAGER } from './patch.ts';
 export { type ApiPath, classify } from './paths.ts';
 export * from './protocol.ts';
 export { kubeState } from './status.ts';
-export { fromKubeconfig, inCluster, type UpstreamSource } from './upstream.ts';
+export { fail, fromKubeconfig, inCluster, type UpstreamSource } from './upstream.ts';
 export { resetWatchState, type WatchOptions, watchTotals } from './watch.ts';
