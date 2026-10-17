@@ -4,13 +4,9 @@
 # Node's image with openssl (dev/node): built here, once — Docker's cache keeps it.
 NODE_IMAGE ?= overkube-node:24
 
-# overweave's packages come from GitHub's npm registry (.npmrc): its token is gh's, or the environment's
-# (CI). Passed to the container by name: never on a command line.
-export GITHUB_TOKEN ?= $(shell gh auth token 2>/dev/null)
-
 # The parent folder is mounted: overweave beside this repository (../overweave) is there for link-overweave.
 RUN  = docker run --rm -v "$(abspath $(CURDIR)/..)":/src -w /src/$(notdir $(CURDIR))
-NODE = $(RUN) -e npm_config_update_notifier=false -e GITHUB_TOKEN -v ok-npmcache:/root/.npm $(NODE_IMAGE)
+NODE = $(RUN) -e npm_config_update_notifier=false -v ok-npmcache:/root/.npm $(NODE_IMAGE)
 
 # overweave's packages, by name (node_modules/@overweave/<name>).
 OVERWEAVE = core ui testkit storybook

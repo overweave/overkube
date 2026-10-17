@@ -73,6 +73,8 @@ const coredns = (name: string, uid: string, owner: { kind: string; name: string;
         {
           name: 'coredns',
           image: 'registry.k8s.io/coredns/coredns:v1.12.0',
+          command: ['/coredns'],
+          args: ['-conf', '/etc/coredns/Corefile', '-dns.port', '53', '-pidfile', '/run/coredns.pid', '-log.level', 'info', '-health.lameduck', '5s'],
           ports: [
             { containerPort: 53, protocol: 'UDP' },
             { containerPort: 53, protocol: 'TCP' },

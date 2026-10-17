@@ -1,7 +1,5 @@
 # Everything `make check` checks — lint and format, types, tests — on every push to main and every
-# pull request. overweave's packages come from GitHub's npm registry (.npmrc): read with the
-# workflow's own token, given this repository's access to them (each package's settings: Manage
-# Actions access).
+# pull request.
 name: check
 
 on:
@@ -12,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: check-${{ github.workflow }}-${{ github.ref }}
@@ -29,8 +26,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

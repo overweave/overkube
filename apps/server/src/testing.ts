@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 /*
- * What the server's tests share (not built: tsconfig.build.json leaves it
- * out): a certificate of this machine's names, made for them by openssl —
+ * What the server's tests share (not built: the build takes only what cli.ts
+ * reaches): a certificate of this machine's names, made for them by openssl —
  * on CI's runner, in the image `make` checks in — and kept nowhere.
  */
 

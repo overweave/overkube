@@ -2,6 +2,7 @@ import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import {
   Action,
   type ActionSpec,
+  Appearance,
   accessOf,
   kindRef,
   type MissingState,
@@ -12,12 +13,11 @@ import {
   slots,
   takes,
 } from '@overkube/sdk';
-import { useGet, useMenu, useNotify, useOpened, usePage, useSay } from '@overkube/sdk/preact';
+import { useGet, useMenu, useNotify, useOpened, usePage, useSay, useUser } from '@overkube/sdk/preact';
 import { Button, Modal, Notice, Segmented, TabBar, Tip, toYaml, YamlView } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
-import { slotElement, useDefinitions } from '@overweave/ui/preact';
-import type { Signal } from '@preact/signals';
+import { slotElement, useDefinition, useDefinitions } from '@overweave/ui/preact';
 import { useId, useMemo, useState } from 'preact/hooks';
 import { T } from './texts.ts';
 import { Waiting } from './Waiting.tsx';
@@ -34,7 +34,8 @@ import { Waiting } from './Waiting.tsx';
  * them). Closed as the page closes what it opened (useOpened): back to
  * where it was opened from.
  */
-export function ResourceView({ kind, namespace, name, layout }: ResourceRef & { layout: Signal<Layout> }) {
+export function ResourceView({ kind, namespace, name }: ResourceRef) {
+  const layout = useLayout();
   const { close } = useOpened();
   const say = useSay();
   const menu = useMenu('resource.context');
@@ -49,7 +50,7 @@ export function ResourceView({ kind, namespace, name, layout }: ResourceRef & { 
   const panel = useId();
   if (!object || !props) {
     return (
-      <Modal title={<Titled kind={kind} name={name} namespace={namespace} />} placement={layout.value} onClose={close}>
+      <Modal title={<Titled kind={kind} name={name} namespace={namespace} />} placement={layout} onClose={close}>
         {slotElement(slots.resource.view.missing, missing, { limit: 1 })}
       </Modal>
     );
@@ -79,7 +80,7 @@ export function ResourceView({ kind, namespace, name, layout }: ResourceRef & { 
           />
         )
       }
-      placement={layout.value}
+      placement={layout}
       onClose={close}
       footer={slotElement(slots.resource.view.footer, props)}
     >
@@ -122,24 +123,23 @@ export function ResourceOverview(props: ResourceProps) {
   );
 }
 
-/** How an opened resource is laid out: a side panel, a window, all the window. */
-export type Layout = 'right' | 'center' | 'full';
+/** How an opened resource is laid out, as the Appearance says (a side panel, unless said). */
+const useLayout = () => useDefinition(Appearance, 'default')?.spec.layout ?? 'right';
 
-/** How it is laid out, switched (the core's, in resource.view.header): one for every resource opened — kept while the page runs (the user's layer's, once there is one). */
-export function LayoutSwitch({ layout }: { layout: Signal<Layout> }) {
+/** How it is laid out, switched (the core's, in resource.view.header: as icons; the settings', in words): one for every resource opened — the user's (Appearance.layout), kept. */
+export function LayoutSwitch({ words = false }: { words?: boolean }) {
   const say = useSay();
+  const user = useUser();
   const l = T.resource.view.layout;
   return (
     <Segmented
       label={say(l.label)}
-      value={layout.value}
-      onChange={(next) => {
-        layout.value = next;
-      }}
+      value={useLayout()}
+      onChange={(layout) => user.patch('Appearance', 'default', { layout })}
       options={[
-        { value: 'right', label: say(l.right), icon: 'panel-right' },
-        { value: 'center', label: say(l.center), icon: 'window' },
-        { value: 'full', label: say(l.full), icon: 'maximize' },
+        { value: 'right', label: say(l.right), ...(words ? {} : { icon: 'panel-right' }) },
+        { value: 'center', label: say(l.center), ...(words ? {} : { icon: 'window' }) },
+        { value: 'full', label: say(l.full), ...(words ? {} : { icon: 'maximize' }) },
       ]}
     />
   );

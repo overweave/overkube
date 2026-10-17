@@ -24,13 +24,13 @@ export const LIBRARIES: readonly Library[] = [
   },
   {
     "name": "@overweave/core",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "license": "MIT",
     "url": "https://github.com/overweave/overweave/tree/main/packages/core#readme"
   },
   {
     "name": "@overweave/ui",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "license": "MIT",
     "url": "https://github.com/overweave/overweave/tree/main/packages/ui#readme"
   },

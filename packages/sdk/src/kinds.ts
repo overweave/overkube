@@ -586,6 +586,8 @@ export interface AppearanceSpec {
   theme?: string;
   mode?: 'system' | 'dark' | 'light';
   size?: 'compact' | 'comfortable' | 'large';
+  /** How a resource opened over the page is laid out: a side panel, a window, all the window. */
+  layout?: 'right' | 'center' | 'full';
 }
 
 export const Appearance = defineKind<AppearanceSpec>()('Appearance', {
@@ -593,8 +595,9 @@ export const Appearance = defineKind<AppearanceSpec>()('Appearance', {
     theme: [text, 'notText'],
     mode: [(v) => v === 'system' || v === 'dark' || v === 'light', 'notAMode'],
     size: [(v) => v === 'compact' || v === 'comfortable' || v === 'large', 'notASize'],
+    layout: [(v) => v === 'right' || v === 'center' || v === 'full', 'notALayout'],
   }),
-  patchRights: { theme: configure, mode: configure, size: configure },
+  patchRights: { theme: configure, mode: configure, size: configure, layout: configure },
 });
 
 /**

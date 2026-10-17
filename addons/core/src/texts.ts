@@ -126,6 +126,7 @@ export const T = {
       language: t('core.page.settings.language', 'Language'),
       asBrowser: t('core.page.settings.as-browser', 'As the browser ({language})'),
       navigation: t('core.page.settings.navigation', 'Navigation'),
+      resourceView: t('core.page.settings.resource-view', 'Resource view'),
       tabs: t('core.page.settings.tabs', 'Tabs'),
       side: t('core.page.settings.side', 'Side'),
       sideRail: t('core.page.settings.side-rail', 'Side rail'),
@@ -344,6 +345,11 @@ export const T = {
       copied: t('core.resource.context.copied', 'Copied'),
     },
     view: {
+      /** A long value kept to its first lines: all of it, and back. */
+      clamped: {
+        more: t('core.resource.view.clamped.more', 'Show all'),
+        less: t('core.resource.view.clamped.less', 'Show less'),
+      },
       layout: {
         label: t('core.resource.view.layout.label', 'Layout'),
         right: t('core.resource.view.layout.right', 'Side panel'),

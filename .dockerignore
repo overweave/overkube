@@ -1,0 +1,10 @@
+# What the image is built from: the sources, the lock file — not what is installed or built here, nor the dev stand.
+**/node_modules
+**/dist
+coverage
+dev
+docs
+.git
+.github
+**/*.log
+.DS_Store

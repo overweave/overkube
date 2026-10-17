@@ -352,6 +352,7 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 /* A card (Card): its head — its mark, name, badges, what is said quiet, its end (counts, buttons) — then what is in it, each part apart. */
 .uk-card-head { display: flex; align-items: baseline; gap: 10px; min-width: 0; margin-bottom: 14px; }
 .uk-card-head > :is(.uk-status, .uk-icon) { align-self: center; }
+.uk-card-head > .uk-tip-at { align-self: center; display: flex; }
 .uk-card-head > b { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uk-card-head > .uk-badge { align-self: baseline; }
 .uk-card-end { margin-left: auto; display: flex; align-items: baseline; gap: 10px; color: var(--uk-muted); font-size: 12px; white-space: nowrap; }
@@ -444,6 +445,12 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .uk-field > dt { color: var(--uk-muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .uk-field > dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+/* A line of parts in a field: as wide as the field at most (an image's name cut short in it, not over the next field). */
+.uk-field > dd .uk-line { max-width: 100%; }
+/* A long text kept to its first lines (Clamped), all of it when opened. */
+.uk-clamped { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.uk-clamped-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--uk-clamp, 2); overflow: hidden; max-width: 100%; }
+.uk-clamped-text[data-open] { display: block; -webkit-line-clamp: none; }
 /* A state among fields: its words wrap (a long one, NotReady,SchedulingDisabled), not cut short. */
 .uk-field > dd .uk-status { white-space: normal; }
 .uk-field > dd .uk-status-text { overflow: visible; }
@@ -492,10 +499,10 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-table-resize:hover::after, .uk-table-resize:focus-visible::after, .uk-table-th[data-resizing] .uk-table-resize::after { top: 4px; bottom: 4px; width: 2px; left: 7px; background: var(--uk-accent); }
 .uk-table-row { min-height: var(--uk-row); border-bottom: 1px solid var(--uk-border); cursor: default; }
 .uk-table-row[data-clickable] { cursor: pointer; }
-/* Plain (in a section, a card): no frame, no ground; its head and rows from its edges, the last row unruled — what holds it frames it. */
+/* Plain (in a section, a card): no frame, no ground; its head and rows from its edges, the head not held on scrolling (nothing under it to hide the rows), the last row unruled — what holds it frames it. */
 .uk-table[data-plain] { border: 0; border-radius: 0; background: transparent; }
 .uk-table[data-plain] :is(.uk-table-head, .uk-table-row) { padding: 0; }
-.uk-table[data-plain] .uk-table-head { background: transparent; }
+.uk-table[data-plain] .uk-table-head { position: static; background: transparent; }
 .uk-table[data-plain] .uk-table-row:hover { background: transparent; }
 .uk-table[data-plain] .uk-table-row:last-child { border-bottom: 0; }
 .uk-table-row:hover, .uk-table-row[aria-selected='true'] { background: var(--uk-panel-2); }
@@ -744,8 +751,8 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 /* Down a side: a column, each tab its whole width (its mark, its name, its tool at its end), the bar at its start. */
 .uk-tabs[data-orientation='vertical'] { flex-direction: column; border-bottom: 0; gap: 2px; flex: 0 1 auto; min-height: 0; }
 .uk-tab-list[data-orientation='vertical'] { flex-direction: column; overflow-x: hidden; overflow-y: auto; }
-.uk-tab-list[data-orientation='vertical'] .uk-tab, .uk-tabs[data-orientation='vertical'] > .uk-tab { display: flex; padding: 8px 10px; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; white-space: nowrap; }
-.uk-tab-list[data-orientation='vertical'] .uk-tab::before, .uk-tabs[data-orientation='vertical'] > .uk-tab::before { inset: 1px 0; }
+.uk-tab-list[data-orientation='vertical'] .uk-tab, .uk-tabs[data-orientation='vertical'] > .uk-tab, .uk-tabs[data-orientation='vertical'] > .uk-tip-at > .uk-tab { display: flex; padding: 8px 10px; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.uk-tab-list[data-orientation='vertical'] .uk-tab::before, .uk-tabs[data-orientation='vertical'] > .uk-tab::before, .uk-tabs[data-orientation='vertical'] > .uk-tip-at > .uk-tab::before { inset: 1px 0; }
 .uk-tab-list[data-orientation='vertical'] .uk-tab-label { overflow: hidden; text-overflow: ellipsis; }
 .uk-tab-list[data-orientation='vertical'] .uk-tab-sep { width: auto; height: 1px; align-self: stretch; margin: 6px 10px; }
 .uk-tab-list[data-orientation='vertical'] .uk-tab-bar { top: 0; width: 2px; height: 0; transition: transform .28s cubic-bezier(.4, 0, .2, 1), height .28s cubic-bezier(.4, 0, .2, 1), opacity .15s; }

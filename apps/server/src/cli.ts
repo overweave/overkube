@@ -5,7 +5,8 @@ import { startServer } from './server.ts';
 
 /* `overkube`: the server, as its environment configures it (config.ts); stopped by SIGTERM or SIGINT. */
 
-const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
+// Its image's (OVERKUBE_VERSION, the tag it was built from), else its package's.
+const version = process.env.OVERKUBE_VERSION || (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 
 try {
   const running = await startServer(configOf(), { version });

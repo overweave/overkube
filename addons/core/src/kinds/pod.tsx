@@ -5,7 +5,7 @@ import { Badge, Card, Chips, Image, KeyValue, Nothing, Ref, Section, Status, Tab
 import { fill, slotElement } from '@overweave/ui/preact';
 import { type ComponentChildren, Fragment } from 'preact';
 import { useMemo } from 'preact/hooks';
-import { relatedField, Since, useChipLabels } from '../details.tsx';
+import { Long, relatedField, Since, useChipLabels } from '../details.tsx';
 import { humanDuration } from '../format.ts';
 import { ObjectRef } from '../refs.tsx';
 import { StatusOf } from '../statuses.tsx';
@@ -238,7 +238,7 @@ export function ContainerCard(props: ResourceContainerProps) {
   const command = commandOf(c.spec);
   const hooks = (['postStart', 'preStop'] as const).flatMap((hook) => {
     const h = c.spec.lifecycle?.[hook];
-    return h ? [[hook, <span class="uk-mono">{handlerOf(h)}</span>] as [string, ComponentChildren]] : [];
+    return h ? [[hook, <Long mono>{handlerOf(h)}</Long>] as [string, ComponentChildren]] : [];
   });
   const fields: [string, ComponentChildren][] = [
     [
@@ -253,8 +253,8 @@ export function ContainerCard(props: ResourceContainerProps) {
       <span class="uk-mono">{text}</span>,
     ]),
     ...(last ? [[say(t.lastEnded), <Ended reason={last.reason ?? 'Terminated'} code={last.exitCode} at={last.finishedAt} />] as [string, ComponentChildren]] : []),
-    ...(ports.length ? [[say(t.ports), <span class="uk-mono">{ports.join(', ')}</span>] as [string, ComponentChildren]] : []),
-    ...(command ? [[say(t.command), <span class="uk-mono">{command}</span>] as [string, ComponentChildren]] : []),
+    ...(ports.length ? [[say(t.ports), <Long mono>{ports.join(', ')}</Long>] as [string, ComponentChildren]] : []),
+    ...(command ? [[say(t.command), <Long mono>{command}</Long>] as [string, ComponentChildren]] : []),
     ...hooks,
   ];
   return (

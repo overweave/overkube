@@ -6,10 +6,10 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "overkube": "./dist/cli.js"
+    "overkube": "./dist/overkube.mjs"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "vite build",
     "typecheck": "tsc --noEmit",
     "start": "node --conditions=overkube-source src/cli.ts"
   },

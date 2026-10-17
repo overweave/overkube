@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="70 58 232 258">
+  <title>overkube</title>
   <!-- overkube's mark in the default accent (#ff8c2f); the page's own (uikit Logo) takes the theme's. -->
   <defs>
     <linearGradient id="left" x1="0" y1="0" x2="0.4" y2="1">

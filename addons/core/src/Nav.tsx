@@ -187,6 +187,7 @@ export function PickerButton({ placement }: NavTabsProps) {
       <TabButton
         icon="plus"
         label={say(T.nav.picker.all)}
+        words
         buttonRef={(el) => {
           side.anchor.current = el;
         }}

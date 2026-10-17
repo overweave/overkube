@@ -74,7 +74,7 @@ import { type Chosen, KindNamespaces, NamespacePicker } from './namespaces.tsx';
 import { addOverview } from './overview.tsx';
 import { KindMissing, Overview, PageTable } from './pages.tsx';
 import { Picker, PickerContent, PickerEmpty, PickerItem, PickerItemTitle, PickerSearch, PickerSection, PickerSectionTitle, PickerSide } from './picker.tsx';
-import { Actions, type Layout, LayoutSwitch, ResourceMissing, ResourceOverview, ResourceTitle, ResourceView, Yaml } from './ResourceView.tsx';
+import { Actions, LayoutSwitch, ResourceMissing, ResourceOverview, ResourceTitle, ResourceView, Yaml } from './ResourceView.tsx';
 import { Owned } from './relations.tsx';
 import { HeaderSearch } from './search.tsx';
 import { OWN_THEME, SETTINGS_PATH, SettingsButton, SettingsPage } from './settings.tsx';
@@ -222,9 +222,8 @@ export default defineAddon({
       menuItem({ on: 'resource.context', group: 'copy', title: T.resource.context.copyYaml, icon: 'copy', run: ({ object }, page) => copy(toYaml(object), page) }),
     );
     // How it is laid out (a side panel, a window, all the window): one for all of them, switched in its header — kept while the page runs.
-    const layout = signal<Layout>('right');
-    c.add('Fill', 'core.resource.view', { slot: slots.resource.view.name, order: 1000, render: (p: ResourceRef) => <ResourceView {...p} layout={layout} /> });
-    c.add('Fill', 'core.resource.view.layout', fill(slots.resource.view.header, { order: 1000, render: () => <LayoutSwitch layout={layout} /> }));
+    c.add('Fill', 'core.resource.view', { slot: slots.resource.view.name, order: 1000, render: (p: ResourceRef) => <ResourceView {...p} /> });
+    c.add('Fill', 'core.resource.view.layout', fill(slots.resource.view.header, { order: 1000, render: () => <LayoutSwitch /> }));
     // Its tabs: the Overview (its summary, its sections), its YAML — every kind's, another's among them.
     c.add('ResourceTab', 'core.overview', { target: {}, title: T.resource.view.tabs.overview, icon: 'grid', order: 100 });
     c.add('Fill', 'core.resource.view.overview', fill(slots.resource.view.tab('core.overview'), { render: ResourceOverview }));

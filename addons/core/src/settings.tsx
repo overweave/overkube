@@ -29,6 +29,7 @@ import { useDefinition, useDefinitions, useOverweave } from '@overweave/ui/preac
 import { type ComponentChildren, Fragment } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { LIBRARIES, OVERKUBE } from './licenses.generated.ts';
+import { LayoutSwitch } from './ResourceView.tsx';
 import { T } from './texts.ts';
 
 /*
@@ -262,6 +263,10 @@ function Interface() {
               disabled={nav?.mode !== 'side'}
               onChange={(on) => user.patch('NavView', 'default', { side: on ? 'pinned' : 'collapsed' })}
             />
+          </dd>
+          <dt>{say(t.resourceView)}</dt>
+          <dd>
+            <LayoutSwitch words />
           </dd>
         </dl>
       </Part>

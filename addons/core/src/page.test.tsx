@@ -1373,6 +1373,17 @@ describe('an object’s view', () => {
     const header = opened().querySelector('header') as HTMLElement;
     expect([...header.querySelectorAll('button')].map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['Shell', 'Side panel', 'Window', 'Full screen', 'Close']);
   });
+
+  it('is laid out as the user chose it: kept as theirs (Appearance), for every resource opened after', () => {
+    const w = world('web', 'db');
+    const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
+    const placement = () => document.querySelector('.uk-modal-frame')?.getAttribute('data-placement');
+    expect(placement()).toBe('right');
+    page.act(() => (opened().querySelector('button[aria-label="Window"]') as HTMLButtonElement).click());
+    expect([placement(), w.user.saved().patches]).toEqual(['center', [{ kind: 'Appearance', name: 'default', fields: { layout: 'center' } }]]);
+    page.navigate('/k/pods.v1?open=pods.v1/shop/db');
+    expect(placement()).toBe('center');
+  });
 });
 
 describe('the navigation', () => {

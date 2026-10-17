@@ -46,7 +46,7 @@ npm start -w @overkube/server
 
 ## overweave's packages
 
-overweave's packages (`@overweave/*`) come from GitHub's npm registry, which asks for a token even to read: a GitHub token with `read:packages`, in `GITHUB_TOKEN`. `make` takes the GitHub CLI's (`gh auth refresh -s read:packages` once, then `gh auth token`); `npm` alone reads the environment's (`.npmrc`).
+overweave's packages (`@overweave/*`) come from npmjs.org, as any other dependency.
 
 To work on overweave and overkube at once, with overweave beside this repository (`../overweave`):
 

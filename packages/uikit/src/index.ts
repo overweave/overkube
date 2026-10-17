@@ -18,6 +18,7 @@ export { Ratio, ratioTone } from './data/Ratio';
 export { Split, type SplitPart } from './data/Split';
 export { Table, type TableColumn, type TableProps, type TableSort } from './data/Table';
 export { YamlView, type YamlViewLabels } from './data/YamlView';
+export { Clamped, type ClampedLabels } from './display/Clamped';
 export { EmptyState } from './display/EmptyState';
 export { Highlight } from './display/Highlight';
 export { ICONS, Icon, type IconData, registerIcons } from './display/Icon';

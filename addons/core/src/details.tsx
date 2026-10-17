@@ -18,7 +18,7 @@ import {
   TableView,
 } from '@overkube/sdk';
 import { useList, usePage, useSay } from '@overkube/sdk/preact';
-import { Chip, Chips, type ChipsLabels, Nothing, Notice, Row, Rows, Section, Tip } from '@overkube/uikit';
+import { Chip, Chips, type ChipsLabels, Clamped, Nothing, Notice, Row, Rows, Section, Tip } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import type { SlotRef } from '@overweave/ui';
 import { slotElement, useDefinition } from '@overweave/ui/preact';
@@ -177,7 +177,14 @@ function SummaryField({
 
 /** A summary field's value (the core's): what its column draws. */
 export function SummaryValue({ drawn }: ResourceFieldProps) {
-  return <>{drawn}</>;
+  return <Long>{drawn}</Long>;
+}
+
+/** A long value (a selector, a command…): its first two lines, all of it a click away; in code's letters when mono. */
+export function Long({ mono = false, children }: { mono?: boolean; children: ComponentChildren }) {
+  const say = useSay();
+  const c = T.resource.view.clamped;
+  return <Clamped labels={{ more: say(c.more), less: say(c.less) }}>{mono ? <span class="uk-mono">{children}</span> : children}</Clamped>;
 }
 
 type Condition = ResourceConditionProps['condition'];
