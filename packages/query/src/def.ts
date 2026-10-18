@@ -1,5 +1,5 @@
 import { canonical, fnv1a64 } from './hash.ts';
-import type { FieldDef, FieldName, FieldSpec, QueryError } from './model.ts';
+import type { FieldDef, FieldName, FieldSpec, Join, QueryError } from './model.ts';
 import { compilePath } from './path.ts';
 import type { Fields } from './scan.ts';
 
@@ -34,6 +34,9 @@ const show = (v: unknown) => {
 };
 const UNITS = new Set(['cores', 'bytes']);
 
+/** Whether a field's value is a join (another kind's object's field). */
+export const isJoin = (value: unknown): value is Join => typeof value === 'object' && value !== null && 'from' in value;
+
 /** Why something given as a field definition is none (taken as unknown: from anyone) — or nothing. */
 export function checkFieldDef(def: unknown): QueryError | undefined {
   const bad = (message: string): QueryError => ({ code: 'bad_field', message });
@@ -54,21 +57,29 @@ export function checkFieldDef(def: unknown): QueryError | undefined {
   if (typeof v === 'string') return v.startsWith('.') && v.length <= FIELD_LIMITS.text ? undefined : bad(`a path starts with . and is at most ${FIELD_LIMITS.text} long`);
   if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 1 && typeof (v as { cel?: unknown }).cel === 'string')
     return (v as { cel: string }).cel.length <= FIELD_LIMITS.cel ? undefined : bad(`CEL is at most ${FIELD_LIMITS.cel} long`);
-  return bad('a value is a path or { cel }');
+  if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 2) {
+    const { from, field } = v as { from?: unknown; field?: unknown };
+    const name = (x: unknown) => typeof x === 'string' && x.length > 0 && x.length <= FIELD_LIMITS.text;
+    if (name(from) && name(field)) return undefined;
+  }
+  return bad('a value is a path, { cel } or { from, field }');
 }
 
 /** How CEL is made into what it says of an object (none given: no field of CEL is had). */
 export type CompileCel = (expression: string) => (object: unknown) => unknown;
 
+/** How a join is made into what it says of an object (none given: no joined field is had). */
+export type MakeJoin = (join: Join) => (object: unknown) => unknown;
+
 /**
  * Field definitions as a scan has them: each checked (anything may be
  * given); a path as it is (made, to be sure it is one); CEL made by
- * compile. One that cannot be (not a definition, a path or CEL that is
- * none, CEL and nothing to make it): left out, and why. Versions as given:
+ * compile, a join by join. One that cannot be (not a definition, a path or
+ * CEL that is none, CEL or a join and nothing to make it): left out, and why. Versions as given:
  * a catalog's, prepared (@overkube/cel prepareCatalog: worked out anew),
  * not anyone's raw definitions.
  */
-export function fieldsOf(defs: unknown, compile?: CompileCel): { fields: Fields; rejected: Readonly<Record<FieldName, string>> } {
+export function fieldsOf(defs: unknown, compile?: CompileCel, join?: MakeJoin): { fields: Fields; rejected: Readonly<Record<FieldName, string>> } {
   const fields = new Map<FieldName, FieldSpec<never>>();
   const rejected = new Map<FieldName, string>();
   const out = () => ({ fields, rejected: Object.fromEntries(rejected) });
@@ -88,9 +99,12 @@ export function fieldsOf(defs: unknown, compile?: CompileCel): { fields: Fields;
       if (typeof given === 'string') {
         compilePath(given);
         value = given;
+      } else if (isJoin(given)) {
+        if (!join) throw new Error('no joined fields here');
+        value = join(given) as FieldSpec<never>['value'];
       } else if (!compile) throw new Error('no CEL here');
       else value = compile(given.cel) as FieldSpec<never>['value'];
-      fields.set(name, Object.freeze({ kinds: kinds && Object.freeze([...kinds]), type, many, version, value }));
+      fields.set(name, Object.freeze({ kinds: kinds && Object.freeze([...kinds]), type, many, version, value, ...(isJoin(given) ? { volatile: true } : {}) }));
     } catch (e) {
       rejected.set(name, (e as Error).message);
     }

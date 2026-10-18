@@ -1,10 +1,10 @@
 import { createConnector } from '@overkube/connector';
-import { fieldLayers, knownNamespaces, kubeKinds, type NamespacesSpec } from '@overkube/sdk';
+import { type AddonChoicesSpec, fieldLayers, knownNamespaces, kubeKinds, type NamespacesSpec } from '@overkube/sdk';
 import { localStore, notifications, UserService } from '@overkube/shell';
 import { createSource } from '@overkube/source';
 import { createRegistry } from '@overweave/core';
 import { definitionSignal } from '@overweave/ui/preact';
-import { effect } from '@preact/signals';
+import { computed, effect } from '@preact/signals';
 import { addons } from './addons.ts';
 import { AddonHost } from './host/addons.ts';
 import { clusterAccess } from './host/cluster.ts';
@@ -51,7 +51,10 @@ export async function boot({ element, asked }: BootOptions) {
   // Going (closed, reloaded, sent to the background): what is waiting saved now.
   window.addEventListener('pagehide', () => void user.flush());
 
-  const host = new AddonHost({ registry, cluster, notify: (n, from) => told.notify(n, from), safe: asked.has('safe') });
+  // Which addons the user turned on, whose suggestion they put off: theirs, kept as the rest of their changes.
+  const chosen = definitionSignal(registry, 'AddonChoices', 'default');
+  const choices = computed(() => chosen.value?.spec as AddonChoicesSpec | undefined);
+  const host = new AddonHost({ registry, cluster, choices, notify: (n, from) => told.notify(n, from), safe: asked.has('safe') });
   for (const addon of signsIn(auth) ? [...addons, session(auth)] : addons) host.register(addon);
   const unmount = mount(element, { registry, host, cluster, user, debug: asked.has('debug') }, told);
   // Turned away (the session ended, its token taken back): the page gives way to signing in again.
@@ -63,6 +66,7 @@ export async function boot({ element, asked }: BootOptions) {
         stop();
         unmount();
         host.close();
+        cluster.close();
         connector.close();
         showSignIn(element, auth, true);
       });

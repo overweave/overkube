@@ -177,6 +177,14 @@ describe('a field’s version', () => {
 });
 
 describe('a catalog', () => {
+  it('versions a joined field by what it reads: the field it joins changed, its version too', () => {
+    const joined = (a: string) =>
+      prepareCatalog({ fields: { 'acme.size': { type: 'number', value: { from: 'things.v1', field: 'acme.n' } }, 'acme.n': { kinds: ['things.v1'], type: 'number', value: a } } })
+        .catalog.fields['acme.size']?.version;
+    expect(joined('.a')).toMatch(/^[0-9a-f]{16}$/);
+    expect(joined('.a')).not.toBe(joined('.b'));
+  });
+
   it('is checked (anything may be given), versioned anew, laid over another, frozen', () => {
     const base = { fields: { a: { type: 'string' as const, value: '.a' as const }, b: { type: 'number' as const, value: { cel: 'one(self)' } } }, functions: { one: '1' } };
     const { catalog, rejected } = prepareCatalog(

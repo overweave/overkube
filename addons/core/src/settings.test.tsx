@@ -93,6 +93,40 @@ describe('the settings', () => {
     expect([w.addons.statuses.value.find((s) => s.id === 'nord')?.state, said(page.container, 'Restart')]).toEqual(['running', undefined]);
   });
 
+  it('keeps the core’s on always; turns another on and off, the user’s; says what it answers to — found where, not here, not known — and what it uses', () => {
+    const w = world();
+    w.addons.statuses.value = w.addons.statuses.value.map((s) =>
+      s.id === 'nord'
+        ? {
+            ...s,
+            enabled: false,
+            state: 'disabled',
+            answers: [
+              { title: 'VictoriaMetrics', found: true, where: 'monitoring/vmsingle-main:8428' },
+              { title: 'Prometheus', found: false },
+              { title: 'metrics-server', found: undefined },
+            ],
+          }
+        : { ...s, using: 'the cluster' },
+    );
+    const page = renderPage(w, '/settings');
+    fireEvent.click([...page.container.querySelectorAll('a')].find((a) => a.textContent?.startsWith('Addons')) as HTMLAnchorElement);
+    const items = [...page.container.querySelectorAll('.uk-accordion-item')] as HTMLElement[];
+    expect([items[0].querySelector('.uk-accordion-end')?.textContent, items[0].querySelector('[role="switch"]')]).toEqual(['built in', null]);
+    expect(items[1].querySelector('.uk-accordion-head')?.textContent).toBe('Nordnord · addonfound here');
+    page.act(() => (items[1].querySelector('[role="switch"]') as HTMLButtonElement).click());
+    expect(w.user.saved().patches).toEqual([{ kind: 'AddonChoices', name: 'default', fields: { on: { nord: true } } }]);
+    fireEvent.click(items[1].querySelector('.uk-accordion-head') as HTMLButtonElement);
+    expect([...items[1].querySelectorAll('.uk-marks li')].map((li) => li.textContent)).toEqual([
+      'VictoriaMetricsmonitoring/vmsingle-main:8428',
+      'Prometheusnot in this cluster',
+      'metrics-servernot known yet',
+    ]);
+    fireEvent.click(items[0].querySelector('.uk-accordion-head') as HTMLButtonElement);
+    const facts = [...items[0].querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    expect(facts.find(([name]) => name === 'Using')).toEqual(['Using', 'the cluster']);
+  });
+
   it('says what overkube is, and the libraries it runs with their licenses', () => {
     const page = renderPage(world(), '/settings');
     fireEvent.click([...page.container.querySelectorAll('a')].find((a) => a.textContent === 'About') as HTMLAnchorElement);

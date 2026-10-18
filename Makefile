@@ -18,9 +18,9 @@ help:
 	@echo "make lint / format / typecheck / test / coverage   one of them; format rewrites the files"
 	@echo "make dev        the dev stand: KubeSolo, the server, the page (http://localhost:5173)"
 	@echo "make dev-down / dev-logs / dev-kubectl ARGS=\"get pods -A\" / dev-reset (forget the cluster)"
-	@echo "make dev-seed   the stand filled: cert-manager, then dev/seed (every usual kind, a few of each)"
+	@echo "make dev-seed   the stand filled: cert-manager, then dev/seed (every usual kind, a few of each; metrics-server, VictoriaMetrics)"
 	@echo "make dev-clean  all the seed made deleted (cert-manager too); the rest of the cluster kept"
-	@echo "make storybook  the core's stories (http://localhost:6006): the page, its addons turned off and on"
+	@echo "make storybook  the addons' stories and the kit's (http://localhost:6006): the page, its addons turned off and on"
 	@echo "make link-overweave     overweave from its sources beside this repository (../overweave), not the registry's"
 	@echo "make unlink-overweave   the registry's again"
 
@@ -115,9 +115,12 @@ dev-seed:
 # All the seed made, by its label (overkube.dev/seed=true): its namespaces, its cluster-wide objects, the
 # volumes its claims kept (a retaining class's), then cert-manager.
 dev-clean:
+	@# The seed's APIService first: one whose server is gone fails discovery, and namespaces are not deleted while it does.
+	$(KUBECTL) delete apiservice -l overkube.dev/seed=true
 	$(KUBECTL) delete namespace -l overkube.dev/seed=true --timeout=300s
 	-$(KUBECTL) delete clusterissuers.cert-manager.io -l overkube.dev/seed=true
 	$(KUBECTL) delete clusterrolebinding,clusterrole,priorityclass,ingressclass,persistentvolume,storageclass,certificatesigningrequest -l overkube.dev/seed=true
+	$(KUBECTL) -n kube-system delete rolebinding -l overkube.dev/seed=true
 	$(DEV) exec -T kube sh -c "kubectl get pv -o jsonpath='{range .items[*]}{.metadata.name} {.spec.claimRef.namespace}{\"\\n\"}{end}' | awk '\$$2 ~ /^seed-/ {print \$$1}' | xargs -r kubectl delete pv"
 	$(KUBECTL) delete --ignore-not-found -f $(CERT_MANAGER)
 

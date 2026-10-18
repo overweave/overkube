@@ -10,7 +10,7 @@ describe('a field definition, from anyone', () => {
     ['no unit', { type: 'number', unit: 'parsecs', value: '.a' }, 'no unit "parsecs"'],
     ['kinds not refs', { type: 'string', kinds: [1], value: '.a' }, "kinds are at most 64 kinds' refs"],
     ['a path not one', { type: 'string', value: 'a' }, 'a path starts with . and is at most 1024 long'],
-    ['a value neither', { type: 'string', value: { cel: 'x', more: 1 } }, 'a value is a path or { cel }'],
+    ['a value neither', { type: 'string', value: { cel: 'x', more: 1 } }, 'a value is a path, { cel } or { from, field }'],
   ])('is none: %s', (_, def, message) => {
     expect(checkFieldDef(def)).toEqual({ code: 'bad_field', message });
   });
@@ -24,6 +24,22 @@ describe('a field definition, from anyone', () => {
     });
     expect([[...fields.keys()], rejected]).toEqual([['ok'], { x: expect.any(String), bad: 'an array not closed at 2 of .a[', cel: 'no CEL here' }]);
     expect(fieldsOf('nope').rejected).toEqual({ '': 'fields are { name: definition }' });
+  });
+
+  it('is joined (another kind’s object’s field) only where a join is made — else left out, with why', () => {
+    const def = { joined: { type: 'number', value: { from: 'things.v1', field: 'size' } } };
+    expect(checkFieldDef(def.joined)).toBeUndefined();
+    expect(checkFieldDef({ type: 'number', value: { from: '', field: 'size' } })?.message).toBe('a value is a path, { cel } or { from, field }');
+    expect(fieldsOf(def).rejected).toEqual({ joined: 'no joined fields here' });
+    const made = fieldsOf(
+      def,
+      undefined,
+      ({ from, field }) =>
+        () =>
+          `${from}:${field}`,
+    ).fields.get('joined');
+    const read = made?.value as unknown as (o: unknown) => unknown;
+    expect(read({})).toBe('things.v1:size');
   });
 });
 

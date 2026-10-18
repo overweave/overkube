@@ -16,6 +16,7 @@ import {
   type GetQuery,
   type GetResult,
   type KindRef,
+  keyOf,
   kindRef,
   type ListQuery,
   type ListResult,
@@ -37,7 +38,7 @@ import {
   scanCount,
 } from '@overkube/query';
 import { computed, type ReadonlySignal } from '@preact/signals';
-import { capabilities, FieldsCache } from './fields.ts';
+import { bindJoins, capabilities, FieldsCache, type Joining } from './fields.ts';
 import { filtered, isError, makeFilter, withTold } from './filter.ts';
 import { MAX_FOLLOWED } from './log.ts';
 import { OwnedKinds } from './owned.ts';
@@ -84,6 +85,7 @@ export interface MemoryAccess {
 export const logKey = (q: Pick<LogQuery, 'namespace' | 'name' | 'container' | 'previous'>) => `${q.namespace}/${q.name}/${q.container ?? ''}${q.previous ? ':previous' : ''}`;
 
 const NO_LAYERS: readonly Layer[] = [];
+const NO_OBJECTS: readonly KubeObject[] = [];
 const CRDS = 'customresourcedefinitions.v1.apiextensions.k8s.io';
 
 /** A source of these objects, by their kind's ref (pods.v1): followed as the signal changes. */
@@ -93,14 +95,37 @@ export function memorySource(objects: ReadonlySignal<Readonly<Record<KindRef, re
   const kinds = new Map([...knownKinds, ...(options.kinds ?? [])].map((k) => [kindRef(k), k]));
   const all: Result = { state: 'live', coverage: { namespaces: 'all', denied: [] } };
 
+  /** A kind's objects by key, made once for each array of them. */
+  const indexes = new WeakMap<readonly KubeObject[], Map<string, KubeObject>>();
+  const indexOf = (of: readonly KubeObject[]) => {
+    let index = indexes.get(of);
+    if (!index) {
+      index = new Map(of.map((o) => [keyOf(o), o]));
+      indexes.set(of, index);
+    }
+    return index;
+  };
+  /** A kind's fields as made (its joined ones none). */
+  const madeOf = (kind: KindInfo) => {
+    const crd = objects.value[CRDS]?.find((o) => o.metadata?.name === `${kind.plural}.${kind.group}`) as CrdLike | undefined;
+    return cache.of(kind, crd, options.layers?.value ?? NO_LAYERS);
+  };
+  /** The other kinds a joined field reads: their objects as they are when read (one not served, or not answering: none). */
+  const joining: Joining = (from) => {
+    const kind = kinds.get(from);
+    if (!kind || (options.serves && !options.serves(kind))) return undefined;
+    return {
+      find: (key) => (stateOf(from).answers ? indexOf(objects.value[from] ?? NO_OBJECTS).get(key) : undefined),
+      fields: () => madeOf(kind),
+    };
+  };
   /** A kind's fields, or why there are none. */
   const fieldsOf = (ref: KindRef) => {
     const kind = kinds.get(ref);
     const served = kind && options.serves ? options.serves(kind) : kind !== undefined;
     if (served === undefined) return { loading: true, error: { code: 'loading', message: 'what the cluster serves is not known yet' } };
     if (!kind || !served) return { error: { code: 'not_served', message: `the cluster does not serve ${ref}` } };
-    const crd = objects.value[CRDS]?.find((o) => o.metadata?.name === `${kind.plural}.${kind.group}`) as CrdLike | undefined;
-    return { kind, made: cache.of(kind, crd, options.layers?.value ?? NO_LAYERS) };
+    return { kind, made: bindJoins(madeOf(kind), joining, '') };
   };
   const nothing = { namespaces: [] as string[], denied: [] as string[] };
   const failed = (error: QueryError): Result => ({ ...all, state: 'error', coverage: nothing, error });

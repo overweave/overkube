@@ -1,7 +1,7 @@
 import type { StatusAnswer } from '@overkube/gateway/protocol';
 import { type KindInfo, type KubeObject, knownKinds } from '@overkube/kube-types';
 import { ALL_ALLOWED, keyOf, type LogLine, type QueryError, type State } from '@overkube/query';
-import { type Cluster, type FieldLayer, fieldLayers, kindRef, type ObjectChange, type ObjectOfKind, type ReachTarget, reachOver } from '@overkube/sdk';
+import { type Cluster, type FieldLayer, fieldLayers, foundIn, kindRef, type ObjectChange, type ObjectOfKind, type ReachTarget, reachOver } from '@overkube/sdk';
 import { logKey, type MemoryAccess, type MemoryState, memorySource } from '@overkube/source';
 import { batch, computed, type ReadonlySignal, signal } from '@preact/signals';
 
@@ -221,6 +221,8 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
       retry() {},
     },
     source,
+    // As the page looks: among its Services (none: not one found).
+    found: (spec) => foundIn(objects.value['services.v1'] ?? [], spec) ?? false,
     served(groupOrKind) {
       const set = served.value;
       return set === null ? true : set.has(groupOrKind);

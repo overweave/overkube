@@ -157,6 +157,13 @@ export const T = {
       restartsErrors: t('core.page.settings.restarts-errors', '{restarts} restarts · {errors} errors'),
       description: t('core.page.settings.description', 'Description'),
       may: t('core.page.settings.may', 'Rights'),
+      builtIn: t('core.page.settings.built-in', 'built in'),
+      foundHere: t('core.page.settings.found-here', 'found here'),
+      turn: t('core.page.settings.turn', 'Turn {addon} on'),
+      detects: t('core.page.settings.detects', 'Detects'),
+      notHere: t('core.page.settings.not-here', 'not in this cluster'),
+      notKnown: t('core.page.settings.not-known', 'not known yet'),
+      using: t('core.page.settings.using', 'Using'),
       states: {
         running: t('core.page.settings.state.running', 'Running'),
         starting: t('core.page.settings.state.starting', 'Starting'),
@@ -173,6 +180,12 @@ export const T = {
       libraries: t('core.page.settings.libraries', 'Libraries'),
     },
     overview: {
+      suggested: {
+        title: t('core.page.overview.suggested.title', '{what} is in this cluster'),
+        where: t('core.page.overview.suggested.where', '{where}. {about}'),
+        turnOn: t('core.page.overview.suggested.turn-on', 'Turn on {addon}'),
+        notNow: t('core.page.overview.suggested.not-now', 'Not now'),
+      },
       title: t('core.page.overview.title', 'Overview'),
       asking: t('core.page.overview.asking', 'Asking the cluster what it serves…'),
       cluster: {

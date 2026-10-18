@@ -196,6 +196,8 @@ function accessor(catalog: Catalog, name: FieldName): ((object: unknown) => Cell
   };
   return (object) => {
     if (typeof object !== 'object' || object === null) return NONE;
+    // Of more than the object: worked out each time (none kept of it).
+    if (spec.volatile) return workOut(spec, read, object, fail(object));
     const row = rowOf(catalog, object);
     let cell = row[slot] as Cell | undefined;
     if (cell === undefined) {
@@ -379,7 +381,11 @@ function placeOf(key: string, uid: string, by: (Value | undefined)[]): Place {
 /** How rows are made in a sort's order: each sort field's value (and natural key) kept, as the object's key is. */
 function rowMaker<O>(catalog: Catalog, sort: Sort): (object: O) => Row<O> {
   const n = catalog.specs.length;
-  const fields = sort.map((s) => ({ get: accessor(catalog, s.field), slot: catalog.slots.get(s.field), desc: s.desc === true }));
+  const fields = sort.map((s) => {
+    const slot = catalog.slots.get(s.field);
+    // A volatile field's natural key is made each time, as its value is.
+    return { get: accessor(catalog, s.field), slot: slot !== undefined && catalog.specs[slot].volatile ? undefined : slot, desc: s.desc === true };
+  });
   const kept = (object: unknown, at: number, make: () => string): string => {
     if (typeof object !== 'object' || object === null) return make();
     const row = rowOf(catalog, object);
@@ -550,17 +556,21 @@ const shownBy = new WeakMap<Catalog, WeakMap<object, Map<string, Item<unknown>>>
 function itemsOf<O>(rows: readonly Row<O>[], query: ListQuery, fields: Fields, catalog: Catalog, errors: ReturnType<typeof errorsOf>): Shown<O> {
   const select = query.select?.map((name) => ({ name, get: accessor(catalog, name), many: resolve(fields, name)?.many === true }));
   const selected = query.select ? query.select.join('\n') : '';
+  // A volatile field selected: its items made each time (the object the same, its values not).
+  const keep = !query.select?.some((name) => resolve(fields, name)?.volatile);
   let byObject = shownBy.get(catalog);
   if (!byObject) {
     byObject = new WeakMap();
     shownBy.set(catalog, byObject);
   }
   return rows.map((r) => {
-    errors.note(r.object);
     const o = r.object as unknown as object;
-    const kept = typeof o === 'object' && o !== null ? byObject.get(o) : undefined;
+    const kept = keep && typeof o === 'object' && o !== null ? byObject.get(o) : undefined;
     const had = kept?.get(selected);
-    if (had) return had as Item<O>;
+    if (had) {
+      errors.note(r.object);
+      return had as Item<O>;
+    }
     const uid = uidOf(r.object);
     let item: Item<O>;
     if (!select) item = { key: r.key, uid, object: r.object };
@@ -573,7 +583,9 @@ function itemsOf<O>(rows: readonly Row<O>[], query: ListQuery, fields: Fields, c
       }
       item = { key: r.key, uid, values };
     }
-    if (typeof o === 'object' && o !== null) {
+    // What its selected fields could not be worked out of, told (once worked out).
+    errors.note(r.object);
+    if (keep && typeof o === 'object' && o !== null) {
       const m = kept ?? new Map<string, Item<unknown>>();
       m.set(selected, item as Item<unknown>);
       if (!kept) byObject.set(o, m);

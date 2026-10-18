@@ -1,6 +1,6 @@
 import { type AddonRun, type RunEnv, runAddon } from '@overkube/runtime';
-import type { Addon, AddonStatus, Addons, KubeContributor, Layer, Notification } from '@overkube/sdk';
-import { standingOf } from '@overkube/sdk';
+import type { Addon, AddonChoicesSpec, AddonStatus, Addons, AnswerStatus, KubeContributor, Layer, Notification } from '@overkube/sdk';
+import { builtIn, standingOf, whereOf } from '@overkube/sdk';
 import type { Registry } from '@overweave/core';
 import { computed, effect, type ReadonlySignal, type Signal, signal, untracked } from '@preact/signals';
 import type { ClusterAccess } from './cluster.ts';
@@ -13,7 +13,8 @@ import { type Facts, holds } from './conditions.ts';
  * taken back, everything it held let go of, when it stops — and keeps one's
  * failures its own:
  *
- *   disabled      off (in safe mode, every one but the core's and the built-in ones)
+ *   disabled      off: an addon's or a plugin's until the user turns it on (AddonChoices) — the core's and
+ *                 the built-in ones always on — or, in safe mode, every one but those
  *   unavailable   on, but what it requires does not hold (or is not known yet); starts by itself once it does
  *   starting      its setup runs
  *   running
@@ -30,8 +31,8 @@ export interface HostOptions {
   cluster: ClusterAccess;
   /** Only the core's and the built-in addons start (?safe). */
   safe?: boolean;
-  /** Which are on (default: every one; there is no turning them off yet). */
-  enabled?: (addon: Addon) => boolean;
+  /** The user's choices: which addons they turned on, whose suggestion they put off (none: every addon and plugin off). */
+  choices?: ReadonlySignal<AddonChoicesSpec | undefined>;
   /** How long setup may take. */
   startTimeoutMs?: number;
   /** The first wait before a failed setup is tried again; doubled up to maxRetryMs. */
@@ -48,16 +49,15 @@ export interface HostOptions {
 
 const DEFAULTS = { startTimeoutMs: 10_000, retryMs: 1000, maxRetryMs: 60_000, maxCrashes: 5 };
 
-/** Those that run in safe mode: the core's and the built-in ones. */
-export const trusted = (layer: Layer) => layer === 'core' || layer === 'builtin';
-
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 interface Runtime {
   addon: Addon;
   layer: Layer;
-  enabled: Signal<boolean>;
-  status: Signal<Omit<AddonStatus, 'enabled' | 'suggested'>>;
+  enabled: ReadonlySignal<boolean>;
+  status: Signal<Omit<AddonStatus, 'enabled' | 'suggested' | 'answers' | 'using'>>;
+  /** What it says it uses now (ctx.using): gone when it stops. */
+  using: Signal<string | undefined>;
   /** Each start; a setup given up on (stopped, timed out) can no longer move it. */
   generation: number;
   run: AddonRun | null;
@@ -81,6 +81,7 @@ export class AddonHost implements Addons {
       served: (g) => options.cluster.facts.served(g),
       available: (a) => options.cluster.facts.available(a),
       service: (name) => services.value.has(name),
+      found: (spec) => options.cluster.facts.found(spec),
     };
     this.env = {
       open: (run) => options.cluster.open(run),
@@ -93,6 +94,10 @@ export class AddonHost implements Addons {
       dismiss: (id) => options.dismiss?.(id),
       failed: (id, error) => this.report(id, error),
       log: (m) => this.log(m),
+      using: (id, words) => {
+        const rt = this.runtimes.peek().get(id);
+        if (rt) rt.using.value = words;
+      },
     };
     // What the registry refuses an addon (a name another defines, a right it has not): its failure, not silence.
     this.unsubscribe = options.registry.subscribe((e) => {
@@ -104,14 +109,25 @@ export class AddonHost implements Addons {
   private readonly env: RunEnv;
   private readonly unsubscribe: () => void;
 
-  /** Every addon's status, as it changes. */
+  /** Every addon's status, as it changes: what it answers to checked; off, one of them found and not put off, suggested. */
   readonly statuses: ReadonlySignal<AddonStatus[]> = computed(() =>
     [...this.runtimes.value.values()].map((rt) => {
       const enabled = rt.enabled.value;
-      const detect = rt.addon.detect;
-      return { ...rt.status.value, enabled, suggested: !enabled && !!detect && this.holds(rt, detect) === true };
+      const answers = this.answers(rt);
+      const notNow = this.options.choices?.value?.notNow?.[rt.addon.id] === true;
+      const using = rt.using.value;
+      return { ...rt.status.value, enabled, suggested: !enabled && !notNow && answers.some((a) => a.found === true), answers, ...(using ? { using } : {}) };
     }),
   );
+
+  /** What an addon answers to, each checked: found (where, for a Service), not, not known yet. */
+  private answers(rt: Runtime): AnswerStatus[] {
+    return (rt.addon.answers ?? []).map(({ title, when }) => {
+      const found = this.holds(rt, when);
+      const where = found && when.found ? this.facts.found(when.found) : undefined;
+      return { title, found, ...(where ? { where: whereOf(where) } : {}) };
+    });
+  }
 
   status(id: string): AddonStatus | undefined {
     return this.statuses.value.find((s) => s.id === id);
@@ -128,17 +144,20 @@ export class AddonHost implements Addons {
   }
 
   private runs(rt: Runtime): boolean {
-    return rt.enabled.value && !(this.options.safe && !trusted(rt.layer));
+    return rt.enabled.value && !(this.options.safe && !builtIn(rt.layer));
   }
 
   /** One more addon: it starts as soon as it is on and what it requires holds. */
   register(addon: Addon): void {
     if (this.runtimes.peek().has(addon.id)) throw new Error(`an addon ${addon.id} is registered already`);
     const layer = addon.layer ?? 'addon';
+    const choices = this.options.choices;
     const rt: Runtime = {
       addon,
       layer,
-      enabled: signal(this.options.enabled ? this.options.enabled(addon) : true),
+      // The core's and the built-in ones always; an addon or a plugin once the user turns it on.
+      enabled: computed(() => builtIn(layer) || choices?.value?.on?.[addon.id] === true),
+      using: signal(undefined),
       status: signal({ id: addon.id, title: addon.title, ...(addon.description ? { description: addon.description } : {}), layer, state: 'disabled', restarts: 0, errors: 0 }),
       generation: 0,
       run: null,
@@ -238,6 +257,7 @@ export class AddonHost implements Addons {
     if (r?.served !== undefined && this.facts.served(r.served) === false) return `${r.served || 'the core group'} is not served`;
     if (r?.available !== undefined && this.facts.available(r.available) === false) return `${r.available} is not available`;
     if (r?.service !== undefined && !this.facts.service(r.service)) return `no addon provides ${r.service}`;
+    if (r?.found !== undefined && this.facts.found(r.found) === false) return `no Service ${[r.found.service].flat().join(' or ')} is found`;
     return 'what it requires does not hold';
   }
 

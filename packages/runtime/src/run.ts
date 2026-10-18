@@ -1,4 +1,4 @@
-import type { Addon, Cluster, Ctx, GuardedResult, KubeContributor, Notification, ReachTarget, SetupResult } from '@overkube/sdk';
+import type { Addon, Cluster, Ctx, Found, GuardedResult, KubeContributor, Notification, ReachTarget, SetupResult } from '@overkube/sdk';
 import { effect, type Signal } from '@preact/signals';
 import { Scope } from './scope.ts';
 
@@ -15,16 +15,17 @@ import { Scope } from './scope.ts';
 /** A service of an addon's, by name. */
 export type Services = Signal<ReadonlyMap<string, { provider: string; value: unknown }>>;
 
-/** An addon's run, as the cluster is opened for it: its id (its writes' field manager: overkube-<id>), its life, what it says it reaches. */
+/** An addon's run, as the cluster is opened for it: its id (its writes' field manager: overkube-<id>), its life, what it says it reaches, the Services its conditions (answers, requires) look for. */
 export interface ClusterRun {
   id: string;
   signal: AbortSignal;
   reaches: readonly ReachTarget[];
+  finds: readonly Found[];
 }
 
 /** Where an addon runs: what it is given, where what it does is told. */
 export interface RunEnv {
-  /** The cluster for this run: once signal aborts, it writes nothing; it reaches the workloads it says (its reaches) alone. */
+  /** The cluster for this run: once signal aborts, it writes nothing; it reaches the workloads it says (its reaches) and the Services its answers find alone. */
   open(run: ClusterRun): Cluster;
   readonly services: Services;
   notify(notification: Notification, from: string): string;
@@ -33,6 +34,8 @@ export interface RunEnv {
   failed(id: string, error: unknown): void;
   /** Said only (after it stopped; what failed as it was let go of). */
   log(message: string): void;
+  /** What it says it uses now (none: nothing). */
+  using(id: string, words: string | undefined): void;
 }
 
 export interface AddonRun {
@@ -78,10 +81,17 @@ export function runAddon(addon: Addon, contributor: KubeContributor, env: RunEnv
   scope.add(() => {
     for (const [nid, n] of told) if (n.level !== 'error') env.dismiss(nid);
   });
+  // What it said it uses, unsaid when it stops.
+  scope.add(() => env.using(id, undefined));
 
   const ctx: Ctx = {
     contributor,
-    cluster: env.open({ id, signal: scope.controller.signal, reaches: addon.reaches ?? [] }),
+    cluster: env.open({
+      id,
+      signal: scope.controller.signal,
+      reaches: addon.reaches ?? [],
+      finds: [...(addon.answers ?? []).map((a) => a.when), ...(addon.requires ? [addon.requires] : [])].flatMap((c) => (c.found ? [c.found] : [])),
+    }),
     services: { get: <T>(name: string) => (env.services.value.get(name)?.value as T | undefined) ?? null },
     signal: scope.controller.signal,
     notify(n) {
@@ -95,6 +105,11 @@ export function runAddon(addon: Addon, contributor: KubeContributor, env: RunEnv
       env.dismiss(nid);
     },
     onDispose: (d) => void scope.add(guard(d)),
+    using(words) {
+      // Once stopped, nothing said.
+      if (scope.closed) return;
+      env.using(id, words);
+    },
     effect(fn) {
       // Once stopped, nothing runs.
       if (scope.closed) return;

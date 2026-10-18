@@ -1,4 +1,4 @@
-import { type AddonState, type AddonStatus, Appearance, Language, Messages, messagesName, NavView, RIGHTS_OF, Theme } from '@overkube/sdk';
+import { type AddonState, type AddonStatus, Appearance, builtIn, Language, Messages, messagesName, NavView, RIGHTS_OF, Theme } from '@overkube/sdk';
 import { useAddons, usePage, useSay, useUser } from '@overkube/sdk/preact';
 import {
   Accordion,
@@ -9,6 +9,7 @@ import {
   Button,
   DEFAULT_TOKENS,
   FONT,
+  Icon,
   knobsOf,
   Modal,
   madeTheme,
@@ -355,12 +356,21 @@ const STATES: Record<AddonState, { tone: 'ok' | 'progress' | 'waiting' | 'warn' 
   disabled: { tone: 'gone', icon: 'circle-dashed' },
 };
 
-/** An addon: a line (how it is doing, its name, its id and layer; started again at its end, if it failed), opened: why, what it is, what it may do. */
+/** Those that are always on: the core's and the built-in ones. */
+
+/**
+ * An addon: a line (how it is doing, its name, its id and layer; at its end,
+ * built in — always on — or its switch, and started again if it failed; off,
+ * one of what it answers to found, said so), opened: why, what it is, what
+ * it answers to (found where, not, not known yet), what it uses, what it may do.
+ */
 function AddonLine({ addon, onRestart }: { addon: AddonStatus; onRestart: () => void }) {
   const say = useSay();
+  const user = useUser();
   const look = STATES[addon.state];
   const state = say(t.states[addon.state]);
   const failing = addon.state === 'crashloop' || addon.state === 'failed' || addon.state === 'degraded';
+  const found = !addon.enabled && addon.answers.some((a) => a.found === true);
   return (
     <AccordionItem
       mark={<Status tone={look.tone} icon={look.icon} title={state} />}
@@ -370,14 +380,26 @@ function AddonLine({ addon, onRestart }: { addon: AddonStatus; onRestart: () => 
           <span>
             {addon.id} · {addon.layer}
           </span>
+          {found && <Badge level="ok">{say(t.foundHere)}</Badge>}
         </>
       }
       end={
-        failing && (
-          <Button icon="refresh" variant="ghost" size="sm" onClick={onRestart}>
-            {say(t.restart)}
-          </Button>
-        )
+        <>
+          {failing && (
+            <Button icon="refresh" variant="ghost" size="sm" onClick={onRestart}>
+              {say(t.restart)}
+            </Button>
+          )}
+          {builtIn(addon.layer) ? (
+            <Badge>{say(t.builtIn)}</Badge>
+          ) : (
+            <Switch
+              checked={addon.enabled}
+              onChange={(on) => user.patch('AddonChoices', 'default', { on: { [addon.id]: on } })}
+              label={<span class="uk-sr-only">{say(t.turn, { addon: addon.title })}</span>}
+            />
+          )}
+        </>
       }
     >
       <dl class="uk-board-facts">
@@ -404,6 +426,28 @@ function AddonLine({ addon, onRestart }: { addon: AddonStatus; onRestart: () => 
           <>
             <dt>{say(t.description)}</dt>
             <dd>{addon.description}</dd>
+          </>
+        )}
+        {addon.answers.length > 0 && (
+          <>
+            <dt>{say(t.detects)}</dt>
+            <dd>
+              <ul class="uk-marks">
+                {addon.answers.map((a) => (
+                  <li key={a.title} data-off={a.found ? undefined : ''}>
+                    <Icon name={a.found ? 'check' : a.found === false ? 'circle-dashed' : 'hourglass'} />
+                    <span>{a.title}</span>
+                    <span>{a.found ? (a.where ?? '') : say(a.found === false ? t.notHere : t.notKnown)}</span>
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        )}
+        {addon.using && (
+          <>
+            <dt>{say(t.using)}</dt>
+            <dd>{addon.using}</dd>
           </>
         )}
         <dt>{say(t.may)}</dt>

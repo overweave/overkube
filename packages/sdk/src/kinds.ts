@@ -1,5 +1,5 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
-import { checkFieldDef, type FieldName, type FieldType, type Path, type Unit, type Value, type Where } from '@overkube/query';
+import { checkFieldDef, type FieldName, type FieldType, type Join, type Path, type Unit, type Value, type Where } from '@overkube/query';
 import { TOKENS, TONES, type Tokens, type Tone } from '@overkube/uikit';
 import { defineKind, type Problem } from '@overweave/core';
 import { uiKinds } from '@overweave/ui';
@@ -263,7 +263,8 @@ export interface FieldSpec {
   type: FieldType;
   many?: boolean;
   unit?: Unit;
-  value: Path | { readonly cel: string };
+  /** A path, CEL (self: the object), or another kind's object's field — the one of its namespace and name (a pod's metrics). */
+  value: Path | { readonly cel: string } | Join;
 }
 
 export const Field = defineKind<FieldSpec>()('Field', {
@@ -601,6 +602,22 @@ export const Appearance = defineKind<AppearanceSpec>()('Appearance', {
 });
 
 /**
+ * Which addons the user turned on (an addon's or a plugin's is off until
+ * then; the core's and those built in, always on), and those whose
+ * suggestion they put off (not now). One, named 'default'; by addon id.
+ */
+export interface AddonChoicesSpec {
+  on?: Readonly<Record<string, boolean>>;
+  notNow?: Readonly<Record<string, boolean>>;
+}
+
+export const AddonChoices = defineKind<AddonChoicesSpec>()('AddonChoices', {
+  validate: fields({ on: [mapOf(flag), 'notFlags'], notNow: [mapOf(flag), 'notFlags'] }),
+  patchRights: { on: configure, notNow: configure },
+  merge: { maps: ['on', 'notNow'] },
+});
+
+/**
  * What is said in a language, of one addon's keys: named <locale>:<addon>
  * (pl:images, de:core) — its language in its name, its keys that addon's
  * (images.…). An addon's own, or a language pack's for another (in that
@@ -646,6 +663,7 @@ export const kubeOwnKinds = [
   Namespaces,
   Theme,
   Appearance,
+  AddonChoices,
   Messages,
   Language,
 ] as const;

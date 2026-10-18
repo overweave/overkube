@@ -90,13 +90,6 @@ const SKETCH = `
 .rv-sev b { font-size: 16px; font-variant-numeric: tabular-nums; color: var(--uk-text); }
 .rv-sev [data-sev='critical'] b, .rv-sev [data-sev='high'] b { color: var(--uk-error); }
 .rv-sev [data-sev='medium'] b { color: var(--uk-warn); }
-/* A chart: its area over time, its lines (what is asked for, what may be used) dashed, its last value at its top. */
-.rv-chart { display: grid; gap: 6px; }
-.rv-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.rv-chart-head b { font-size: 16px; font-variant-numeric: tabular-nums; }
-.rv-chart svg { display: block; width: 100%; height: 96px; overflow: visible; }
-.rv-chart-axis { display: flex; justify-content: space-between; color: var(--uk-muted); font-size: 11px; }
-.rv-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px 20px; }
 /* A log: its tools over it; its lines, numbered, its time quiet, a warning's and an error's in their colours — on the page's ground. */
 /* An addon's place: outlined, its slot and whose in its corner (shown or not). */
 .rv-stage[data-ext] .rv-ext { position: relative; outline: 1px dashed color-mix(in srgb, var(--uk-accent) 60%, transparent); outline-offset: 4px; border-radius: var(--uk-radius-lg); }
@@ -686,50 +679,3 @@ export function Route({ entry, match, middlewares, to, tls }: { entry: string[];
 }
 
 export type Vuln = [id: string, severity: 'critical' | 'high' | 'medium' | 'low', pkg: string, installed: string, fixed: string];
-
-/** Points over an hour, wandering about a level (a sketch's: the same each time). */
-export const series = (level: number, spread: number, seed: number) =>
-  Array.from({ length: 60 }, (_, i) => Math.max(0, level + spread * Math.sin(i / 5 + seed) + (spread / 2) * Math.sin(i * 1.7 + seed * 3)));
-
-/** A chart: its area over time; its lines (asked for, may use) dashed; its last value. */
-export function Chart({
-  title,
-  unit,
-  points,
-  max,
-  lines = [],
-}: {
-  title: string;
-  unit: string;
-  points: number[];
-  max: number;
-  lines?: [label: string, value: number, tone: string][];
-}) {
-  const y = (v: number) => 96 - (v / max) * 92;
-  const d = points.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i / (points.length - 1)) * 600},${y(v)}`).join(' ');
-  return (
-    <div class="rv-chart">
-      <div class="rv-chart-head">
-        <span class="rv-quiet">{title}</span>
-        <b>
-          {Math.round(points[points.length - 1])}
-          <span class="rv-quiet"> {unit}</span>
-        </b>
-      </div>
-      <svg viewBox="0 0 600 96" preserveAspectRatio="none" aria-hidden="true">
-        <path d={`${d} L600,96 L0,96 Z`} fill="color-mix(in srgb, var(--uk-accent) 18%, transparent)" />
-        <path d={d} fill="none" stroke="var(--uk-accent)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
-        {lines.map(([label, value, tone]) => (
-          <line key={label} x1="0" x2="600" y1={y(value)} y2={y(value)} stroke={tone} stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke">
-            <title>{`${label}: ${value} ${unit}`}</title>
-          </line>
-        ))}
-      </svg>
-      <div class="rv-chart-axis">
-        <span>1h ago</span>
-        <span>{lines.map(([label, value]) => `${label} ${value}`).join(' · ')}</span>
-        <span>now</span>
-      </div>
-    </div>
-  );
-}

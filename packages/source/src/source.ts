@@ -38,7 +38,7 @@ import {
 } from '@overkube/query';
 import { computed, effect, type ReadonlySignal, type Signal, signal, untracked } from '@preact/signals';
 import { queryErrorOf, refusedBy } from './errors.ts';
-import { capabilities, FieldsCache, type KindFields } from './fields.ts';
+import { bindJoins, capabilities, FieldsCache, type KindFields } from './fields.ts';
 import { filtered, isError, type MadeFilter, makeFilter, ticking, withTold } from './filter.ts';
 import { type Held, Kept } from './kept.ts';
 import { pageLog } from './log.ts';
@@ -100,10 +100,24 @@ interface Part {
   namespace?: string;
 }
 
+/** What a joined field reads: another kind's feeds (of the namespaces the plan reads), its fields. */
+interface Joined {
+  from: KindRef;
+  parts: readonly Part[];
+  fields: KindFields;
+}
+
 /** What a query reads (or why nothing); n: which plan of the query it is (in its revision). */
 type Plan = (
   | { readonly parts?: undefined; readonly state: 'loading' | 'error' | 'denied'; readonly error?: QueryError }
-  | { readonly parts: readonly Part[]; readonly fields: KindFields; readonly namespaces: 'all' | readonly string[]; readonly skipped?: number }
+  | {
+      readonly parts: readonly Part[];
+      readonly fields: KindFields;
+      readonly namespaces: 'all' | readonly string[];
+      readonly skipped?: number;
+      /** The kinds its joined fields read. */
+      readonly joins?: readonly Joined[];
+    }
 ) & { readonly n?: number };
 
 const LOADING: Plan = { state: 'loading' };
@@ -249,16 +263,8 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
     };
   }
 
-  function make(ask: Ask, want: (spec: FeedSpec) => Feed, borrow: (spec: FeedSpec) => Feed | undefined): Plan {
-    const { query } = ask;
-    const kind = kindOf(query.kind);
-    if (kind === null) {
-      const failed = connector.discovery.state.value === 'error';
-      return failed ? { state: 'error', error: queryErrorOf(connector.discovery.error.value) } : LOADING;
-    }
-    if (!kind) return { state: 'error', error: { code: 'not_served', message: `the cluster does not serve ${query.kind}` } };
-
-    // A CRD's kind: its fields of its CRD as it is now.
+  /** A kind's fields, a CRD's kind's of its CRD as it is now — or, that not known yet, on its way (or why not). */
+  function fieldsFor(kind: KindInfo): KindFields | Plan {
     let crd: CrdLike | undefined;
     if (kind.group) {
       const crds = connector.feeds.find({ kind: CRD, projection: 'metadata' });
@@ -273,7 +279,70 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
         // Not known yet whether it is one — unless the CRDs cannot be had (refused): then it is taken as none, its own columns aside.
       } else if (crds && !crds.whole.value && crds.state.value !== 'error') return LOADING;
     }
-    const made = fields.of(kind, crd, options.layers?.value ?? NO_LAYERS);
+    return fields.of(kind, crd, options.layers?.value ?? NO_LAYERS);
+  }
+
+  /**
+   * A query's plan: its feeds, and — for the joined fields it asks by (its
+   * sort, where, select, sums, the fields its filter reads) — the other
+   * kinds' (a feed of all of one others hold, else of the namespaces it
+   * reads), its fields bound to them. Another kind not served, its fields
+   * not known yet, or its feed failed: none of those values.
+   */
+  function make(ask: Ask, want: (spec: FeedSpec) => Feed, borrow: (spec: FeedSpec) => Feed | undefined): Plan {
+    const plan = partsOf(ask, want, borrow);
+    if (!plan.parts || ask.as === 'fields' || ask.as === 'get' || !plan.fields.joined.size) return plan;
+    const { filter, ...rest } = ask.query;
+    const asked = canonical(rest);
+    const made = filter ? makeFilter(plan.fields, filter) : undefined;
+    const used = [...plan.fields.joined].filter(([name]) => asked.includes(JSON.stringify(name)) || (made && !isError(made) && made.reads.has(name)));
+    if (!used.length) return plan;
+    const joins = [...new Set(used.map(([, j]) => j.from))].flatMap((from): Joined[] => {
+      const kind = kindOf(from);
+      const theirs = kind ? fieldsFor(kind) : undefined;
+      if (!kind || !theirs || !('ref' in theirs)) return [];
+      const every: FeedSpec = { kind };
+      const cover = plan.namespaces === 'all' || !kind.namespaced ? undefined : borrow(every);
+      const parts: Part[] =
+        plan.namespaces === 'all' || !kind.namespaced
+          ? [{ feed: want(every) }]
+          : cover
+            ? [{ feed: cover, only: new Set(plan.namespaces) }]
+            : plan.namespaces.map((namespace) => ({ feed: want({ kind, namespace }), namespace }));
+      return [{ from, parts, fields: theirs }];
+    });
+    const way = joins.map((j) => `${j.from}:${j.parts.map((p) => `${idOf(p.feed)}${p.only ? `:${[...p.only].join(',')}` : ''}`).join(',')}:${idOf(j.fields)}`).join(';');
+    const bound = bindJoins(
+      plan.fields,
+      (from) => {
+        const j = joins.find((x) => x.from === from);
+        return (
+          j && {
+            find: (key) => {
+              // A feed failed (refused, gone): none of what it had.
+              for (const { feed } of j.parts) if (feed.state.value !== 'error' && feed.objects.has(key)) return feed.objects.get(key);
+              return undefined;
+            },
+            fields: () => j.fields,
+          }
+        );
+      },
+      way,
+    );
+    return { ...plan, fields: bound, joins };
+  }
+
+  function partsOf(ask: Ask, want: (spec: FeedSpec) => Feed, borrow: (spec: FeedSpec) => Feed | undefined): Plan {
+    const { query } = ask;
+    const kind = kindOf(query.kind);
+    if (kind === null) {
+      const failed = connector.discovery.state.value === 'error';
+      return failed ? { state: 'error', error: queryErrorOf(connector.discovery.error.value) } : LOADING;
+    }
+    if (!kind) return { state: 'error', error: { code: 'not_served', message: `the cluster does not serve ${query.kind}` } };
+
+    const made = fieldsFor(kind);
+    if (!('ref' in made)) return made;
     if (ask.as === 'fields') return { parts: [], fields: made, namespaces: 'all' };
     const wrong = checkQuery(query, made.fields, ask.as);
     if (wrong) return { state: 'error', error: wrong };
@@ -336,32 +405,35 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
    */
   function listOf(plan: Plan & { parts: readonly Part[] }, query: ListQuery) {
     // The objects its filter keeps (the query as it is asked: its where, its cursors), what it could not be worked out of told.
-    const keeps = filterOf(plan, query.filter);
+    const made = plan.fields;
+    const keeps = filterOf(made, query.filter);
     const scanned = <R extends { fieldErrors?: Readonly<Record<string, FieldError>> }>(answer: (objects: Iterable<KubeObject>) => R) => {
       const f = filtered(objectsOf(plan.parts), keeps);
       return withTold(answer(f.objects), f.told());
     };
     const { page, select, ...base } = query;
-    const key = `${idOf(plan.fields)}|${plan.parts.map((p) => `${idOf(p.feed)}${p.only ? `:${[...p.only].join(',')}` : ''}`).join(';')}|${canonical(base)}`;
+    const key = `${idOf(made)}|${plan.parts.map((p) => `${idOf(p.feed)}${p.only ? `:${[...p.only].join(',')}` : ''}`).join(';')}|${canonical(base)}`;
     // Its objects as they are now (a filter of now: time as it goes too).
-    const stamp = `${plan.parts.map((p) => (p.only ? [...p.only].map((ns) => p.feed.revisionIn(ns).value).join(':') : p.feed.revision.value)).join('.')}${keeps?.timed ? `@${ticking()}` : ''}`;
+    // The other kinds its joined fields read, as they are now too.
+    const joined = (plan.joins ?? []).flatMap((j) => j.parts.map((p) => p.feed.revision.value)).join('.');
+    const stamp = `${plan.parts.map((p) => (p.only ? [...p.only].map((ns) => p.feed.revisionIn(ns).value).join(':') : p.feed.revision.value)).join('.')}|${joined}${keeps?.timed ? `@${ticking()}` : ''}`;
     const pageKey = canonical(page);
     const was = orderings.get(key);
     if (was && was.stamp === stamp) {
-      if (!was.ordered && was.page !== pageKey) was.ordered = scanned((objects) => ordered(objects, base, plan.fields.fields));
-      if (was.ordered) return windowOf(was.ordered, query, plan.fields.fields);
+      if (!was.ordered && was.page !== pageKey) was.ordered = scanned((objects) => ordered(objects, base, made.fields));
+      if (was.ordered) return windowOf(was.ordered, query, made.fields);
     } else {
       orderings.delete(key);
       orderings.set(key, { stamp, page: pageKey });
       // A few kept: the queries read now.
       if (orderings.size > 32) orderings.delete(orderings.keys().next().value as string);
     }
-    return scanned((objects) => scan(objects, query, plan.fields.fields));
+    return scanned((objects) => scan(objects, query, made.fields));
   }
 
   /** A query's filter, made (its plan checked it is one); none: not filtered. */
-  function filterOf(plan: Plan & { parts: readonly Part[] }, filter: string | undefined): MadeFilter | undefined {
-    const made = filter ? makeFilter(plan.fields, filter) : undefined;
+  function filterOf(fields: KindFields, filter: string | undefined): MadeFilter | undefined {
+    const made = filter ? makeFilter(fields, filter) : undefined;
     return made && !isError(made) ? made : undefined;
   }
 
@@ -577,7 +649,7 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
         if (!plan.parts) return status;
         // How many of all of them: as many as there are (no scan).
         if (!query.where && !query.filter && query.groupBy === undefined && query.sum === undefined) return { ...status, total: { count: sizeOf(plan.parts), exact: true } };
-        const f = filtered(objectsOf(plan.parts), filterOf(plan, query.filter));
+        const f = filtered(objectsOf(plan.parts), filterOf(plan.fields, query.filter));
         return { ...status, ...withTold(scanCount(f.objects, query, plan.fields.fields), f.told()) };
       });
     },
@@ -601,15 +673,17 @@ function ready(made: Plan, current: Plan): boolean {
   // Nothing in use, or nothing of it to show (all of it refused): no reason to wait.
   if (!current.parts || current.parts.every((p) => p.feed.state.value === 'error')) return true;
   if (!made.parts) return made.state === 'error';
-  return made.parts.every((p) => p.feed.state.value !== 'loading');
+  return [...made.parts, ...(made.joins ?? []).flatMap((j) => j.parts)].every((p) => p.feed.state.value !== 'loading');
 }
 
 /** Whether two plans read the same: the same feeds, as much of each, the same fields (or the same trouble). */
 function same(a: Plan, b: Plan): boolean {
   if (!a.parts || !b.parts) return !a.parts && !b.parts && a.state === b.state && a.error?.code === b.error?.code && a.error?.message === b.error?.message;
   const only = (p: Part) => (p.only ? [...p.only].join() : undefined);
+  const joins = (p: Plan & { parts: readonly Part[] }) => (p.joins ?? []).map((j) => `${j.from}:${j.parts.map((x) => idOf(x.feed)).join(',')}`).join(';');
   return (
     a.fields === b.fields &&
+    joins(a) === joins(b) &&
     String(a.namespaces) === String(b.namespaces) &&
     a.parts.length === b.parts.length &&
     a.parts.every((p, i) => p.feed === b.parts[i].feed && p.namespace === b.parts[i].namespace && only(p) === only(b.parts[i]))
@@ -644,6 +718,8 @@ function statusOf(plan: Plan): Result {
       if (why && !behind) behind = { ...queryErrorOf(why), ...(part.namespace !== undefined ? { message: `${part.namespace}: ${why.message}` } : {}) };
     }
   }
+  // The kinds its joined fields read: theirs changing, a new answer (their trouble not its: their values none).
+  for (const j of plan.joins ?? []) for (const p of j.parts) revisions.push(p.feed.revision.value);
   const namespaces = plan.namespaces === 'all' ? 'all' : plan.namespaces.filter((n) => !denied.includes(n));
   let state: Result['state'] =
     error !== undefined

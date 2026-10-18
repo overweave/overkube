@@ -14,6 +14,49 @@ const pod = (name: string, namespace: string, restarts: number) =>
   ({ metadata: { name, namespace, uid: name }, status: { phase: 'Running', containerStatuses: [{ name: 'c', ready: true, restartCount: restarts }] } }) as KubeObject;
 
 describe('a source in memory', () => {
+  it('has fields joined of another kind’s objects (the same namespace and name): sorted and filtered by, again as those change', () => {
+    const svc = (name: string, n: number) => ({ metadata: { name, namespace: 'x' }, spec: { n } }) as KubeObject;
+    const objects = signal<Record<string, KubeObject[]>>({ 'pods.v1': [pod('a', 'x', 0), pod('b', 'x', 0), pod('c', 'x', 0)], 'services.v1': [svc('a', 5), svc('b', 9)] });
+    const layers = signal([{ fields: { 'acme.n': { kinds: ['pods.v1'], type: 'number', value: { from: 'services.v1', field: '.spec.n' } } } }]);
+    const source = memorySource(objects, { layers });
+    const list = source.list({ kind: 'pods.v1', sort: [{ field: 'acme.n', desc: true }], page: { limit: 5 }, select: ['core.name', 'acme.n'] });
+    expect(list.value.items.map((i) => i.values)).toEqual([
+      { 'core.name': 'b', 'acme.n': 9 },
+      { 'core.name': 'a', 'acme.n': 5 },
+      { 'core.name': 'c', 'acme.n': null },
+    ]);
+    objects.value = { ...objects.value, 'services.v1': [svc('a', 50), svc('b', 9)] };
+    expect(list.value.items.map((i) => i.values?.['core.name'])).toEqual(['a', 'b', 'c']);
+    expect(source.count({ kind: 'pods.v1', where: { field: 'acme.n', op: 'range', gt: 10 } }).value.total?.count).toBe(1);
+    expect(source.count({ kind: 'pods.v1', sum: ['acme.n'] }).value.sums).toEqual({ 'acme.n': 59 });
+  });
+
+  it('joins a kind of no namespace by name; one not served, none; a field the other has not, or a joined one, told as its error', () => {
+    const objects = signal<Record<string, KubeObject[]>>({
+      'nodes.v1': [{ metadata: { name: 'n1' } } as KubeObject],
+      'csinodes.v1.storage.k8s.io': [{ metadata: { name: 'n1' }, spec: { n: 3 } } as KubeObject],
+    });
+    const layers = signal([
+      {
+        fields: {
+          'acme.n': { kinds: ['nodes.v1'], type: 'number', value: { from: 'csinodes.v1.storage.k8s.io', field: '.spec.n' } },
+          'acme.none': { kinds: ['nodes.v1'], type: 'number', value: { from: 'csinodes.v1.storage.k8s.io', field: 'acme.nope' } },
+          'acme.back': { kinds: ['csinodes.v1.storage.k8s.io'], type: 'number', value: { from: 'nodes.v1', field: 'acme.n' } },
+          'acme.twice': { kinds: ['nodes.v1'], type: 'number', value: { from: 'csinodes.v1.storage.k8s.io', field: 'acme.back' } },
+        },
+      },
+    ]);
+    const source = memorySource(objects, { layers });
+    const nodes = source.list({ kind: 'nodes.v1', page: { limit: 5 }, select: ['acme.n', 'acme.none', 'acme.twice'] }).value;
+    expect(nodes.items[0]?.values).toEqual({ 'acme.n': 3, 'acme.none': null, 'acme.twice': null });
+    expect(nodes.fieldErrors).toEqual({
+      'acme.none': expect.objectContaining({ code: 'bad_join', message: 'csinodes.v1.storage.k8s.io has no field acme.nope' }),
+      'acme.twice': expect.objectContaining({ code: 'bad_join' }),
+    });
+    const unserved = memorySource(objects, { layers, serves: (k) => k.group !== 'storage.k8s.io' });
+    expect(unserved.list({ kind: 'nodes.v1', page: { limit: 5 }, select: ['acme.n'] }).value.items[0]?.values).toEqual({ 'acme.n': null });
+  });
+
   it('answers as the page’s does, as its objects change', () => {
     const objects = signal<Record<string, KubeObject[]>>({ 'pods.v1': [pod('a', 'x', 3), pod('b', 'y', 1)] });
     const source = memorySource(objects);

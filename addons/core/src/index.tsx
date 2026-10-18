@@ -344,6 +344,8 @@ export default defineAddon({
     c.add('NavView', 'default', { mode: 'tabs' }, fallback);
     // The namespaces one may use without listing them: the page's guess, the user's own (added in the picker).
     c.add('Namespaces', 'default', {}, fallback);
+    // Which addons the user turned on, whose suggestion they put off: none, until they say (theirs to patch).
+    c.add('AddonChoices', 'default', {}, fallback);
     // The tabs open (opened, closed, moved: this visit's), while the page runs; those pinned, the side rail pinned: the user's (the NavView, patched).
     const tabs: TabsState = { open: signal<string[]>([]) };
     c.add('Fill', 'core.nav.tabs', { slot: slots.nav.tabs.name, render: () => <NavTabs tabs={tabs} /> });

@@ -207,6 +207,37 @@ button.uk-tile:hover .uk-tile-title { color: var(--uk-text); }
 .uk-gauge { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: baseline; }
 .uk-gauge > span:first-child { color: var(--uk-muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
 .uk-gauge > span:nth-child(2) { font-size: 12px; font-variant-numeric: tabular-nums; }
+/* How something went, small (Sparkline): the accent's line, its area fading under it, a dot where it is now. */
+.uk-spark { display: block; flex: none; overflow: visible; }
+.uk-spark-line { fill: none; stroke: var(--uk-accent); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.uk-spark circle { fill: var(--uk-accent); }
+/* How much is used now (Usage): its sparkline, then its number — near its limit a warning, over it an error. */
+.uk-usage { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-variant-numeric: tabular-nums; }
+.uk-usage-value[data-level='warn'] { color: var(--uk-warn); }
+.uk-usage-value[data-level='error'] { color: var(--uk-error); }
+.uk-usage-unit { color: var(--uk-muted); }
+/* How something went over a range (TimeChart): its head, its plot (pointed at: a cursor, a dot, a tip), its axis; a bar over charts (their range, where from). */
+.uk-charts-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
+.uk-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px 20px; }
+.uk-chart { display: grid; gap: 6px; min-width: 0; }
+.uk-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.uk-chart-head > span { color: var(--uk-muted); font-size: 12px; }
+.uk-chart-head b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.uk-chart-head b span { color: var(--uk-muted); font-size: 12px; font-weight: 400; }
+.uk-chart-plot { position: relative; height: 110px; cursor: crosshair; touch-action: none; border-radius: var(--uk-radius-sm); }
+.uk-chart-plot:focus-visible { outline: 2px solid var(--uk-focus); outline-offset: 4px; }
+.uk-chart-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.uk-chart-line { fill: none; stroke: var(--uk-accent); stroke-width: 1.5; stroke-linejoin: round; }
+.uk-chart-mark { stroke: var(--uk-muted); stroke-dasharray: 4 4; }
+.uk-chart-mark[data-tone='info'] { stroke: var(--uk-info); }
+.uk-chart-mark[data-tone='ok'] { stroke: var(--uk-ok); }
+.uk-chart-mark[data-tone='warn'] { stroke: var(--uk-warn); }
+.uk-chart-mark[data-tone='error'] { stroke: var(--uk-error); }
+.uk-chart-cursor { stroke: var(--uk-muted); stroke-width: 1; }
+.uk-chart-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--uk-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--uk-accent) 25%, transparent); pointer-events: none; }
+.uk-chart-tip { position: absolute; top: -4px; transform: translate(-50%, -100%); padding: 3px 8px; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); background: var(--uk-panel-2); color: var(--uk-muted); font-size: 12px; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
+.uk-chart-tip b { color: var(--uk-text); font-weight: 600; }
+.uk-chart-axis { display: flex; justify-content: space-between; gap: 12px; color: var(--uk-muted); font-size: 11px; }
 .uk-gauge > .uk-meter-track { grid-column: 1 / -1; }
 .uk-tokens { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px var(--uk-board-pad, 16px); border-bottom: 1px solid var(--uk-border); }
 .uk-token { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 4px 0 8px; border-radius: var(--uk-radius-sm); background: var(--uk-panel-2); font-size: 12px; }
@@ -241,7 +272,7 @@ button.uk-tile:hover .uk-tile-title { color: var(--uk-text); }
 .uk-notice-title { font-weight: 600; color: var(--uk-notice-c); }
 .uk-notice:not([data-level]) .uk-notice-title { color: var(--uk-text); }
 .uk-root[data-theme='light'] .uk-notice[data-level] .uk-notice-title, .uk-root[data-theme='light'] .uk-notice[data-level] .uk-notice-icon { color: color-mix(in srgb, var(--uk-notice-c), var(--uk-text) 35%); }
-.uk-notice-action { flex: none; align-self: center; margin: -4px -4px -4px 0; }
+.uk-notice-action { flex: none; align-self: center; display: flex; align-items: center; gap: 8px; margin: -4px -4px -4px 0; }
 
 /* A modal: a layer over all the page, dimmed behind it; its panel in the middle (high up), from an edge, or from the bottom — coming in from there, going back there. */
 .uk-modal { position: fixed; inset: 0; color: var(--uk-text); background: var(--uk-overlay); animation: uk-fade-in .2s ease-out both; }
@@ -319,6 +350,11 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 /* Some badges (ports), some refs (what a pod uses): side by side, wrapping. */
 .uk-badges { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .uk-refs { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+/* Things marked each (found, not, not known): its mark, its name, a word on it quiet. */
+.uk-marks { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.uk-marks > li { display: grid; grid-template-columns: 16px max-content minmax(0, 1fr); gap: 8px; align-items: center; }
+.uk-marks > li[data-off] > :nth-child(2) { color: var(--uk-muted); }
+.uk-marks > li > :nth-child(3) { color: var(--uk-muted); font-size: 12px; margin-left: 4px; overflow-wrap: anywhere; }
 /* A chain (a controller's controllers, to the root): the root first, a › between, those after it quiet. */
 .uk-chain { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; min-width: 0; }
 .uk-chain-next { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; opacity: .65; }

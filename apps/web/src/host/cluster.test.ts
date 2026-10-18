@@ -1,5 +1,6 @@
 import { Discovery, Http } from '@overkube/connector';
 import { type KubeObject, kinds } from '@overkube/kube-types';
+import { LIMITS } from '@overkube/query';
 import { Field, fieldLayers, kubeKinds } from '@overkube/sdk';
 import { memorySource } from '@overkube/source';
 import { createRegistry } from '@overweave/core';
@@ -46,7 +47,7 @@ function setup(objects: Record<string, KubeObject[]> = {}) {
 
 const aRun = (id = 'images') => {
   const controller = new AbortController();
-  return { id, signal: controller.signal, reaches: [], stop: () => controller.abort() };
+  return { id, signal: controller.signal, reaches: [], finds: [], stop: () => controller.abort() };
 };
 
 describe('clusterAccess', () => {
@@ -119,5 +120,32 @@ describe('fieldLayers', () => {
     run.stop();
     await expect(held).rejects.toThrow(/aborted/);
     await expect(cluster.proxy(trivy).get('/healthz')).rejects.toThrow(/has stopped/);
+  });
+
+  it('reaches where a Service its conditions look for is found — that one, that port — and no other', async () => {
+    const vm = { metadata: { namespace: 'monitoring', name: 'vmsingle-main' }, spec: { ports: [{ port: 8428 }] } } as KubeObject;
+    const { sent, access } = setup({ 'services.v1': [vm] });
+    const cluster = access.open({ ...aRun('metrics'), finds: [{ service: ['vmsingle-*'], port: 8428 }] });
+    await cluster.proxy({ kind: 'service', namespace: 'monitoring', name: 'vmsingle-main', port: 8428 }).get('/api/v1/query');
+    expect(sent.at(-1)?.request).toBe('GET /proxy/services/monitoring/vmsingle-main:8428/api/v1/query');
+    for (const other of [
+      { kind: 'service', namespace: 'monitoring', name: 'vmsingle-main', port: 22 },
+      { kind: 'service', namespace: 'shop', name: 'vmsingle-main', port: 8428 },
+      { kind: 'pod', namespace: 'monitoring', name: 'vmsingle-main', port: 8428 },
+    ] as const)
+      expect(() => cluster.proxy(other)).toThrow(/where the Services its conditions look for are found/);
+  });
+
+  it('finds a Service as it comes and goes; more of them than one window: not known, never none', () => {
+    const svc = (name: string) => ({ metadata: { namespace: 'm', name }, spec: { ports: [{ port: 8428 }] } }) as KubeObject;
+    const objects = signal<Record<string, KubeObject[]>>({ 'services.v1': [] });
+    const access = clusterAccess({ http: new Http({ fetch: (async () => Response.json({})) as never }), discovery: new Discovery(new Http()) }, memorySource(objects));
+    const spec = { service: 'vmsingle-*' };
+    expect(access.facts.found(spec)).toBe(false);
+    objects.value = { 'services.v1': [svc('vmsingle-main')] };
+    expect(access.facts.found(spec)).toEqual({ kind: 'service', namespace: 'm', name: 'vmsingle-main', port: 8428 });
+    objects.value = { 'services.v1': Array.from({ length: LIMITS.page + 1 }, (_, i) => svc(`other-${i}`)) };
+    expect(access.facts.found(spec)).toBeUndefined();
+    access.close();
   });
 });

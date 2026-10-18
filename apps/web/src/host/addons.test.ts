@@ -1,4 +1,4 @@
-import { type Addon, column, defineAddon, kubeKinds } from '@overkube/sdk';
+import { type Addon, type AddonChoicesSpec, column, defineAddon, type Found, kubeKinds, type ReachTarget } from '@overkube/sdk';
 import { createRegistry } from '@overweave/core';
 import { signal } from '@preact/signals';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -9,8 +9,12 @@ import type { ClusterAccess } from './cluster.ts';
  * The addons' host: each addon a contributor at its layer, what it said
  * taken back when it stops, started as what it requires comes and goes,
  * started again after its setup fails (then left alone), the safe mode,
- * services, a failure told as its owner's.
+ * services, a failure told as its owner's; an addon off until the user
+ * turns it on, what it answers to checked, suggested.
  */
+
+/** The user's choices with every addon turned on (as they may): the host's other ways tested apart from them. */
+const allOn = (): AddonChoicesSpec => ({ on: new Proxy({}, { get: () => true }) });
 
 const hosts: AddonHost[] = [];
 afterEach(() => {
@@ -18,19 +22,26 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/** A cluster whose facts the test sets: served groups, available APIServices. */
-function setup(options: { safe?: boolean; log?: (message: string) => void } = {}) {
+/** A cluster whose facts the test sets: served groups, available APIServices, Services found (where); the user's choices (every addon on, unless said). */
+function setup(options: { safe?: boolean; log?: (message: string) => void; choices?: AddonChoicesSpec } = {}) {
   const served = signal<Set<string> | null>(new Set(['']));
   const available = signal<Set<string>>(new Set());
+  const found = signal<Record<string, ReachTarget | false | undefined>>({});
   const cluster: ClusterAccess = {
-    facts: { served: (g) => (served.value ? served.value.has(g) : undefined), available: (a) => available.value.has(a) },
+    facts: {
+      served: (g) => (served.value ? served.value.has(g) : undefined),
+      available: (a) => available.value.has(a),
+      found: (spec: Found) => found.value[[spec.service].flat()[0]],
+    },
     open: () => ({}) as never,
     components: () => ({}) as never,
+    close() {},
   };
+  const choices = signal<AddonChoicesSpec | undefined>(options.choices ?? allOn());
   const registry = createRegistry({ kinds: kubeKinds });
-  const host = new AddonHost({ registry, cluster, safe: options.safe, retryMs: 10, maxRetryMs: 40, maxCrashes: 3, log: options.log ?? (() => {}) });
+  const host = new AddonHost({ registry, cluster, choices, safe: options.safe, retryMs: 10, maxRetryMs: 40, maxCrashes: 3, log: options.log ?? (() => {}) });
   hosts.push(host);
-  return { registry, host, served, available };
+  return { registry, host, served, available, found, choices };
 }
 
 const named = (id: string, layer: Addon['layer'], setup: Addon['setup'], more: Partial<Addon> = {}) => defineAddon({ id, title: id, layer, setup, ...more });
@@ -114,19 +125,60 @@ describe('the host', () => {
     expect([host.status('reader')?.state, seen]).toEqual(['running', { ready: true }]);
   });
 
-  it('suggests an addon that is off when what it detects is there', () => {
-    const { host, served } = setup();
-    host.register(named('traefik', 'addon', () => {}, { detect: { served: 'traefik.io' } }));
-    expect(host.status('traefik')?.state).toBe('running');
-    const off = new AddonHost({
-      registry: createRegistry({ kinds: kubeKinds }),
-      cluster: { facts: { served: (g) => g === 'traefik.io', available: () => false }, open: () => ({}) as never, components: () => ({}) as never },
-      enabled: () => false,
+  it('keeps an addon or a plugin off until the user turns it on — the core’s and the built-in ones always on', () => {
+    const { host, choices } = setup({ choices: {} });
+    host.register(named('core', 'core', () => {}));
+    host.register(named('session', 'builtin', () => {}));
+    host.register(named('metrics', 'addon', () => {}));
+    expect(host.statuses.value.map((s) => [s.id, s.state, s.enabled])).toEqual([
+      ['core', 'running', true],
+      ['session', 'running', true],
+      ['metrics', 'disabled', false],
+    ]);
+    choices.value = { on: { metrics: true, core: false } };
+    expect([host.status('metrics')?.state, host.status('core')?.state]).toEqual(['running', 'running']);
+    choices.value = { on: { metrics: false } };
+    expect(host.status('metrics')?.state).toBe('disabled');
+  });
+
+  it('checks what an addon answers to — found where, not, not known yet — and suggests it, off, when one is found, unless put off', () => {
+    const { host, available, found, choices } = setup({ choices: {} });
+    host.register(
+      named('metrics', 'addon', () => {}, {
+        answers: [
+          { title: 'metrics-server', when: { available: 'v1beta1.metrics.k8s.io' } },
+          { title: 'VictoriaMetrics', when: { found: { service: 'vmsingle-*', port: 8428 } } },
+        ],
+      }),
+    );
+    expect(host.status('metrics')).toMatchObject({
+      suggested: false,
+      answers: [
+        { title: 'metrics-server', found: false },
+        { title: 'VictoriaMetrics', found: undefined },
+      ],
     });
-    hosts.push(off);
-    off.register(named('traefik', 'addon', () => {}, { detect: { served: 'traefik.io' } }));
-    expect(off.status('traefik')).toMatchObject({ state: 'disabled', suggested: true });
-    expect(served.value).toBeDefined();
+    found.value = { 'vmsingle-*': { kind: 'service', namespace: 'monitoring', name: 'vmsingle-main', port: 8428 } };
+    available.value = new Set(['v1beta1.metrics.k8s.io']);
+    expect(host.status('metrics')).toMatchObject({
+      suggested: true,
+      answers: [
+        { title: 'metrics-server', found: true },
+        { title: 'VictoriaMetrics', found: true, where: 'monitoring/vmsingle-main:8428' },
+      ],
+    });
+    choices.value = { notNow: { metrics: true } };
+    expect(host.status('metrics')?.suggested).toBe(false);
+    choices.value = { on: { metrics: true } };
+    expect(host.status('metrics')).toMatchObject({ state: 'running', suggested: false });
+  });
+
+  it('says what an addon uses now, as it says it — gone when it stops', () => {
+    const { host, choices } = setup();
+    host.register(named('metrics', 'addon', (ctx) => ctx.using('metrics-server now')));
+    expect(host.status('metrics')?.using).toBe('metrics-server now');
+    choices.value = { on: {} };
+    expect(host.status('metrics')?.using).toBeUndefined();
   });
 
   it('tells a failure as its owner’s: the addon that says what failed is degraded', () => {
@@ -176,7 +228,8 @@ describe('the host', () => {
     const registry = createRegistry({ kinds: kubeKinds });
     const host = new AddonHost({
       registry,
-      cluster: { facts: { served: () => true, available: () => true }, open: () => ({}) as never, components: () => ({}) as never },
+      cluster: { facts: { served: () => true, available: () => true, found: () => false }, open: () => ({}) as never, components: () => ({}) as never, close() {} },
+      choices: signal(allOn()),
       notify: (n) => {
         const id = `n${++next}`;
         told.set(id, n.text);

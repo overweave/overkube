@@ -2,6 +2,7 @@ import type { ReachTarget, StatusAnswer } from '@overkube/gateway/protocol';
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import type { QueryError, Source } from '@overkube/query';
 import type { ReadonlySignal } from '@preact/signals';
+import type { Found } from './addon.ts';
 
 /*
  * The cluster, as an addon works with it — a contract: the page makes it
@@ -68,14 +69,51 @@ export function reachOver(request: Reach['request']): Reach {
 export const reaches = (said: readonly ReachTarget[], target: ReachTarget) =>
   said.some((t) => t.kind === target.kind && t.namespace === target.namespace && t.name === target.name && String(t.port) === String(target.port));
 
+/** A Service's name as looked for: * any run of characters, the rest as it is. */
+const named = (pattern: string) => new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*')}$`);
+
+/** The names a Service looked for may have, as patterns. */
+const namesOf = (spec: Found) => (typeof spec.service === 'string' ? [spec.service] : spec.service).map(named);
+
+type Port = { port?: number; targetPort?: number | string };
+
+/** The Service of these that is looked for, as a target: by its names in their order (the first said, the first had), its port the one asked — or the one in front of it — else its first. */
+export function foundIn(services: readonly KubeObject[], spec: Found): ReachTarget | undefined {
+  for (const pattern of namesOf(spec))
+    for (const s of services) {
+      const name = s.metadata?.name ?? '';
+      if (!pattern.test(name)) continue;
+      const ports = ((s as { spec?: { ports?: Port[] } }).spec?.ports ?? []).filter((p) => spec.port === undefined || p.port === spec.port || p.targetPort === spec.port);
+      if (!ports[0]?.port) continue;
+      return { kind: 'service', namespace: s.metadata?.namespace ?? '', name, port: ports[0].port };
+    }
+  return undefined;
+}
+
+/** Where a target is, said short: monitoring/vmsingle-main:8428. */
+export const whereOf = (t: ReachTarget) => `${t.namespace}/${t.name}:${t.port}`;
+
 /**
  * An addon's way to a workload (its run: its id, its life, what it says it
- * reaches): only to one it says; nothing once it stopped — what is in
- * flight then cut off too (its run's signal, beside any it gives).
+ * reaches, the Services its conditions look for): only to one it says, or
+ * to where one of those Services is found now (found: that one, its port —
+ * no other); nothing once it stopped — what is in flight then cut off too
+ * (its run's signal, beside any it gives).
  */
-export function runReach(run: { id: string; signal: AbortSignal; reaches: readonly ReachTarget[] }, target: ReachTarget, request: Reach['request']): Reach {
-  if (!reaches(run.reaches, target))
-    throw new Error(`addon ${run.id} reaches only what it says it does (reaches): not ${target.kind} ${target.namespace}/${target.name}:${target.port}`);
+export function runReach(
+  run: { id: string; signal: AbortSignal; reaches: readonly ReachTarget[]; finds: readonly Found[] },
+  target: ReachTarget,
+  request: Reach['request'],
+  found: (spec: Found) => ReachTarget | false | undefined,
+): Reach {
+  const isFound = run.finds.some((spec) => {
+    const at = found(spec);
+    return !!at && reaches([at], target);
+  });
+  if (!reaches(run.reaches, target) && !isFound)
+    throw new Error(
+      `addon ${run.id} reaches only what it says it does (reaches) and where the Services its conditions look for are found: not ${target.kind} ${target.namespace}/${target.name}:${target.port}`,
+    );
   return reachOver(async (method, path, init = {}) => {
     if (run.signal.aborted) throw new Error(`addon ${run.id} has stopped: it reaches nothing more`);
     return request(method, path, { ...init, signal: init.signal ? AbortSignal.any([init.signal, run.signal]) : run.signal });
@@ -112,6 +150,8 @@ export interface Cluster {
    * nothing sent.
    */
   remove(kind: KindInfo, object: KubeObject): Promise<void>;
-  /** A workload's port, as data — an addon's: only one it says it reaches (Addon.reaches). */
+  /** A Service as looked for (an answer's): where it is (a target to reach), none (false), not known yet (undefined) — followed where read. */
+  found(spec: Found): ReachTarget | false | undefined;
+  /** A workload's port, as data — an addon's: only one it says it reaches (Addon.reaches), or where a Service its conditions look for is found (found()). */
   proxy(target: ReachTarget): Reach;
 }

@@ -2,7 +2,7 @@ import type { StatusAnswer } from '@overkube/gateway/protocol';
 import { type KindInfo, kinds } from '@overkube/kube-types';
 import { type CountResult, canonical, type Item, type Result, type Value, type Where } from '@overkube/query';
 import { KindView, type KubeContributor, kindPath, kindRef, openIn, type PageProps, type Say, StatusLook, slots, TableView } from '@overkube/sdk';
-import { fill, useCluster, useCount, useGet, useList, usePage, useSay, useUser } from '@overkube/sdk/preact';
+import { fill, useAddons, useCluster, useCount, useGet, useList, usePage, useSay, useUser } from '@overkube/sdk/preact';
 import {
   Badge,
   Board,
@@ -12,6 +12,7 @@ import {
   Chosen as ChosenTokens,
   Gauge,
   Nothing,
+  Notice,
   Panel,
   PanelBody,
   PanelHead,
@@ -102,9 +103,51 @@ const WELL: ReadonlySet<Tone> = new Set(['ok', 'done', 'progress']);
 export function Dashboard(props: PageProps) {
   return (
     <Board>
+      {slotElement(region('notices'), props)}
       {slotElement(region('tiles'), props)}
       <BoardColumns wide={slotElement(region('main'), props)} narrow={slotElement(region('side'), props)} />
     </Board>
+  );
+}
+
+/**
+ * Addons that are off but would answer here (one of what they answer to
+ * found, and not put off): each a notice — what was found and where, what
+ * the addon does; turned on, or not now — the user's word, kept as theirs.
+ */
+export function Suggested() {
+  const say = useSay();
+  const user = useUser();
+  const addons = useAddons();
+  const t = T.page.overview.suggested;
+  return (
+    <>
+      {(addons?.statuses.value ?? [])
+        .filter((a) => a.suggested)
+        .map((addon) => {
+          const found = addon.answers.find((a) => a.found === true);
+          const about = addon.description ?? '';
+          return (
+            <Notice
+              key={addon.id}
+              icon="puzzle"
+              title={say(t.title, { what: found?.title ?? addon.title })}
+              action={
+                <>
+                  <Button variant="primary" onClick={() => user.patch('AddonChoices', 'default', { on: { [addon.id]: true } })}>
+                    {say(t.turnOn, { addon: addon.title })}
+                  </Button>
+                  <Button variant="ghost" onClick={() => user.patch('AddonChoices', 'default', { notNow: { [addon.id]: true } })}>
+                    {say(t.notNow)}
+                  </Button>
+                </>
+              }
+            >
+              {found?.where ? say(t.where, { where: found.where, about }) : about}
+            </Notice>
+          );
+        })}
+    </>
   );
 }
 
@@ -870,6 +913,7 @@ export function addOverview(c: KubeContributor, chosen: Chosen): void {
   // The unhealthy's table as it is set out: as by default, the user's to change (a fallback another's takes the place of).
   c.add('TableView', UNHEALTHY_VIEW, {}, { fallback: true });
   c.add('Fill', 'core.page.overview.dashboard', fill(slots.page('overview'), { render: Dashboard }));
+  c.add('Fill', 'core.page.overview.suggested', fill(region('notices'), { render: Suggested }));
   c.add('Fill', 'core.page.overview.tiles', fill(region('tiles'), { render: () => <OverviewTiles chosen={chosen} /> }));
   c.add('Fill', 'core.page.overview.unhealthy', fill(region('main'), { order: 100, render: () => <Unhealthy chosen={chosen} /> }));
   c.add('Fill', 'core.page.overview.rolling', fill(region('main'), { order: 200, render: () => <RollingOut chosen={chosen} /> }));

@@ -111,6 +111,8 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
         restarts: 0,
         errors: 0,
         ...states?.[a.id],
+        // What it answers to: as the story says, else not known yet.
+        answers: states?.[a.id]?.answers ?? (a.answers ?? []).map((answer) => ({ title: answer.title, found: undefined })),
       })),
     );
     return { statuses, restart: (id) => (statuses.value = statuses.value.map((s) => (s.id === id ? { ...s, state: 'running', restarts: s.restarts + 1 } : s))) };

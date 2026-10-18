@@ -34,6 +34,8 @@ export interface KubeWorld extends KubeWorldBase {
   failures(id: string): readonly unknown[];
   /** A service, while its provider runs. */
   service<T = unknown>(name: string): T | null;
+  /** What a running addon says it uses now (ctx.using): none, nothing. */
+  using(id: string): string | undefined;
   /** The user's changes, as the page keeps them (in memory): w.user.patch('TableView', 'v1/Pod', { widths: { 'core.name': 240 } }). */
   readonly user: UserService;
   /** The page's language, as its user would set it (Language): w.language('pl'). */
@@ -51,6 +53,7 @@ function scoped(cluster: Cluster, run: ClusterRun): Cluster {
     discovery: cluster.discovery,
     source: cluster.source,
     served: (g) => cluster.served(g),
+    found: (spec) => cluster.found(spec),
     status: (s) => cluster.status(s),
     patch: async (kind, object, change) => {
       live();
@@ -60,7 +63,13 @@ function scoped(cluster: Cluster, run: ClusterRun): Cluster {
       live();
       return cluster.remove(kind, object);
     },
-    proxy: (target) => runReach(run, target, (method, path, init) => cluster.proxy(target).request(method, path, init)),
+    proxy: (target) =>
+      runReach(
+        run,
+        target,
+        (method, path, init) => cluster.proxy(target).request(method, path, init),
+        (spec) => cluster.found(spec),
+      ),
   };
 }
 
@@ -71,6 +80,8 @@ export interface AddonEnv {
   readonly services: Signal<ReadonlyMap<string, { provider: string; value: unknown }>>;
   /** What an addon threw (its callbacks, its setup's promise, a service of another's it would give; after it stopped too), by its id. */
   failures(id: string): unknown[];
+  /** What each addon says it uses now (ctx.using), by its id. */
+  readonly using: Map<string, string>;
 }
 
 /** Addons' shared things: a cluster (in memory, unless given), notifications. */
@@ -80,6 +91,7 @@ export function addonEnv(cluster: FakeCluster = fakeCluster(), told: Notificatio
     cluster,
     notifications: told,
     services: signal(new Map()),
+    using: new Map(),
     failures(id) {
       const kept = failed.get(id);
       if (kept) return kept;
@@ -107,6 +119,7 @@ export function addonRun(a: Addon, env: AddonEnv, on: { finished?(done: Promise<
       dismiss: (id) => env.notifications.dismiss(id),
       failed: (_, error) => void failures().push(error),
       log: (message) => void failures().push(new Error(message)),
+      using: (id, words) => void (words === undefined ? env.using.delete(id) : env.using.set(id, words)),
     });
     if (run.pending) {
       const done = run.ready.catch((error) => {
@@ -165,6 +178,7 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
       state: 'running',
       enabled: true,
       suggested: false,
+      answers: (a.answers ?? []).map((answer) => ({ title: answer.title, found: undefined })),
       restarts: 0,
       errors: 0,
     };
@@ -177,6 +191,7 @@ export function kubeWorld(options: { cluster?: FakeCluster } = {}): KubeWorld {
     notifications: env.notifications,
     addon,
     ready: (id: string) => started.get(id) ?? Promise.reject(new Error(`no addon ${id} was run`)),
+    using: (id: string) => env.using.get(id),
     stop(id: string) {
       runs.get(id)?.stop();
       runs.delete(id);

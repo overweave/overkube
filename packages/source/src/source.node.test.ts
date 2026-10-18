@@ -275,6 +275,34 @@ describe('what a query is told', () => {
     expect(Object.keys(pods.value.rejected ?? {})).toEqual(['acme.bad']);
   });
 
+  it('has fields joined of another kind’s objects (the same namespace and name) — read only for a query asking by them, live as they change', async () => {
+    const thing = (name: string, namespace: string, size: number) => ({ metadata: { name, namespace, uid: `t-${namespace}-${name}` }, spec: { size } }) as KubeObject;
+    const layers = signal<readonly Layer[]>([{ fields: { 'acme.size': { kinds: ['pods.v1'], type: 'number', value: { from: 'things.v1.example.com', field: '.spec.size' } } } }]);
+    const { kube, source, read, asked } = await setup([...spread(3), [Thing, thing('p0', 'a', 1)], [Thing, thing('p2', 'c', 7)]], { layers });
+    const plain = read(source.list({ kind: 'pods.v1', sort: [{ field: 'core.name' }], page: { limit: 5 } }));
+    const filtered = read(source.list({ kind: 'pods.v1', filter: 'restarts > 0', page: { limit: 5 } }));
+    await until(() => plain.value.state === 'live' && filtered.value.state === 'live');
+    expect([...asked()].some((p) => p.includes('/things'))).toBe(false);
+    const by = read(source.list({ kind: 'pods.v1', sort: [{ field: 'acme.size', desc: true }], page: { limit: 5 }, select: ['core.name', 'acme.size'] }));
+    await until(() => by.value.items[0]?.values?.['acme.size'] === 7);
+    expect(by.value.items.map((i) => [i.values?.['core.name'], i.values?.['acme.size']])).toEqual([
+      ['p2', 7],
+      ['p0', 1],
+      ['p1', null],
+    ]);
+    kube.put(Thing, thing('p1', 'b', 30));
+    await until(() => by.value.items[0]?.values?.['core.name'] === 'p1');
+  });
+
+  it('has a joined field none of another kind it may not list — its objects had before let go of', async () => {
+    const thing = (name: string, namespace: string, size: number) => ({ metadata: { name, namespace, uid: `t-${namespace}-${name}` }, spec: { size } }) as KubeObject;
+    const layers = signal<readonly Layer[]>([{ fields: { 'acme.size': { kinds: ['pods.v1'], type: 'number', value: { from: 'things.v1.example.com', field: '.spec.size' } } } }]);
+    const { source, read } = await setup([...spread(1), [Thing, thing('p0', 'a', 1)]], { layers }, 30, ['/apis/example.com/v1/things']);
+    const by = read(source.list({ kind: 'pods.v1', sort: [{ field: 'acme.size' }], page: { limit: 5 }, select: ['acme.size'] }));
+    await until(() => by.value.state === 'live');
+    expect(by.value.items.map((i) => i.values)).toEqual([{ 'acme.size': null }]);
+  });
+
   it('counts with fields summed — scanned, not as many as there are: in all and by a field', async () => {
     const { source, read } = await setup(spread(6));
     const restarts = read(source.count({ kind: 'pods.v1', groupBy: 'core.namespace', sum: ['pods.v1.restarts'] }));

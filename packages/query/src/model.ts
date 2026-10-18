@@ -55,7 +55,9 @@ export type KindRef = string;
  * A field: a value of an object, of these kinds (none: every kind). Of the
  * object alone — no now, no other object (an age is its creation time; how
  * many pods a deployment runs, a count) — so it is worked out once for each
- * version of an object, and indexed. A path, a server answers by itself; a
+ * version of an object, and indexed; but a joined one (Join): another
+ * kind's object's of its namespace and name, worked out again as either
+ * changes (whoever answers holds both). A path, a server answers by itself; a
  * function, only where its code is (the core's, its kinds'; an addon's: the
  * page's only). A spec is not changed once made: another one, another field
  * (worked out anew); its version says what it works out, so two sides that
@@ -68,24 +70,36 @@ export interface FieldSpec<O = unknown> {
   many?: boolean;
   value: Path | ((object: O) => Value | readonly Value[] | undefined);
   version?: string;
+  /** Worked out each time it is read, never kept: of more than the object (a joined field: another object's, changing apart from it). */
+  volatile?: boolean;
 }
 
 /** What a field's values are counted in (a quantity: CPU in cores, memory and storage in bytes), for whoever shows them. */
 export type Unit = 'cores' | 'bytes';
 
 /**
+ * A value of another kind's object — the one of the same namespace and
+ * name (a pod's metrics: pods.v1beta1.metrics.k8s.io): its field (a
+ * declared one of that kind, or a path). None there: none.
+ */
+export interface Join {
+  readonly from: KindRef;
+  readonly field: FieldName;
+}
+
+/**
  * A field as it is defined — data only, so whoever answers queries (the
  * page; a server, sent it) has it as it is: a path (a value where it is in
- * the object), or CEL (a value worked out of it: self, the object), no
- * code. Its version: what it is, hashed (fieldVersion) — the same
- * definition, the same version, anywhere.
+ * the object), CEL (a value worked out of it: self, the object), or a join
+ * (another kind's object's field), no code. Its version: what it is,
+ * hashed (fieldVersion) — the same definition, the same version, anywhere.
  */
 export interface FieldDef {
   kinds?: readonly KindRef[];
   type: FieldType;
   many?: boolean;
   unit?: Unit;
-  value: Path | { readonly cel: string };
+  value: Path | { readonly cel: string } | Join;
   version: string;
 }
 

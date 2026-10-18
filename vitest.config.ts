@@ -23,6 +23,7 @@ const own: Record<string, { environment?: string }> = {
   'apps/web': { environment: 'happy-dom' },
   'packages/testkit': { environment: 'happy-dom' },
   'addons/core': { environment: 'happy-dom' },
+  'addons/metrics': { environment: 'happy-dom' },
 };
 
 // overweave from its sources (../overweave, linked): its imports resolved where it is linked, here — one Preact, one of each.

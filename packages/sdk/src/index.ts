@@ -26,9 +26,13 @@ export {
   type AddonState,
   type AddonStatus,
   type Addons,
+  type Answer,
+  type AnswerStatus,
+  builtIn,
   type Condition,
   type Ctx,
   defineAddon,
+  type Found,
   type GuardedResult,
   type KubeContributor,
   type Layer,
@@ -39,7 +43,7 @@ export {
   type SetupResult,
   standingOf,
 } from './addon.ts';
-export { type Cluster, type Discovery, noReach, type ObjectChange, type Reach, reaches, reachOver, runReach } from './cluster.ts';
+export { type Cluster, type Discovery, foundIn, noReach, type ObjectChange, type Reach, reaches, reachOver, runReach, whereOf } from './cluster.ts';
 export { type FieldLayer, fieldLayers } from './fields.ts';
 export { action, column, menuItem, type ObjectOfKind, section, tile, wrap } from './helpers.ts';
 export {
@@ -47,6 +51,8 @@ export {
   type AccessSubject,
   Action,
   type ActionSpec,
+  AddonChoices,
+  type AddonChoicesSpec,
   Appearance,
   type AppearanceSpec,
   accessOf,

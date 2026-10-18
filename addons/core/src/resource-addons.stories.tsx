@@ -1,12 +1,10 @@
-import { Badge, Button, Icon, Ratio, Section, Segmented } from '@overkube/uikit';
-import { useState } from 'preact/hooks';
-import { Chart, Ext, FLUX, LAYOUTS, link, mono, Pairs, ResourceSketch, Route, Row, ref, Stage, series, state, Table, type Vuln } from './resource.sketch.tsx';
+import { Badge, Icon, Ratio, Section } from '@overkube/uikit';
+import { Ext, FLUX, link, mono, Pairs, ResourceSketch, Route, Row, ref, Stage, state, Table, type Vuln } from './resource.sketch.tsx';
 
 /*
  * What addons would add to a resource opened (a sketch: marked, not
  * connected) — each in the core's slots: its tab, its mark in the header,
- * its buttons, its sections. A shell, metrics from Prometheus,
- * Flux, Traefik, cert-manager, Trivy.
+ * its buttons, its sections. A shell, Flux, Traefik, cert-manager, Trivy.
  */
 
 export default { title: 'core/resource/Addons', parameters: { controls: { disable: true } } };
@@ -35,77 +33,6 @@ export const FluxManaged = () => (
     />
   </Stage>
 );
-
-/** A pod's metrics (the metrics addon's tab, from Prometheus: cAdvisor, kube-state-metrics): CPU and memory against what it asks for and may use, network, restarts — over a range. */
-export const Metrics = () => {
-  function Metrics() {
-    const [range, setRange] = useState('1h');
-    return (
-      <Ext slot="resource.view.tabs" by="metrics addon · Prometheus">
-        <Section title="Usage">
-          <div class="rv-log-tools">
-            <Segmented label="Range" value={range} onChange={setRange} options={['15m', '1h', '6h', '24h', '7d'].map((r) => ({ value: r, label: r }))} />
-            <span class="rv-quiet">from Prometheus · container_cpu_usage_seconds_total, container_memory_working_set_bytes</span>
-          </div>
-          <div class="rv-charts">
-            <Chart
-              title="CPU"
-              unit="m"
-              points={series(14, 6, 1)}
-              max={200}
-              lines={[
-                ['requests', 100, 'var(--uk-info)'],
-                ['limit', 180, 'var(--uk-warn)'],
-              ]}
-            />
-            <Chart
-              title="Memory"
-              unit="Mi"
-              points={series(44, 5, 2)}
-              max={180}
-              lines={[
-                ['requests', 70, 'var(--uk-info)'],
-                ['limit', 170, 'var(--uk-warn)'],
-              ]}
-            />
-            <Chart title="Network in" unit="KiB/s" points={series(22, 12, 3)} max={60} />
-            <Chart title="Network out" unit="KiB/s" points={series(9, 5, 4)} max={60} />
-          </div>
-        </Section>
-      </Ext>
-    );
-  }
-  return (
-    <Stage>
-      <div class="uk-modal-panel">
-        <header>
-          <h2 class="rv-title">
-            Pod coredns-75c7b7f4-b9mgn <small>kube-system</small>
-          </h2>
-          <Segmented label="Layout" value="right" onChange={() => {}} options={LAYOUTS} />
-          <Button variant="ghost" icon="x" aria-label="Close" />
-        </header>
-        <div class="rv-tabs" role="tablist">
-          {[
-            ['Overview', 'grid'],
-            ['Events', 'activity'],
-            ['Logs', 'file'],
-            ['Metrics', 'activity'],
-            ['YAML', 'file'],
-          ].map(([label, icon]) => (
-            <button key={label} type="button" role="tab" class={`rv-tab${['Logs', 'Metrics'].includes(label) ? ' rv-ext-tab' : ''}`} aria-selected={label === 'Metrics'}>
-              <Icon name={icon} />
-              {label}
-            </button>
-          ))}
-        </div>
-        <div class="uk-modal-body">
-          <Metrics />
-        </div>
-      </div>
-    </Stage>
-  );
-};
 
 /** An operator's resource (known by its CRD only): the core's view as for any kind — kstatus, conditions — and the Flux addon's section and buttons. */
 export const Flux = () => (
@@ -362,7 +289,6 @@ export const Trivy = () => (
   </Stage>
 );
 
-Metrics.storyName = 'Addons - Metrics';
 Flux.storyName = 'Addons - Flux';
 FluxManaged.storyName = 'Addons - Flux (what it manages)';
 Traefik.storyName = 'Addons - Traefik';

@@ -1,5 +1,5 @@
 import { CelError, declared, filterVariables, planFilter } from '@overkube/cel';
-import { type FieldError, predicateOf, type QueryError, valuesReader } from '@overkube/query';
+import { type FieldError, type FieldName, predicateOf, type QueryError, valuesReader } from '@overkube/query';
 import { signal } from '@preact/signals';
 import type { KindFields } from './fields.ts';
 
@@ -18,8 +18,8 @@ import type { KindFields } from './fields.ts';
 /** What is told of objects a filter could not be worked out of. */
 export const FILTER_ERRORS = 'filter';
 
-/** A filter made: whether it keeps an object as of now (an error thrown: it could not be worked out of it); whether it is of now (timed). */
-export type MadeFilter = ((object: unknown, now: Date) => boolean) & { readonly timed?: boolean };
+/** A filter made: whether it keeps an object as of now (an error thrown: it could not be worked out of it); whether it is of now (timed); the fields it reads. */
+export type MadeFilter = ((object: unknown, now: Date) => boolean) & { readonly timed?: boolean; readonly reads: ReadonlySet<FieldName> };
 
 /** How often a filter of now is answered anew. */
 export const TICK_MS = 30_000;
@@ -56,7 +56,9 @@ function make(fields: KindFields, filter: string): MadeFilter | QueryError {
   try {
     const plan = planFilter(filter, variables, fields.cel);
     const holds = predicateOf(plan.where, fields.fields);
-    if (!plan.rest) return (object) => holds(object);
+    // The fields it reads: those a word of it names.
+    const reads = new Set(variables.filter((v) => new RegExp(`\\b${v.name}\\b`).test(filter)).map((v) => v.field));
+    if (!plan.rest) return Object.assign((object: unknown) => holds(object), { reads });
     const rest = plan.rest;
     // The variables it reads (a word of it that names one), their readers made once.
     const read = variables.filter((v) => new RegExp(`\\b${v.name}\\b`).test(rest)).map((v) => ({ v, values: valuesReader(fields.fields, v.field) ?? (() => []) }));
@@ -71,7 +73,7 @@ function make(fields: KindFields, filter: string): MadeFilter | QueryError {
       values.labels = (object as { metadata?: { labels?: unknown } } | null)?.metadata?.labels ?? {};
       return run(object, values) === true;
     };
-    return Object.assign(keeps, { timed: plan.now === true });
+    return Object.assign(keeps, { timed: plan.now === true, reads });
   } catch (e) {
     const err = e instanceof CelError ? e : new CelError('bad_filter', (e as Error).message);
     return { code: err.code === 'too_costly' ? 'too_costly' : 'bad_filter', message: err.message, ...(err.at ? { at: err.at } : {}) };

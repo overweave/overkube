@@ -209,6 +209,14 @@ describe('an addon', () => {
     expect(() => defineAddon({ id: 'a', title: 'x', requires: { serves: 'x' } as never, setup() {} })).toThrow(/no field serves/);
     expect(() => defineAddon({ id: 'a', title: 'x', provides: { frame: 42 as never }, setup() {} })).toThrow(/provides frame/);
     expect(defineAddon({ id: 'a', title: 'x', requires: { served: '' }, async setup() {} }).id).toBe('a');
+    // What it answers to: each a title and a condition; a Service looked for by name(s), and a port.
+    expect(() => defineAddon({ id: 'a', title: 'x', answers: [{ title: '', when: { served: 'x' } }], setup() {} })).toThrow(/answers\[0\]: no title/);
+    expect(() => defineAddon({ id: 'a', title: 'x', answers: [{ title: 'VM' } as never], setup() {} })).toThrow(/answers\[0\] \(VM\): no condition/);
+    expect(() => defineAddon({ id: 'a', title: 'x', answers: [{ title: 'VM', when: { found: { service: [] } } }], setup() {} })).toThrow(/service is not a name/);
+    expect(() => defineAddon({ id: 'a', title: 'x', requires: { found: { service: 'vm', port: 70000 } }, setup() {} })).toThrow(/port is not a port/);
+    expect(
+      defineAddon({ id: 'a', title: 'x', answers: [{ title: 'VM', when: { found: { service: ['vmsingle-*', 'vmselect-*'], port: 8428 } } }], setup() {} }).answers,
+    ).toHaveLength(1);
     expect(standingOf()).toEqual({ priority: 200, rights: ['configure', 'behaviour'] });
     expect(standingOf('core').priority).toBe(0);
     expect(standingOf('user')).toEqual({ priority: 1000, rights: ['configure'] });

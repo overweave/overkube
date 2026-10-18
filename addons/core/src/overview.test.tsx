@@ -328,3 +328,45 @@ describe('the start', () => {
     ]);
   });
 });
+
+describe('an addon suggested', () => {
+  const metrics = defineAddon({
+    id: 'metrics',
+    title: 'Metrics',
+    description: 'What pods and nodes use.',
+    answers: [{ title: 'VictoriaMetrics', when: { found: { service: 'vmsingle-*' } } }],
+    setup() {},
+  });
+  const suggested = () => {
+    const w = kubeWorld();
+    w.addon(core);
+    w.addon(metrics);
+    w.addons.statuses.value = w.addons.statuses.value.map((s) =>
+      s.id === 'metrics' ? { ...s, enabled: false, suggested: true, answers: [{ title: 'VictoriaMetrics', found: true, where: 'monitoring/vmsingle-main:8428' }] } : s,
+    );
+    return w;
+  };
+
+  it('is said over the start: what was found and where, what it does; turned on — the user’s word', () => {
+    const w = suggested();
+    const page = renderPage(w, '/');
+    const notice = page.container.querySelector('.uk-notice') as HTMLElement;
+    expect([notice.querySelector('.uk-notice-title')?.textContent, notice.querySelector('.uk-notice-text')?.textContent]).toEqual([
+      'VictoriaMetrics is in this cluster',
+      'monitoring/vmsingle-main:8428. What pods and nodes use.',
+    ]);
+    page.act(() => ([...notice.querySelectorAll('button')].find((b) => b.textContent === 'Turn on Metrics') as HTMLButtonElement).click());
+    expect(w.user.saved().patches).toEqual([{ kind: 'AddonChoices', name: 'default', fields: { on: { metrics: true } } }]);
+  });
+
+  it('is put off for good by not now; none is said of an addon not suggested', () => {
+    const w = suggested();
+    const page = renderPage(w, '/');
+    page.act(() => ([...page.container.querySelectorAll('.uk-notice button')].find((b) => b.textContent === 'Not now') as HTMLButtonElement).click());
+    expect(w.user.saved().patches).toEqual([{ kind: 'AddonChoices', name: 'default', fields: { notNow: { metrics: true } } }]);
+    page.act(() => {
+      w.addons.statuses.value = w.addons.statuses.value.map((s) => (s.id === 'metrics' ? { ...s, suggested: false } : s));
+    });
+    expect(page.container.querySelector('.uk-notice')).toBeNull();
+  });
+});

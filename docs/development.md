@@ -63,7 +63,7 @@ Tests are vitest's, beside what they test (`*.test.ts`, `*.test.tsx`; `*.node.te
 make storybook      # http://localhost:6006; Ctrl+C stops it
 ```
 
-The core addon's stories and the UI kit's ([addons/core/.storybook](../addons/core/.storybook)), on `127.0.0.1:6006` (`STORYBOOK_PORT` for another). A story draws the whole page at a path over a cluster in memory; overweave's panel turns its addons off and on. Writing one: [packages/storybook](../packages/storybook/README.md).
+The addons' stories and the UI kit's ([addons/core/.storybook](../addons/core/.storybook)), on `127.0.0.1:6006` (`STORYBOOK_PORT` for another). A story draws the whole page at a path over a cluster in memory; overweave's panel turns its addons off and on. Writing one: [packages/storybook](../packages/storybook/README.md).
 
 ## overweave beside it
 

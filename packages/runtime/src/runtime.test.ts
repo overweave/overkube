@@ -15,6 +15,7 @@ function env() {
   const told = new Map<string, Notification>();
   const failed: unknown[] = [];
   const said: string[] = [];
+  const using = new Map<string, string>();
   let next = 0;
   const e: RunEnv = {
     open: () => ({}) as unknown as Cluster,
@@ -27,8 +28,9 @@ function env() {
     dismiss: (id) => void told.delete(id),
     failed: (_, error) => void failed.push(error),
     log: (m) => void said.push(m),
+    using: (id, words) => void (words === undefined ? using.delete(id) : using.set(id, words)),
   };
-  return { e, held, told, failed, said };
+  return { e, held, told, failed, said, using };
 }
 
 const contributor = () => {
@@ -39,8 +41,8 @@ const contributor = () => {
 const addon = (setup: Addon['setup'], more: Partial<Addon> = {}): Addon => ({ id: 'a', title: 'A', setup, ...more });
 
 describe('runAddon', () => {
-  it('lets go of everything when it stops: what it held, said, told (but errors); nothing after', () => {
-    const { e, held, told } = env();
+  it('lets go of everything when it stops: what it held, said, told (but errors), what it uses; nothing after', () => {
+    const { e, held, told, using } = env();
     const c = contributor();
     let ran = 0;
     const run = runAddon(
@@ -49,6 +51,7 @@ describe('runAddon', () => {
         ctx.onDispose(() => held.splice(held.indexOf('v1/Pod'), 1));
         ctx.notify({ text: 'saved' });
         ctx.notify({ level: 'error', text: 'refused' });
+        ctx.using('metrics-server now');
         ctx.effect(() => {
           ran++;
         });
@@ -56,10 +59,10 @@ describe('runAddon', () => {
       c,
       e,
     );
-    expect([run.pending, held, told.size, ran]).toEqual([false, ['v1/Pod'], 2, 1]);
+    expect([run.pending, held, told.size, ran, using.get('a')]).toEqual([false, ['v1/Pod'], 2, 1, 'metrics-server now']);
     run.stop();
     run.stop();
-    expect([held, [...told.values()].map((n) => n.text), c.disposed]).toEqual([[], ['refused'], 1]);
+    expect([held, [...told.values()].map((n) => n.text), c.disposed, using.has('a')]).toEqual([[], ['refused'], 1, false]);
   });
 
   it('lets go of what it took when its setup throws, or a service cannot be made', () => {
