@@ -26,6 +26,8 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "overkube.name" . }}
+      # No Services as environment variables: a Service called overkube would be OVERKUBE_PORT=tcp://… — its own setting's name.
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

@@ -1,6 +1,6 @@
 {
   "name": "@overkube/runtime",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "One way to run an overkube addon — wherever it runs: the page, a test, a story — its ctx made, its setup run (async too), everything it took let go of when it stops or fails to start",
   "license": "MIT",
@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overkube/sdk": "0.1.1"
+    "@overkube/sdk": "0.1.2"
   },
   "peerDependencies": {
     "@preact/signals": "^2.11.2"

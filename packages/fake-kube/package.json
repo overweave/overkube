@@ -1,6 +1,6 @@
 {
   "name": "@overkube/fake-kube",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "A fake Kubernetes API server for overkube's own tests: discovery, paged lists of one snapshot, watches from a resourceVersion (410 when compacted), selectors, metadata only, 403s — never published",
   "license": "MIT",
@@ -15,10 +15,10 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@overkube/kube-types": "0.1.1",
+    "@overkube/kube-types": "0.1.2",
     "@types/node": "24.10.1"
   },
   "dependencies": {
-    "@overkube/query": "0.1.1"
+    "@overkube/query": "0.1.2"
   }
 }

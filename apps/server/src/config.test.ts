@@ -38,6 +38,8 @@ describe('configOf', () => {
 
   it('says what is wrong: a port that is none, a page folder with no index.html', () => {
     expect(() => configOf({ OVERKUBE_PORT: 'web' })).toThrow(/OVERKUBE_PORT/);
+    // A Service called overkube, told to a pod as Kubernetes tells it: said for what it is.
+    expect(() => configOf({ OVERKUBE_PORT: 'tcp://10.43.159.33:8443' })).toThrow(/enableServiceLinks: false/);
     expect(() => configOf({ OVERKUBE_UI: mkdtempSync(join(tmpdir(), 'ok-ui-')) })).toThrow(/no index.html/);
     const ui = mkdtempSync(join(tmpdir(), 'ok-ui-'));
     writeFileSync(join(ui, 'index.html'), '<p>page</p>');

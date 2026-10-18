@@ -74,7 +74,7 @@ A workload's port is reached as data — for addons that ask what runs in the cl
 
 ## What is in the repository
 
-One npm workspace (`packages/*`, `apps/*`, `addons/*`); every package is ESM, TypeScript, at version 0.1.1 together, and private for now — none is on a registry; what ships is the image and the chart. Each has a README.
+One npm workspace (`packages/*`, `apps/*`, `addons/*`); every package is ESM, TypeScript, at version 0.1.2 together, and private for now — none is on a registry; what ships is the image and the chart. Each has a README.
 
 | | What |
 |---|---|

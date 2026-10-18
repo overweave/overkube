@@ -99,7 +99,13 @@ const said = (env: NodeJS.ProcessEnv, name: string) => env[name]?.trim() || unde
 /** The configuration of an environment, or why it is not one. */
 export function configOf(env: NodeJS.ProcessEnv = process.env, home = homedir()): Config {
   const port = Number(said(env, 'OVERKUBE_PORT') ?? 8080);
-  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`OVERKUBE_PORT: ${env.OVERKUBE_PORT} is not a port`);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    // Kubernetes says a Service called overkube so (its service links): not a setting of ours.
+    const link = env.OVERKUBE_PORT?.startsWith('tcp://')
+      ? ' — a Service called overkube, as Kubernetes tells a pod of it: enableServiceLinks: false in the pod (or set OVERKUBE_PORT)'
+      : '';
+    throw new Error(`OVERKUBE_PORT: ${env.OVERKUBE_PORT} is not a port${link}`);
+  }
   const kubeconfig = env.KUBECONFIG?.split(':')[0];
   let cluster: ClusterFrom;
   if (kubeconfig) cluster = { from: 'kubeconfig', path: kubeconfig };

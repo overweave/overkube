@@ -1,6 +1,6 @@
 {
   "name": "@overkube/typegen",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "TypeScript types from a Kubernetes cluster's OpenAPI v3 schemas: the built-in kinds for @overkube/kube-types, or an addon's groups (a CRD's, an aggregated API's)",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@overkube/cel",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "CEL as overkube's fields have it, the page's and a server's alike: one object as self, a missing value none (not an error), integers as integers, Kubernetes' quantity and lists functions",
   "license": "MIT",
@@ -21,6 +21,6 @@
   },
   "dependencies": {
     "@marcbachmann/cel-js": "8.0.0",
-    "@overkube/query": "0.1.1"
+    "@overkube/query": "0.1.2"
   }
 }

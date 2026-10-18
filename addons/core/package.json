@@ -1,6 +1,6 @@
 {
   "name": "@overkube/addon-core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "overkube's core addon: everything the page shows that is not another addon's — a kind's table, an object over it, the navigation (tabs or a side menu), what the user is told",
   "license": "MIT",
@@ -16,18 +16,18 @@
     "licenses": "node scripts/licenses.mjs"
   },
   "dependencies": {
-    "@overkube/cel": "0.1.1",
-    "@overkube/kube-types": "0.1.1",
-    "@overkube/query": "0.1.1",
-    "@overkube/sdk": "0.1.1",
-    "@overkube/uikit": "0.1.1",
+    "@overkube/cel": "0.1.2",
+    "@overkube/kube-types": "0.1.2",
+    "@overkube/query": "0.1.2",
+    "@overkube/sdk": "0.1.2",
+    "@overkube/uikit": "0.1.2",
     "@overweave/ui": "0.5.0"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "5.3.0",
     "@fontsource-variable/jetbrains-mono": "5.3.0",
-    "@overkube/storybook": "0.1.1",
-    "@overkube/testkit": "0.1.1",
+    "@overkube/storybook": "0.1.2",
+    "@overkube/testkit": "0.1.2",
     "@testing-library/preact": "3.2.4",
     "happy-dom": "20.14.6",
     "preact": "10.29.8"
