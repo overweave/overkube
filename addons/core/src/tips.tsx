@@ -1,13 +1,12 @@
 import type { KindInfo, KubeObject, kinds, ObjectOf } from '@overkube/kube-types';
 import { type KubeContributor, kindRef, type ResourceConditionProps, type ResourceContainerProps, type ResourceProps, slots } from '@overkube/sdk';
-import { fill, tipField, useGet, useSay } from '@overkube/sdk/preact';
+import { fill, StatusOf, tipField, useGet, useSay } from '@overkube/sdk/preact';
 import { Skeleton, TipCard, TipField } from '@overkube/uikit';
 import type { SlotRef } from '@overweave/ui';
 import { slotElement, useSlotView } from '@overweave/ui/preact';
 import type { ComponentChildren } from 'preact';
 import { Since } from './details.tsx';
 import { RefusedQuietly, refused } from './refused.tsx';
-import { StatusOf } from './statuses.tsx';
 import { T } from './texts.ts';
 
 /*

@@ -1,0 +1,301 @@
+# Certificates as they go in a real cluster, no real domain asked for: Pebble (Let's Encrypt's ACME test
+# server) in seed-ops, twice — one that takes every challenge as valid, one that checks them (on a port
+# no solver listens on: they fail) — and what goes through them; an issuer that is not ready; a CA no
+# Certificate renews. Names that resolve in the cluster (a Service in front of cert-manager's solver pods)
+# pass cert-manager's own self check; a .test name does not (it waits there). Made by hand, anew each
+# time (dev/seed/tls.sh): that CA's Secret, a TLS Secret no Certificate manages, a request waiting for
+# approval of an issuer of another's (its kind below: cert-manager's webhook lets one approve only for a
+# signer it can find).
+
+# ── Pebble ──────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pebble
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: pebble }
+spec:
+  selector: { matchLabels: { app: pebble } }
+  template:
+    metadata:
+      labels: { overkube.dev/seed: "true", app: pebble }
+    spec:
+      containers:
+        - name: pebble
+          image: ghcr.io/letsencrypt/pebble:2.8.0
+          args: [-config, /test/config/pebble-config.json]
+          workingDir: /
+          env:
+            - { name: PEBBLE_VA_ALWAYS_VALID, value: "1" }
+            - { name: PEBBLE_VA_NOSLEEP, value: "1" }
+            - { name: PEBBLE_WFE_NONCEREJECT, value: "0" }
+          ports: [{ name: acme, containerPort: 14000 }]
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 128Mi } }
+          securityContext: { runAsNonRoot: true, runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pebble
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  selector: { app: pebble }
+  ports: [{ name: acme, port: 14000, targetPort: acme }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pebble-strict
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true", app: pebble-strict }
+spec:
+  selector: { matchLabels: { app: pebble-strict } }
+  template:
+    metadata:
+      labels: { overkube.dev/seed: "true", app: pebble-strict }
+    spec:
+      containers:
+        - name: pebble
+          image: ghcr.io/letsencrypt/pebble:2.8.0
+          args: [-config, /test/config/pebble-config.json]
+          workingDir: /
+          env:
+            - { name: PEBBLE_VA_NOSLEEP, value: "1" }
+            - { name: PEBBLE_WFE_NONCEREJECT, value: "0" }
+          ports: [{ name: acme, containerPort: 14000 }]
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 128Mi } }
+          securityContext: { runAsNonRoot: true, runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pebble-strict
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  selector: { app: pebble-strict }
+  ports: [{ name: acme, port: 14000, targetPort: acme }]
+---
+# Pebble's own certificate is for localhost: not checked (a test server, in the cluster).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: seed-acme
+  labels: { overkube.dev/seed: "true" }
+spec:
+  acme:
+    server: https://pebble.seed-ops.svc:14000/dir
+    skipTLSVerify: true
+    email: ops@seed.test
+    privateKeySecretRef: { name: seed-acme-account }
+    solvers:
+      - http01: { ingress: { ingressClassName: seed } }
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: seed-acme-strict
+  labels: { overkube.dev/seed: "true" }
+spec:
+  acme:
+    server: https://pebble-strict.seed-ops.svc:14000/dir
+    skipTLSVerify: true
+    email: ops@seed.test
+    privateKeySecretRef: { name: seed-acme-strict-account }
+    solvers:
+      - http01: { ingress: { ingressClassName: seed } }
+---
+# Names cert-manager's self check reaches: a Service in front of each name's HTTP-01 solver pod (its label: adler32 of the name).
+apiVersion: v1
+kind: Service
+metadata:
+  name: shop-acme
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  selector: { acme.cert-manager.io/http01-solver: "true", acme.cert-manager.io/http-domain: "159583767" }
+  ports: [{ name: http, port: 80, targetPort: 8089 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: docs-acme
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  selector: { acme.cert-manager.io/http01-solver: "true", acme.cert-manager.io/http-domain: "118885894" }
+  ports: [{ name: http, port: 80, targetPort: 8089 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blog-acme
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  selector: { acme.cert-manager.io/http01-solver: "true", acme.cert-manager.io/http-domain: "107744769" }
+  ports: [{ name: http, port: 80, targetPort: 8089 }]
+---
+# ── ACME's ──────────────────────────────────────────────────────────────────
+# Issued: its Order, its Challenge valid.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: acme-tls
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  secretName: acme-tls
+  dnsNames: [shop-acme.seed-shop.svc.cluster.local]
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  issuerRef: { name: seed-acme, kind: ClusterIssuer }
+---
+# Failing: Pebble checks the challenge on a port no solver listens on — the Challenge invalid, the Order failed, tried again later.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: docs-tls
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  secretName: docs-tls
+  dnsNames: [docs-acme.seed-shop.svc.cluster.local]
+  privateKey: { rotationPolicy: Always }
+  issuerRef: { name: seed-acme-strict, kind: ClusterIssuer }
+---
+# Stuck: a .test name the self check cannot resolve — its Challenge pending, presented, never sent.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: store-tls
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  secretName: store-tls
+  dnsNames: [store.shop.seed.test]
+  privateKey: { rotationPolicy: Always }
+  issuerRef: { name: seed-acme, kind: ClusterIssuer }
+---
+# Made by cert-manager's ingress-shim of its annotation: a Certificate controlled by the Ingress.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: blog
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+  annotations: { cert-manager.io/cluster-issuer: seed-acme }
+spec:
+  ingressClassName: seed
+  tls:
+    - hosts: [blog-acme.seed-shop.svc.cluster.local]
+      secretName: blog-tls
+  rules:
+    - host: blog-acme.seed-shop.svc.cluster.local
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: web, port: { name: http } } } }
+---
+# Its annotation names an issuer that is not there: no Certificate made, its host not covered.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: legacy
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+  annotations: { cert-manager.io/cluster-issuer: letsencrypt }
+spec:
+  ingressClassName: seed
+  tls:
+    - hosts: [legacy.shop.seed.test]
+      secretName: legacy-tls
+  rules:
+    - host: legacy.shop.seed.test
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: web, port: { name: http } } } }
+---
+# ── Not ready, ending ───────────────────────────────────────────────────────
+# An issuer that is not ready (its Vault not there, its token Secret neither), and a Certificate of it never issued.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: seed-vault
+  labels: { overkube.dev/seed: "true" }
+spec:
+  vault:
+    server: http://vault.seed.test:8200
+    path: pki/sign/seed
+    auth: { tokenSecretRef: { name: seed-vault-token, key: token } }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vault-tls
+  namespace: seed-ops
+  labels: { overkube.dev/seed: "true" }
+spec:
+  secretName: vault-tls
+  dnsNames: [vault-client.seed.test]
+  privateKey: { rotationPolicy: Always }
+  issuerRef: { name: seed-vault, kind: ClusterIssuer }
+---
+# A CA of a Secret made by hand (dev/seed/tls.sh, 25 days): what it issues ends when it does.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: seed-partner-ca
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  ca:
+    secretName: seed-partner-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: partner-api
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  secretName: partner-api-tls
+  dnsNames: [partner-api.seed.test]
+  duration: 720h
+  privateKey: { rotationPolicy: Always }
+  issuerRef: { name: seed-partner-ca, kind: Issuer }
+---
+# Serving a TLS Secret no Certificate manages (dev/seed/tls.sh: partner-tls, 12 days).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: partner
+  namespace: seed-shop
+  labels: { overkube.dev/seed: "true" }
+spec:
+  ingressClassName: seed
+  tls:
+    - hosts: [partner.seed.test]
+      secretName: partner-tls
+  rules:
+    - host: partner.seed.test
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: web, port: { name: http } } } }
+---
+# An issuer of another's (as an external issuer's controller serves one): what dev/seed/tls.sh's pending
+# request names, so that it can be approved or denied by hand. No controller: nothing signs it.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: partnerissuers.issuers.example.com
+  labels: { overkube.dev/seed: "true" }
+spec:
+  group: issuers.example.com
+  scope: Namespaced
+  names: { kind: PartnerIssuer, plural: partnerissuers, singular: partnerissuer, listKind: PartnerIssuerList }
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema: { type: object, x-kubernetes-preserve-unknown-fields: true }

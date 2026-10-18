@@ -18,12 +18,15 @@ import { batch, computed, type ReadonlySignal, signal } from '@preact/signals';
 
 /** What an addon wrote. */
 export interface Write {
-  op: 'patch' | 'remove';
+  op: 'patch' | 'update' | 'remove';
   /** The kind's id. */
   kind: string;
   name: string;
   namespace?: string;
   change?: ObjectChange;
+  /** An update's object, as it was sent (its subresource: said). */
+  object?: KubeObject;
+  subresource?: 'status';
 }
 
 /** A refusal, as the API server gives it. */
@@ -235,6 +238,15 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
       refused('patch');
       const now = (of(kind).get(keyOf(object)) ?? object) as KubeObject;
       return change.type === 'merge' ? put(kind, merge(now, change.patch) as KubeObject) : now;
+    },
+    async update(kind, object, options = {}) {
+      const name = object.metadata?.name ?? '';
+      const namespace = object.metadata?.namespace;
+      writes.push({ op: 'update', kind: kind.id, name, ...(namespace ? { namespace } : {}), object, ...(options.subresource ? { subresource: options.subresource } : {}) });
+      refused('update');
+      // Its status alone: the rest kept as it is now.
+      const now = (of(kind).get(keyOf(object)) ?? object) as KubeObject;
+      return put(kind, options.subresource === 'status' ? ({ ...now, status: (object as { status?: unknown }).status } as KubeObject) : object) as never;
     },
     async remove(kind, object) {
       const name = object.metadata?.name ?? '';

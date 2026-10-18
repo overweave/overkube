@@ -45,7 +45,7 @@ export const AnyKind = () => (
             <Badge>mark</Badge>
           </Ext>
         ),
-        header: [['Action', 'run']],
+        actions: [['Action', 'run']],
         tabs: [['Addon', 'puzzle', 'an addon’s tab']],
         summary: [
           ['Holder', mono('kube_4f1e9a')],

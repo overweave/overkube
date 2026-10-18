@@ -24,6 +24,8 @@ export interface ObjectChange {
   force?: boolean;
   /** Only checked by the cluster, nothing changed. */
   dryRun?: boolean;
+  /** Of its status, not the object (its own path, its own rights: patch on <resource>/status) — as a controller's, or a tool's, is changed. */
+  subresource?: 'status';
 }
 
 /**
@@ -144,6 +146,13 @@ export interface Cluster {
   served(groupOrKind: string): boolean | undefined;
   status(signal?: AbortSignal): Promise<StatusAnswer>;
   patch(kind: KindInfo, object: KubeObject, change: ObjectChange): Promise<KubeObject>;
+  /**
+   * Replace an object — or its status (subresource) — as it is given:
+   * refused (409) if it changed since it was read (its resourceVersion), as
+   * a tool that updates does (cmctl renew: its status; the right to update
+   * it asked, not to patch it). In the addon's name.
+   */
+  update(kind: KindInfo, object: KubeObject, options?: { subresource?: 'status' }): Promise<KubeObject>;
   /**
    * Delete the object seen — by its uid, not another that took its name
    * since: an object with no uid (one not read from the cluster) is refused,

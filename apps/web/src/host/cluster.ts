@@ -87,7 +87,13 @@ export function clusterAccess(connector: Pick<Connector, 'discovery' | 'http'>, 
       status: (s) => http.status(s ?? signal),
       async patch(kind, object, change) {
         live();
-        return http.patch({ path: path(kind, object), ...(fieldManager ? { fieldManager } : {}), ...change }, signal);
+        const { subresource, ...body } = change;
+        return http.patch({ path: `${path(kind, object)}${subresource ? `/${subresource}` : ''}`, ...(fieldManager ? { fieldManager } : {}), ...body }, signal);
+      },
+      async update(kind, object, options = {}) {
+        live();
+        const at = `${path(kind, object)}${options.subresource ? `/${options.subresource}` : ''}`;
+        return http.request<KubeObject>('PUT', at, { body: object, ...(fieldManager ? { query: { fieldManager } } : {}), ...(signal ? { signal } : {}) });
       },
       async remove(kind, object) {
         live();

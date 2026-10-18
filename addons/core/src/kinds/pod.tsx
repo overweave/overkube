@@ -1,14 +1,11 @@
 import { type KubeObject, kinds, type ObjectOf } from '@overkube/kube-types';
-import { forKinds, type KubeContributor, type ResourceContainerProps, type ResourceProps, section, slots } from '@overkube/sdk';
-import { useSay } from '@overkube/sdk/preact';
+import { forKinds, humanDuration, type KubeContributor, type ResourceContainerProps, type ResourceProps, section, slots } from '@overkube/sdk';
+import { ObjectRef, StatusOf, useSay } from '@overkube/sdk/preact';
 import { Badge, Card, Chips, Image, KeyValue, Nothing, Ref, Section, Status, Table } from '@overkube/uikit';
 import { fill, slotElement } from '@overweave/ui/preact';
 import { type ComponentChildren, Fragment } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { Long, relatedField, Since, useChipLabels } from '../details.tsx';
-import { humanDuration } from '../format.ts';
-import { ObjectRef } from '../refs.tsx';
-import { StatusOf } from '../statuses.tsx';
 import { T } from '../texts.ts';
 import { type Selector, said } from './shared.tsx';
 

@@ -2,7 +2,7 @@ import type { KindInfo, KubeObject, ObjectOf } from '@overkube/kube-types';
 import type { FillSpec, Placement, WrapSpec } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
 import type { ComponentChildren, ComponentType } from 'preact';
-import type { ActionSpec, ColumnSpec, MenuItemSpec, MenuPage, MenuSubject, MenuSubjects, PageProps, Target } from './kinds.ts';
+import type { ActionSpec, ColumnSpec, MenuItemSpec, MenuPage, MenuSubject, MenuSubjects, Need, PageProps, Target } from './kinds.ts';
 import { type ResourceProps, slots } from './slots.ts';
 import { forKinds } from './target.ts';
 import type { Label } from './text.ts';
@@ -56,6 +56,8 @@ interface ActionOf<O extends KubeObject> {
   dangerous?: boolean;
   when?: (object: O) => boolean;
   run: (object: O) => Promise<unknown> | unknown;
+  /** What it needs of the cluster (each), for the object's kind unless it says: one who may not, not shown it. */
+  needs?: Need[];
 }
 
 /** An action on these kinds' objects: the page draws its button. */

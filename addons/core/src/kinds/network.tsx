@@ -1,9 +1,8 @@
 import { kinds, type ObjectOf } from '@overkube/kube-types';
 import { type KubeContributor, kindRef, type ResourceProps, section } from '@overkube/sdk';
-import { useList, useSay } from '@overkube/sdk/preact';
+import { ObjectRef, useList, useSay } from '@overkube/sdk/preact';
 import { KeyValue, Nothing, Ref, Section, Status, Table } from '@overkube/uikit';
 import type { ComponentChildren } from 'preact';
-import { ObjectRef } from '../refs.tsx';
 import { T } from '../texts.ts';
 import { addRelated, pickingLink, type Selector, shown } from './shared.tsx';
 

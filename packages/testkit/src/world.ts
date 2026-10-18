@@ -59,6 +59,10 @@ function scoped(cluster: Cluster, run: ClusterRun): Cluster {
       live();
       return cluster.patch(kind, object, { fieldManager: `overkube-${run.id}`, ...change });
     },
+    update: async (kind, object, options) => {
+      live();
+      return cluster.update(kind, object, options);
+    },
     remove: async (kind, object) => {
       live();
       return cluster.remove(kind, object);

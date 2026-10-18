@@ -104,11 +104,19 @@ body {
   justify-content: center;
   height: 36px;
 }
-/* Who the page is signed in as, at the header's end. */
+/* Who the page is signed in as, at the header's end: a long name cut short (the whole of it in its tip). */
 .ok-signed-in {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
   color: var(--uk-muted);
   font-size: 12px;
+}
+.ok-signed-in > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

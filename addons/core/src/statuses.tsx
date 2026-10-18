@@ -1,10 +1,6 @@
 import { type KindInfo, kinds } from '@overkube/kube-types';
-import { type CellValue, type KubeContributor, StatusLook, type StatusLookSpec, takes } from '@overkube/sdk';
-import { Status, type Tone } from '@overkube/uikit';
-import type { Definition } from '@overweave/core';
-import { useDefinitions } from '@overweave/ui/preact';
-import { useMemo } from 'preact/hooks';
-import { EMPTY } from './format.ts';
+import type { KubeContributor } from '@overkube/sdk';
+import type { Tone } from '@overkube/uikit';
 
 /*
  * How the states kinds are told by look (StatusLook): the core's standard
@@ -144,44 +140,3 @@ export function addStatusLooks(c: KubeContributor): void {
     c.add('StatusLook', nameOf(look), { ...(of ? { target: { kinds: of.map((k) => k.id) } } : {}), match, tone, icon }, { fallback: true });
   }
 }
-
-/** Whether a look's words take these: as said, or as its pattern (* any run of them). */
-const matches = (match: string, words: string) =>
-  match.includes('*')
-    ? new RegExp(
-        `^${match
-          .split('*')
-          .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-          .join('.*')}$`,
-      ).test(words)
-    : match === words;
-
-/** The look of these words for a kind: as said before a pattern (the longer pattern first), a kind's own before every kind's, then by order. */
-export function lookOf(looks: readonly Definition<StatusLookSpec>[], kind: KindInfo, words: string): StatusLookSpec | undefined {
-  const rank = (l: StatusLookSpec) => [l.match.includes('*') ? 1 : 0, l.target?.kinds ? 0 : 1, -l.match.length, l.order ?? 500];
-  const taken = looks.filter((d) => takes(d.spec.target, kind) && matches(d.spec.match, words)).map((d) => d.spec);
-  const before = (a: StatusLookSpec, b: StatusLookSpec) => {
-    const [x, y] = [rank(a), rank(b)];
-    const i = x.findIndex((v, j) => v !== y[j]);
-    return i < 0 ? 0 : x[i] - y[i];
-  };
-  return taken.sort(before)[0];
-}
-
-/** A state drawn as its look says (none: its words as they are); a mark, its icon only — what it says under the pointer (title: other words for it). */
-export function StatusOf({ kind, words, mark = false, title }: { kind: KindInfo; words: string; mark?: boolean; title?: string }) {
-  const looks = useDefinitions(StatusLook);
-  const look = useMemo(() => lookOf(looks, kind, words), [looks, kind, words]);
-  if (!look) return mark ? <Status tone="unknown" icon="help" title={title ?? words} /> : words;
-  return (
-    <Status tone={look.tone} icon={look.icon} title={title ?? (mark ? words : undefined)}>
-      {mark ? undefined : words}
-    </Status>
-  );
-}
-
-/** A column's format of a state (its value, the first if many): drawn as its look says; none, "—". */
-export const statusFormat = ([value]: readonly CellValue[], { kind }: { kind: KindInfo }) => {
-  const words = Array.isArray(value) ? value[0] : value;
-  return words === null || words === undefined || words === '' ? EMPTY : <StatusOf kind={kind} words={String(words)} />;
-};

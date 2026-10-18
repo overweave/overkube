@@ -74,9 +74,17 @@ describe('clusterAccess', () => {
     const cluster = access.open(run);
     await cluster.patch(Pod, { metadata: { name: 'web', namespace: 'shop' } }, { type: 'merge', patch: {} });
     expect(sent.find((s) => s.request === 'POST /patch')?.body).toMatchObject({ path: '/api/v1/namespaces/shop/pods/web', fieldManager: 'overkube-images' });
+    // Its status: its own path (its own rights), nothing of the subresource sent beside it.
+    await cluster.patch(Pod, { metadata: { name: 'web', namespace: 'shop' } }, { type: 'merge', patch: { status: {} }, subresource: 'status' });
+    expect(sent.filter((s) => s.request === 'POST /patch').at(-1)?.body).toEqual({
+      path: '/api/v1/namespaces/shop/pods/web/status',
+      fieldManager: 'overkube-images',
+      type: 'merge',
+      patch: { status: {} },
+    });
     state.hold = true;
     const late = cluster.patch(Pod, { metadata: { name: 'web', namespace: 'shop' } }, { type: 'merge', patch: {}, fieldManager: 'mine' });
-    await expect.poll(() => sent.filter((s) => s.request === 'POST /patch').length).toBe(2);
+    await expect.poll(() => sent.filter((s) => s.request === 'POST /patch').length).toBe(3);
     expect(sent.at(-1)?.body).toMatchObject({ fieldManager: 'mine' });
     run.stop();
     await expect(late).rejects.toThrow();

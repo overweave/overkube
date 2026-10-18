@@ -1,9 +1,8 @@
 import { kinds, type ObjectOf } from '@overkube/kube-types';
 import { type KubeContributor, kindRef, type ResourceProps, section } from '@overkube/sdk';
-import { useCount, useSay } from '@overkube/sdk/preact';
+import { ObjectRef, useCount, useSay } from '@overkube/sdk/preact';
 import { Badge, KeyValue, Nothing, Section } from '@overkube/uikit';
 import type { ComponentChildren } from 'preact';
-import { ObjectRef } from '../refs.tsx';
 import { RefusedQuietly, refused } from '../refused.tsx';
 import { T } from '../texts.ts';
 import { addRelated, said } from './shared.tsx';

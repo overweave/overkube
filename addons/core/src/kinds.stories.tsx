@@ -1,9 +1,9 @@
 import { kinds } from '@overkube/kube-types';
 import { defineAddon, slots } from '@overkube/sdk';
 import { KubeStory, make } from '@overkube/storybook/preact';
+import { CSR_PEM, EC_PEM } from '@overkube/testkit';
 import { Badge, Button } from '@overkube/uikit';
 import { fill } from '@overweave/ui/preact';
-import { CSR_PEM, EC_PEM } from './certs.fixture.ts';
 import core from './index.tsx';
 import type { StoryCluster } from './shop.fixture.tsx';
 

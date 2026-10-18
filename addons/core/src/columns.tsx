@@ -1,7 +1,7 @@
 import { type KindInfo, kinds } from '@overkube/kube-types';
 import type { FieldCatalog, Value } from '@overkube/query';
-import { type CellValue, Column, type ColumnSpec, closeIn, column, type KubeContributor, kindRef, openIn, takes } from '@overkube/sdk';
-import { useFields, usePage, useSay } from '@overkube/sdk/preact';
+import { type CellValue, Column, type ColumnSpec, closeIn, column, humanDuration, type KubeContributor, kindRef, openIn, takes } from '@overkube/sdk';
+import { StatusOf, statusFormat, useFields, usePage, useSay } from '@overkube/sdk/preact';
 import { Chips, Ratio, Status, Tip } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
@@ -10,10 +10,9 @@ import { useComputed } from '@preact/signals';
 import { useMemo, useRef } from 'preact/hooks';
 import { type Cron, nextRun, parseCron } from './cron.ts';
 import { type Failed, fieldOf } from './failures.ts';
-import { EMPTY, humanDuration, msOf } from './format.ts';
+import { EMPTY, msOf } from './format.ts';
 import { builtIn } from './kinds.ts';
 import { clock, useLive } from './live.ts';
-import { StatusOf, statusFormat } from './statuses.tsx';
 import { T } from './texts.ts';
 import { ConditionTip, ContainerTip, TaintsTip } from './tips.tsx';
 
@@ -452,8 +451,10 @@ export function useColumns(
   for (const [name, why] of Object.entries(fields.rejected ?? {})) if (name) failed(fieldOf(name), 'Field', name, 'definition', new Error(why));
   const definitions = useDefinitions(Column);
   const [placed, offered] = useMemo(() => {
-    // Its CRD says its state itself (a Status or Ready column): kstatus's not drawn beside it.
-    const says = (fields.columns ?? []).some((k) => ['status', 'ready'].includes(slug(k.name)));
+    // Its CRD says its state itself (a Status, Ready or State column, or an addon's in its place): kstatus's not drawn beside it.
+    const says = ['status', 'ready', 'state'].some(
+      (s) => (fields.columns ?? []).some((k) => slug(k.name) === s) || definitions.some((c) => c.name === `core.${kind.id}.${s}` && takes(c.spec.target, kind)),
+    );
     const all = definitions.filter((c) => {
       if (!takes(c.spec.target, kind) || (says && c.name === 'core.health')) return false;
       try {

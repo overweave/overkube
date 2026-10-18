@@ -26,7 +26,9 @@ import type { Cluster } from '../cluster.ts';
  * of it, queries — answered live while the component is drawn (its result
  * read in drawing: the component drawn again as it changes, the query let
  * go of once it is not drawn). A query is data: the same query (however
- * made anew each drawing), the same answer.
+ * made anew each drawing), the same answer. A list or an object not asked
+ * (its query none: what it would be asked by not known): nothing, asked of
+ * no one.
  */
 
 const ClusterContext = createContext<Cluster | null>(null);
@@ -53,14 +55,19 @@ function useAnswer<Q, T>(query: Q, ask: (cluster: Cluster, query: Q) => Live<T>)
   return live.value;
 }
 
-/** A window of a kind's objects: where, which, in what order, which of their fields. */
-export const useList = <O = unknown>(query: ListQuery): ListResult<O> => useAnswer(query, (c, q) => c.source.list<O>(q));
+/** What is answered of nothing asked: nothing, now. */
+const NOTHING = { state: 'live', coverage: { namespaces: [], denied: [] } } as const;
+const NO_ITEMS: ListResult<never> = { ...NOTHING, items: [] };
+const still = <T>(value: T): Live<T> => ({ value, subscribe: () => () => {} });
+
+/** A window of a kind's objects: where, which, in what order, which of their fields; none asked: none. */
+export const useList = <O = unknown>(query: ListQuery | undefined): ListResult<O> => useAnswer(query, (c, q) => (q ? c.source.list<O>(q) : still(NO_ITEMS as ListResult<O>)));
 
 /** How many of a kind's objects, in all and by a field's values. */
 export const useCount = (query: CountQuery): CountResult => useAnswer(query, (c, q) => c.source.count(q));
 
-/** One object, by its kind, namespace and name. */
-export const useGet = <O = unknown>(query: GetQuery): GetResult<O> => useAnswer(query, (c, q) => c.source.get<O>(q));
+/** One object, by its kind, namespace and name; none asked: none. */
+export const useGet = <O = unknown>(query: GetQuery | undefined): GetResult<O> => useAnswer(query, (c, q) => (q ? c.source.get<O>(q) : still<GetResult<O>>(NOTHING)));
 
 /** Objects of every kind, by name or labels, as loosely as typed (Cmd+K's): as they come, kind by kind. */
 export const useSearch = (query: SearchQuery): SearchResult => useAnswer(query, (c, q) => c.source.search(q));

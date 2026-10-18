@@ -217,6 +217,112 @@ button.uk-tile:hover .uk-tile-title { color: var(--uk-text); }
 .uk-usage-value[data-level='error'] { color: var(--uk-error); }
 .uk-usage-unit { color: var(--uk-muted); }
 /* How something went over a range (TimeChart): its head, its plot (pointed at: a cursor, a dot, a tip), its axis; a bar over charts (their range, where from). */
+/* How long something holds (Lifetime): a bar — before its renewal calm, after it a warning, ended an error — now a tick; its times under it. */
+.uk-life-track { position: relative; display: block; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--uk-text) 12%, transparent); }
+.uk-life-track > i { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.uk-life-track > i + i { border-radius: 0 3px 3px 0; }
+.uk-life-track > i[data-part='ok'] { background: color-mix(in srgb, var(--uk-ok) 60%, transparent); }
+.uk-life-track > i[data-part='warn'] { background: color-mix(in srgb, var(--uk-warn) 60%, transparent); }
+.uk-life-track > i[data-part='error'] { background: color-mix(in srgb, var(--uk-error) 65%, transparent); }
+.uk-life-now { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--uk-text); }
+.uk-life { container: uk-life / inline-size; }
+.uk-life-body { display: flex; flex-direction: column; }
+.uk-life-renewal { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--uk-warn); }
+.uk-life-marks { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.uk-life-marks > div, .uk-life-over > div { display: grid; gap: 2px; white-space: nowrap; }
+.uk-life-marks > div:last-child { text-align: right; }
+/* Over the bar, at its mark: as far along itself as the mark is along the bar (never past either end). */
+.uk-life-over { margin-bottom: 8px; }
+.uk-life-over > div { display: flex; align-items: baseline; gap: 8px; width: max-content; margin-left: var(--at); transform: translateX(calc(var(--at) * -1)); }
+/* Narrow: under the bar, a row a time in their order (start, renewal, end) — label, date, when, each in its column. */
+@container uk-life (max-width: 400px) {
+  .uk-life-body { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px 12px; align-items: baseline; }
+  .uk-life-body > .uk-life-track { grid-column: 1 / -1; margin-bottom: 6px; }
+  .uk-life-marks, .uk-life-over, .uk-life-marks > div, .uk-life-over > div { display: contents; }
+  .uk-life-marks > div:first-child > * { order: 1; }
+  .uk-life-over > div > * { order: 2; }
+  .uk-life-marks > div:last-child > * { order: 3; }
+  .uk-life-body small { text-align: right; }
+}
+.uk-life-marks span, .uk-life-over span { color: var(--uk-muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.uk-life-marks b, .uk-life-over b { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.uk-life-marks small, .uk-life-over small { color: var(--uk-muted); font-size: 12px; }
+.uk-life-marks small[data-level='warn'], .uk-life-over small[data-level='warn'], .uk-life-cell[data-level='warn'] > span:last-child { color: var(--uk-warn); }
+.uk-life-marks small[data-level='error'], .uk-life-over small[data-level='error'], .uk-life-cell[data-level='error'] > span:last-child { color: var(--uk-error); }
+.uk-life-cell { display: inline-flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+/* Its text the cell's baseline (not its bar's foot): on the line of the text beside it. */
+.uk-life-cell > span:last-child { align-self: baseline; white-space: nowrap; }
+.uk-life-cell .uk-life-track { width: 52px; height: 4px; }
+.uk-life-cell .uk-life-now { top: -3px; bottom: -3px; }
+/* Blocks one under another (a section's notice, its facts), apart. */
+.uk-stack { display: grid; gap: 12px; }
+/* What went wrong, as it was said (a controller's reason, a check's error): set apart, its words as they are. */
+.uk-why { display: block; padding: 10px 12px; border-left: 2px solid var(--uk-error); border-radius: 0 var(--uk-radius-sm) var(--uk-radius-sm) 0; background: color-mix(in srgb, var(--uk-error) 8%, transparent); font: 12px/1.6 var(--uk-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* How something goes (Steps): a step under another, a line between — done green, going a warning, stuck an error. */
+.uk-steps { display: grid; }
+.uk-step { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 0 14px; padding-bottom: 22px; }
+.uk-step:last-child { padding-bottom: 0; }
+.uk-step::before { content: ''; position: absolute; left: 11px; top: 28px; bottom: 4px; width: 2px; border-radius: 1px; background: var(--uk-border); }
+.uk-step:last-child::before { display: none; }
+.uk-step[data-state='done']::before { background: color-mix(in srgb, var(--uk-ok) 45%, transparent); }
+.uk-step-dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--uk-panel-2); color: var(--uk-muted); }
+.uk-step-dot svg { width: 14px; height: 14px; }
+.uk-step[data-state='done'] .uk-step-dot { background: color-mix(in srgb, var(--uk-ok) 20%, transparent); color: var(--uk-ok); }
+.uk-step[data-state='going'] .uk-step-dot { background: color-mix(in srgb, var(--uk-warn) 20%, transparent); color: var(--uk-warn); }
+.uk-step[data-state='stuck'] .uk-step-dot { background: color-mix(in srgb, var(--uk-error) 20%, transparent); color: var(--uk-error); }
+.uk-step-main { display: grid; gap: 3px; min-width: 0; padding-top: 2px; }
+.uk-step-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 500; }
+.uk-step-meta { color: var(--uk-muted); font-size: 12px; }
+.uk-step-body { display: grid; gap: 12px; margin-top: 10px; font-size: 13px; line-height: 1.5; }
+/* Things on one time axis (Runway): a row each — its lead, a bar from now to its end (ended: back from now), what is said at its end. */
+.uk-runway-wrap { container: uk-runway / inline-size; }
+.uk-runway { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(0, 2.4fr); column-gap: 24px; align-items: center; font-size: 13px; }
+.uk-runway-axis { position: relative; height: 16px; margin: 0 56px 6px 0; color: var(--uk-muted); font-size: 11px; white-space: nowrap; }
+.uk-runway-axis > span { position: absolute; transform: translateX(-50%); }
+.uk-runway-lead { display: flex; align-items: center; gap: 8px; height: 40px; min-width: 0; white-space: nowrap; overflow: hidden; }
+/* Cut short where it is narrow: what is beside the name first (its namespace), then the name. */
+.uk-runway-lead > * { flex: none; min-width: 0; }
+.uk-runway-lead > .uk-ref { flex: 0 1 auto; }
+.uk-runway-lead > .uk-quiet { flex: 0 100 auto; overflow: hidden; text-overflow: ellipsis; }
+@container uk-runway (max-width: 560px) {
+  .uk-runway { grid-template-columns: minmax(0, 1fr); }
+  .uk-runway > span:first-child { display: none; }
+  .uk-runway-lead { height: auto; padding-top: 8px; }
+  .uk-runway-lane { height: 28px; }
+  /* The axis's ends alone: its ticks between would meet. */
+  .uk-runway-axis > span:not(:first-child):not(:last-child) { display: none; }
+}
+.uk-runway-lane { position: relative; height: 40px; margin-right: 56px; }
+.uk-runway-lane::before { content: ''; position: absolute; left: var(--now); top: 0; bottom: 0; width: 1px; background: var(--uk-border); }
+.uk-runway-bar { position: absolute; top: 50%; height: 8px; margin-top: -4px; border-radius: 4px; background: color-mix(in srgb, var(--uk-ok) 55%, transparent); }
+.uk-runway-bar[data-level='warn'] { background: color-mix(in srgb, var(--uk-warn) 65%, transparent); }
+.uk-runway-bar[data-level='error'] { background: color-mix(in srgb, var(--uk-error) 65%, transparent); }
+.uk-runway-said { position: absolute; top: 50%; transform: translateY(-50%); padding-left: 10px; line-height: 1; color: var(--uk-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.uk-runway-said[data-level='warn'] { color: var(--uk-warn); }
+.uk-runway-said[data-level='error'] { color: var(--uk-error); }
+/* What was asked against what is (Compare): a row each, its label (a check; a cross, the row tinted, where they differ). */
+.uk-compare { width: calc(100% + 16px); margin: 0 -8px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.uk-compare th, .uk-compare td { padding: 10px 8px; text-align: left; vertical-align: top; font-weight: inherit; }
+.uk-compare thead th { padding-top: 0; color: var(--uk-muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.uk-compare thead th:first-child { width: 30%; }
+.uk-compare tbody > tr > * { border-top: 1px solid var(--uk-border); font-size: 13px; line-height: 1.5; overflow-wrap: break-word; }
+.uk-compare tbody th > span { display: flex; align-items: flex-start; gap: 6px; color: var(--uk-muted); }
+.uk-compare tbody th svg { flex: none; width: 14px; height: 14px; margin-top: 3px; color: var(--uk-ok); }
+.uk-compare tr[data-differs] > * { background: color-mix(in srgb, var(--uk-error) 7%, transparent); }
+.uk-compare tr[data-differs] > :first-child { border-radius: var(--uk-radius-sm) 0 0 var(--uk-radius-sm); }
+.uk-compare tr[data-differs] > :last-child { border-radius: 0 var(--uk-radius-sm) var(--uk-radius-sm) 0; }
+.uk-compare tr[data-differs] svg { color: var(--uk-error); }
+.uk-compare tr[data-differs] + tr > * { border-top-color: transparent; }
+.uk-compare-wrap { container: uk-compare / inline-size; }
+@container uk-compare (max-width: 360px) {
+  .uk-compare, .uk-compare thead, .uk-compare tbody { display: block; width: auto; margin: 0; }
+  .uk-compare tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .uk-compare thead th:first-child { display: none; }
+  .uk-compare tbody th { grid-column: 1 / -1; padding-bottom: 0; }
+  .uk-compare tbody td { border-top: 0; padding-top: 4px; }
+  .uk-compare tr[data-differs] > :first-child { border-radius: var(--uk-radius-sm) var(--uk-radius-sm) 0 0; }
+  .uk-compare tr[data-differs] > td:nth-child(2) { border-radius: 0 0 0 var(--uk-radius-sm); }
+}
 .uk-charts-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
 .uk-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px 20px; }
 .uk-chart { display: grid; gap: 6px; min-width: 0; }
@@ -261,18 +367,19 @@ button.uk-tile:hover .uk-tile-title { color: var(--uk-text); }
 /* Conditions, one under another, ruled between: its status, its type, when it changed (on the right); why under its type, quieter. */
 .uk-code { margin: 0; padding: 10px 12px; background: var(--uk-bg); border: 1px solid var(--uk-border); border-radius: var(--uk-radius); font-family: var(--uk-mono); font-size: 12px; white-space: pre; overflow: auto; max-height: 60vh; }
 /* A notice: a soft tint of its level's colour (none: grey), its icon and title in that colour, its words plain. */
-.uk-notice { --uk-notice-c: var(--uk-muted); display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); background: var(--uk-panel); color: var(--uk-text); line-height: 1.45; }
+.uk-notice { --uk-notice-c: var(--uk-muted); display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); background: var(--uk-panel); color: var(--uk-text); line-height: 1.45; }
 .uk-notice[data-level] { border-color: color-mix(in srgb, var(--uk-notice-c) 30%, transparent); background: color-mix(in srgb, var(--uk-notice-c) 10%, var(--uk-panel)); }
 .uk-notice[data-level='ok'] { --uk-notice-c: var(--uk-ok); }
 .uk-notice[data-level='warn'] { --uk-notice-c: var(--uk-warn); }
 .uk-notice[data-level='error'] { --uk-notice-c: var(--uk-error); }
 .uk-notice:not([data-level]) .uk-notice-text { color: var(--uk-muted); }
 .uk-notice-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 16px; height: 19px; color: var(--uk-notice-c); }
-.uk-notice-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.uk-notice-body { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .uk-notice-title { font-weight: 600; color: var(--uk-notice-c); }
 .uk-notice:not([data-level]) .uk-notice-title { color: var(--uk-text); }
 .uk-root[data-theme='light'] .uk-notice[data-level] .uk-notice-title, .uk-root[data-theme='light'] .uk-notice[data-level] .uk-notice-icon { color: color-mix(in srgb, var(--uk-notice-c), var(--uk-text) 35%); }
-.uk-notice-action { flex: none; align-self: center; display: flex; align-items: center; gap: 8px; margin: -4px -4px -4px 0; }
+/* Its actions beside its text; where they do not fit, under it, at its end. */
+.uk-notice-action { flex: none; align-self: center; display: flex; align-items: center; gap: 8px; margin: -4px -4px -4px auto; }
 
 /* A modal: a layer over all the page, dimmed behind it; its panel in the middle (high up), from an edge, or from the bottom — coming in from there, going back there. */
 .uk-modal { position: fixed; inset: 0; color: var(--uk-text); background: var(--uk-overlay); animation: uk-fade-in .2s ease-out both; }
@@ -752,6 +859,8 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-link:disabled { color: var(--uk-muted); cursor: default; }
 .uk-link:focus-visible { outline: 2px solid var(--uk-focus); border-radius: 3px; }
 .uk-tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--uk-border); }
+/* What is beside the list (a button in its tip): its own width, the list giving way. */
+.uk-tabs > .uk-tip-at { flex: none; display: flex; }
 /* One line, scrolled sideways when it does not fit (its scrollbar hidden: the wheel, a drag near its edge, the keyboard scroll it). */
 .uk-tab-list { display: flex; align-items: stretch; gap: 2px; position: relative; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .uk-tab-list::-webkit-scrollbar { display: none; }
@@ -974,8 +1083,9 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-shell { display: flex; align-items: flex-start; gap: 16px; min-height: calc(100dvh - var(--uk-shell-inset)); }
 .uk-shell-page { flex: 1; min-width: 0; align-self: stretch; display: flex; flex-direction: column; gap: 12px; }
 /* The header close over the navigation under it; what is on the page a little further down. */
-.uk-shell-header { display: flex; align-items: center; gap: 12px; min-height: 40px; margin-bottom: -4px; }
-.uk-shell-header-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+/* Narrow (a phone): its end under its start, each part on as many lines as it needs — never wider than the window. */
+.uk-shell-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-height: 40px; margin-bottom: -4px; }
+.uk-shell-header-end { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 /* At the window's edge, as tall as it (the host's padding crossed), kept there as the page scrolls; over the page (a rail peeking over it — what opens from it, a popover, stays within this layer). */
 .uk-shell-side { flex: none; position: sticky; top: 0; z-index: 20; display: flex; height: 100dvh; margin: calc(var(--uk-shell-inset) / -2) 0 calc(var(--uk-shell-inset) / -2) calc(var(--uk-shell-inset) / -2); }
 .uk-shell-side:empty { display: none; }

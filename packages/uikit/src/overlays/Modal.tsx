@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useMemo, useRef } from 'preact/hooks';
+import { useLayoutEffect, useMemo, useRef } from 'preact/hooks';
 import { Button } from '../actions/Button';
 import { uid } from '../lib/focus';
 import { Layer, useLeave } from '../lib/layers';
@@ -13,7 +13,8 @@ import { Layer, useLeave } from '../lib/layers';
  * Escape (the top one only, of layers one over another), a click beside it
  * (one begun beside it: not a press inside let go outside), or its button.
  * Focus goes into it (its first field, else itself), stays in it (Tab goes
- * round), and goes back where it was as it goes.
+ * round), and goes back where it was as it goes. Its title cut short (a
+ * long name): the whole of it in its tip.
  */
 
 export type ModalPlacement = 'center' | 'left' | 'right' | 'bottom' | 'full';
@@ -42,6 +43,17 @@ export function Modal({ title, actions, tabs, footer, onClose, closeLabel = 'Clo
   const { closing, leave } = useLeave(onClose, MODAL_OUT_MS);
   // A click beside it closes it only if it began there (a press inside let go outside is no click beside it).
   const pressedBeside = useRef(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+  // Its tip said as it is cut: drawn anew, or its width changed (the window's, the panel's place).
+  useLayoutEffect(() => {
+    const h = heading.current;
+    if (!h) return;
+    const tip = () => (h.scrollWidth > h.clientWidth ? h.setAttribute('title', h.textContent ?? '') : h.removeAttribute('title'));
+    tip();
+    const watch = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(tip);
+    watch?.observe(h);
+    return () => watch?.disconnect();
+  });
   return (
     <Layer modal focus="field" class="uk-modal" role="dialog" labelledBy={titleId} onDismiss={leave} closing={closing}>
       {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: a click beside the panel closes it; Escape does from the keyboard (the stack's). */}
@@ -59,7 +71,9 @@ export function Modal({ title, actions, tabs, footer, onClose, closeLabel = 'Clo
         <div class="uk-modal-panel">
           {placement === 'bottom' && <span class="uk-modal-grip" aria-hidden="true" />}
           <header>
-            <h2 id={titleId}>{title}</h2>
+            <h2 id={titleId} ref={heading}>
+              {title}
+            </h2>
             {actions}
             <Button variant="ghost" icon="x" aria-label={closeLabel} onClick={leave} />
           </header>

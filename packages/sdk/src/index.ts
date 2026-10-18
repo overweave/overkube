@@ -131,6 +131,9 @@ export {
   type ResourceRef,
   slots,
 } from './slots.ts';
+export { lookOf } from './status.ts';
 export { forKinds, kindMatcher, takes } from './target.ts';
 export { canonicalLocale, isLabel, isPhrase, type Label, type LabelRef, type Phrase, type PluralForms, t } from './text.ts';
+export { calendarDays, humanDuration, shortTime } from './time.ts';
 export type { UserChanges } from './user.ts';
+export { type AltNames, type Certificate, ipOf, parseCertificate, parseRequest, type Request } from './x509.ts';

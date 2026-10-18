@@ -48,14 +48,20 @@ const { configure, behaviour, access } = RIGHTS;
 /**
  * What something needs of the cluster to be of use: a verb on a resource
  * (none: the kind it is shown for), its subresource ('log'), of an API
- * group ('' the core's; none: the kind's). Its definer says it; the access
- * layer says whether the one signed in may (its access).
+ * group ('' the core's; none: the kind's) — one of it by name, where RBAC
+ * may name it (a rule's resourceNames): the name, or the names (any one
+ * allowed: enough) its object asks of (a CertificateRequest: its issuer's
+ * signer). Its definer says it; the access layer says whether the one
+ * signed in may (its access).
  */
 export interface Need {
   verb: string;
   group?: string;
   resource?: string;
   subresource?: string;
+  name?: string | ((object: KubeObject) => string | readonly string[]);
+  /** Of no namespace (a signer): asked of the cluster's rules alone — a namespace's (its RoleBindings') never grant it. */
+  cluster?: boolean;
 }
 
 /** Whether it is shown, as the one signed in may: allowed; denied (not shown); marked (shown, marked as denied: debugging). */
@@ -96,7 +102,13 @@ const sort: Check = (v) =>
 const needs: Check = (v) =>
   Array.isArray(v) &&
   v.every(
-    (n) => typeof n === 'object' && n !== null && typeof n.verb === 'string' && ['group', 'resource', 'subresource'].every((k) => n[k] === undefined || typeof n[k] === 'string'),
+    (n) =>
+      typeof n === 'object' &&
+      n !== null &&
+      typeof n.verb === 'string' &&
+      ['group', 'resource', 'subresource'].every((k) => n[k] === undefined || typeof n[k] === 'string') &&
+      (n.name === undefined || typeof n.name === 'string' || typeof n.name === 'function') &&
+      (n.cluster === undefined || typeof n.cluster === 'boolean'),
   );
 const regions: Check = (v) => Array.isArray(v) && v.every((r) => typeof r?.name === 'string' && /^[^.:]+$/.test(r.name) && (r.title === undefined || isLabel(r.title)));
 /** A path: from the root, its parts fixed or :named, a last * taking the rest (no query: that is the page's own). */

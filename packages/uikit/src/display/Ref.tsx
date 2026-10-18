@@ -6,12 +6,18 @@ import { Icon } from './Icon';
  * name — a link where it can be opened. Cut short with dots, never wider
  * than where it is (a table's cell).
  */
-export function Ref({ icon, kind, href, children }: { icon: string; kind?: string; href?: string; children: ComponentChildren }) {
+export function Ref({ icon, kind, href, title, children }: { icon: string; kind?: string; href?: string; title?: string; children: ComponentChildren }) {
   return (
     <span class="uk-ref">
       <Icon name={icon} />
       {kind && <small>{kind}</small>}
-      {href ? <a href={href}>{children}</a> : <span>{children}</span>}
+      {href ? (
+        <a href={href} title={title}>
+          {children}
+        </a>
+      ) : (
+        <span title={title}>{children}</span>
+      )}
     </span>
   );
 }

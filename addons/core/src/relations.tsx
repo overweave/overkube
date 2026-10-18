@@ -1,12 +1,11 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import type { Where } from '@overkube/query';
-import { filterIn, KindView, kindOfRef, kindPath, kindRef, type ResourceOwnerProps, type ResourceProps, StatusLook, slots } from '@overkube/sdk';
+import { filterIn, KindView, kindOfRef, kindPath, kindRef, lookOf, type ResourceOwnerProps, type ResourceProps, StatusLook, slots } from '@overkube/sdk';
 import { useCount, useFields, useGet, useList, useOwned, usePage, useSay, useServedKinds } from '@overkube/sdk/preact';
 import { Dot, type Level, Ref, type Tone } from '@overkube/uikit';
 import { slotElement, useDefinition, useDefinitions } from '@overweave/ui/preact';
 import type { ComponentChildren } from 'preact';
 import { titleOf } from './kinds.ts';
-import { lookOf } from './statuses.tsx';
 import { T } from './texts.ts';
 
 /*
@@ -160,7 +159,8 @@ function OwnedLine({ kind, object, child, where, by, of }: ResourceProps & { chi
   const label = titleOf(child);
   const drawn = (
     <span class="uk-owned">
-      <Ref icon={icon} kind={label} href={href}>
+      {/* Its kind the row's label: not said again. */}
+      <Ref icon={icon} href={href}>
         {String(count)}
       </Ref>
       <span class="uk-dots">

@@ -4,6 +4,7 @@ import {
   type CellValue,
   type ColumnSpec,
   filterIn,
+  humanDuration,
   kindPath,
   kindRef,
   type Label,
@@ -14,10 +15,11 @@ import {
   type ResourceLabelProps,
   type ResourceOwnerProps,
   type ResourceProps,
+  shortTime,
   slots,
   TableView,
 } from '@overkube/sdk';
-import { useList, usePage, useSay } from '@overkube/sdk/preact';
+import { ObjectRef, StatusOf, useList, usePage, useSay } from '@overkube/sdk/preact';
 import { Chip, Chips, type ChipsLabels, Clamped, Nothing, Notice, Row, Rows, Section, Tip } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import type { SlotRef } from '@overweave/ui';
@@ -27,14 +29,12 @@ import { useMemo } from 'preact/hooks';
 import { Cell, contextOf, drawn, textOf } from './cell.tsx';
 import { useColumns } from './columns.tsx';
 import { type Failed, useFailures } from './failures.ts';
-import { EMPTY, humanDuration, shortTime, shownAs } from './format.ts';
+import { EMPTY, shownAs } from './format.ts';
 import { titleOf } from './kinds.ts';
 import { clock, useLive } from './live.ts';
-import { ObjectRef } from './refs.tsx';
 import { Refused, refused } from './refused.tsx';
 import { OwnerChain } from './relations.tsx';
 import { selectorFilter } from './selectors.ts';
-import { StatusOf } from './statuses.tsx';
 import { T } from './texts.ts';
 
 /*
@@ -52,7 +52,7 @@ import { T } from './texts.ts';
 /** How long ago a time was, live (none: "—"); the time itself under the pointer. */
 export function Since({ time }: { time: string | undefined }) {
   const at = time ? Date.parse(time) : Number.NaN;
-  const text = useLive(() => (Number.isNaN(at) ? EMPTY : humanDuration(clock.value - at)), [at]);
+  const text = useLive(() => (Number.isNaN(at) ? EMPTY : humanDuration(clock.value - at)), [time]);
   return <Tip content={() => time}>{text}</Tip>;
 }
 
@@ -61,7 +61,8 @@ export function Deleting({ object }: ResourceProps) {
   const say = useSay();
   const since = object.metadata?.deletionTimestamp;
   const at = since ? Date.parse(since) : Number.NaN;
-  const ago = useLive(() => (Number.isNaN(at) ? '' : humanDuration(clock.value - at)), [at]);
+  // By its time as said (a time not one is NaN: never the same as itself, a hook's deps changed each drawing).
+  const ago = useLive(() => (Number.isNaN(at) ? '' : humanDuration(clock.value - at)), [since]);
   if (!since) return null;
   const finalizers = object.metadata?.finalizers ?? [];
   return (

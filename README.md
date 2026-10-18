@@ -82,6 +82,7 @@ One npm workspace (`packages/*`, `apps/*`, `addons/*`); every package is ESM, Ty
 | [apps/web](apps/web/README.md) | The page: `@overkube/web`, built to `apps/web/dist` |
 | [addons/core](addons/core/README.md) | The core addon: everything the page shows that no other addon does |
 | [addons/metrics](addons/metrics/README.md) | The metrics addon: what pods and nodes use, now (metrics-server) and over time (VictoriaMetrics, Prometheus) |
+| [addons/cert-manager](addons/cert-manager/README.md) | The cert-manager addon: certificates, when they end, how they are issued and where it stops, their issuers; Renew, Approve, Deny |
 | [packages/sdk](packages/sdk/README.md) | `@overkube/sdk` — what addons are written with |
 | [packages/gateway](packages/gateway/README.md) | `@overkube/gateway` — the way to the cluster, for any Node host |
 | [packages/connector](packages/connector/README.md) | `@overkube/connector` — the page's side of the gateway: feeds, the stream, logs |

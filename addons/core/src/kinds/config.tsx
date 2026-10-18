@@ -1,12 +1,12 @@
 import { kinds, type ObjectOf } from '@overkube/kube-types';
-import { type KubeContributor, type ResourceProps, section } from '@overkube/sdk';
+import { type AltNames, calendarDays, type KubeContributor, parseCertificate, type ResourceProps, type Say, section, shortTime } from '@overkube/sdk';
 import { useNotify, useSay } from '@overkube/sdk/preact';
 import { Badge, ConfigViewer, type ConfigViewerLabels, KeyValue, Notice, Section, Table, Tip, textOf } from '@overkube/uikit';
 import type { ComponentChildren } from 'preact';
 import { useMemo } from 'preact/hooks';
+import { EMPTY } from '../format.ts';
 import { clock, useLive } from '../live.ts';
 import { T } from '../texts.ts';
-import { parseCertificate } from '../x509.ts';
 
 /*
  * A config map's and a secret's own, in their views: their keys (the kit's
@@ -58,14 +58,42 @@ const secretText = (secret: SecretObject, key: string) => {
   return v === undefined ? undefined : textOf(v);
 };
 
+/** Its subject alternative names, a row a type (DNS Names, IP Addresses, Email Addresses, URIs) — as cert-manager's spec names them. */
+export function namesRows(say: Say, names: AltNames): [string, ComponentChildren][] {
+  const t = T.resource.view.config;
+  return (
+    [
+      [t.dnsNames, names.dns],
+      [t.ipAddresses, names.ip],
+      [t.emailAddresses, names.email],
+      [t.uris, names.uri],
+    ] as const
+  ).flatMap(([label, values]) =>
+    values.length
+      ? [
+          [
+            say(label),
+            <span class="uk-line">
+              {values.map((n, i) => (
+                <span key={`${i}:${n}`} class="uk-mono">
+                  {n}
+                </span>
+              ))}
+            </span>,
+          ] as [string, ComponentChildren],
+        ]
+      : [],
+  );
+}
+
 /** A TLS secret's certificate (the core's section, where it has one): valid till (how long left, as a badge), from; whom of and by; its names, key, serial, its chain. Not read: said so. */
 export function CertificateOf({ object }: ResourceProps) {
   const say = useSay();
   const t = T.resource.view.config;
   const pem = secretText(object as SecretObject, 'tls.crt') ?? '';
   const cert = useMemo(() => parseCertificate(pem), [pem]);
-  // Days left, live: drawn again once a day, not each second.
-  const days = useLive(() => (cert ? Math.floor((cert.notAfter - clock.value) / 86_400_000) : 0), [cert]);
+  // Days left, live (as the page's calendar has them; ended: none), drawn again once a day, not each second.
+  const days = useLive(() => (cert ? (cert.notAfter <= clock.value ? -1 : calendarDays(cert.notAfter, clock.value)) : 0), [cert]);
   if (!cert)
     return (
       <Section title={say(t.certificate)} part="certificate">
@@ -74,7 +102,7 @@ export function CertificateOf({ object }: ResourceProps) {
         </Notice>
       </Section>
     );
-  const day = (ms: number) => <Tip content={() => new Date(ms).toISOString()}>{new Date(ms).toISOString().slice(0, 10)}</Tip>;
+  const day = (ms: number) => <Tip content={() => new Date(ms).toISOString()}>{shortTime(ms).slice(0, 10)}</Tip>;
   const mono = (v: string) => <span class="uk-mono">{v}</span>;
   return (
     <Section title={say(t.certificate)} part="certificate">
@@ -88,22 +116,9 @@ export function CertificateOf({ object }: ResourceProps) {
             </span>,
           ],
           [say(t.validFrom), day(cert.notBefore)],
-          [say(t.subject), mono(cert.subject)],
-          [say(t.issuer), mono(cert.issuer)],
-          ...(cert.names.length
-            ? [
-                [
-                  say(t.names),
-                  <span class="uk-line">
-                    {cert.names.map((n) => (
-                      <span key={n} class="uk-mono">
-                        {n}
-                      </span>
-                    ))}
-                  </span>,
-                ] as [string, ComponentChildren],
-              ]
-            : []),
+          [say(t.subject), mono(cert.subject || EMPTY)],
+          [say(t.issuer), mono(cert.issuer || EMPTY)],
+          ...namesRows(say, cert.names),
           [say(t.key), cert.key],
           [say(t.serial), mono(cert.serial)],
           ...(cert.chain ? [[say(t.chain), say(t.chainMore, { count: cert.chain })] as [string, ComponentChildren]] : []),

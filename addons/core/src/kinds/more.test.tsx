@@ -1,9 +1,8 @@
 import { kinds } from '@overkube/kube-types';
-import { cleanup, fakeCluster, kubeWorld, make } from '@overkube/testkit';
+import { CSR_PEM, cleanup, EC_PEM, fakeCluster, kubeWorld, make, RSA_PEM } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { fireEvent } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CSR_PEM, EC_PEM, RSA_PEM } from '../certs.fixture.ts';
 import core from '../index.tsx';
 import { registriesOf } from './config.tsx';
 import { linesOf } from './rbac.tsx';
@@ -112,18 +111,19 @@ describe('a TLS secret and a pull secret', () => {
     w.cluster.add(Secret, tls('odd', 'not a certificate'));
     const page = renderPage(w, '/k/secrets.v1?open=secrets.v1/shop/shop');
     expect(pairs(part('certificate'))).toEqual([
-      ['Not after', '2036-10-123633 days left'],
-      ['Not before', '2026-10-15'],
+      ['Not After', '2036-10-123633 days left'],
+      ['Not Before', '2026-10-15'],
       ['Subject', 'CN=shop.example.com, O=Acme Test, C=US'],
       ['Issuer', 'CN=shop.example.com, O=Acme Test, C=US'],
-      ['Subject Alternative Names', 'shop.example.comwww.shop.example.com10.0.0.1'],
-      ['Public key', 'ECDSA P-256'],
+      ['DNS Names', 'shop.example.comwww.shop.example.com'],
+      ['IP Addresses', '10.0.0.1'],
+      ['Public Key', 'ECDSA P-256'],
       ['Serial', '04:a1:9c:3e'],
     ]);
     expect(part('certificate')?.querySelector('.uk-badge')?.getAttribute('data-level')).toBe('ok');
     page.navigate('/k/secrets.v1?open=secrets.v1/shop/soon');
     const soon = Object.fromEntries(pairs(part('certificate')));
-    expect([soon['Not after'], soon['Public key'], soon.Chain, part('certificate')?.querySelector('.uk-badge')?.getAttribute('data-level')]).toEqual([
+    expect([soon['Not After'], soon['Public Key'], soon.Chain, part('certificate')?.querySelector('.uk-badge')?.getAttribute('data-level')]).toEqual([
       '2026-11-1413 days left',
       'RSA 2048',
       '1 intermediate certificate',
@@ -723,9 +723,10 @@ describe('the rest of the kinds, as themselves', () => {
     const page = renderPage(w, '/k/certificatesigningrequests.v1.certificates.k8s.io?open=certificatesigningrequests.v1.certificates.k8s.io/csr-8x2kp');
     expect(pairs(part('request'))).toEqual([
       ['Subject', 'CN=system:node:kube-3, O=system:nodes'],
-      ['Subject Alternative Names', 'kube-3192.168.1.23'],
-      ['Public key', 'ECDSA P-256'],
-      ['Requested duration', '24h'],
+      ['DNS Names', 'kube-3'],
+      ['IP Addresses', '192.168.1.23'],
+      ['Public Key', 'ECDSA P-256'],
+      ['Requested Duration', '24h'],
     ]);
     page.navigate('/k/certificatesigningrequests.v1.certificates.k8s.io?open=certificatesigningrequests.v1.certificates.k8s.io/odd');
     expect(part('request')?.textContent).toContain('Failed to parse the certificate request.');
@@ -845,7 +846,7 @@ describe('what points at an object', () => {
     expect([...(chain?.querySelectorAll('a') ?? [])].map((a) => a.textContent)).toEqual(['web', 'web-1']);
     page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
     const lines = Object.fromEntries(related().map(([k, v]) => [k, v]));
-    expect([lines.ReplicaSets, lines.Pods]).toEqual(['ReplicaSets1', 'Pods2by its ReplicaSets']);
+    expect([lines.ReplicaSets, lines.Pods]).toEqual(['1', '2by its ReplicaSets']);
     const pods = [...(part('related')?.querySelectorAll('.uk-owned') ?? [])].at(-1) as HTMLElement;
     expect([...pods.querySelectorAll('.uk-dot')].map((d) => d.getAttribute('data-level'))).toEqual(['error', 'ok']);
     page.navigate((pods.querySelector('a')?.getAttribute('href') ?? '').replace(/^#/, ''));
@@ -883,7 +884,7 @@ describe('what points at an object', () => {
       make(ConfigMap, { metadata: { name: 'web-routes', namespace: 'shop', ownerReferences: [{ apiVersion: 'v1', kind: 'Service', name: 'web', uid: 's1' }] } }),
     );
     renderPage(w, '/k/services.v1?open=services.v1/shop/web');
-    expect(related().find(([k]) => k === 'ConfigMaps')?.[1]).toBe('ConfigMaps1');
+    expect(related().find(([k]) => k === 'ConfigMaps')?.[1]).toBe('1');
   });
 
   it('leads from a selector to the pods it picks (its namespace’s), from a label to its kind’s objects of it', () => {

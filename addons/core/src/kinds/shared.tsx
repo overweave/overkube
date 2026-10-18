@@ -1,13 +1,12 @@
 import { type KindInfo, type KubeObject, kinds } from '@overkube/kube-types';
 import type { Where } from '@overkube/query';
 import { filterIn, forKinds, type KubeContributor, kindPath, kindRef, type Label, type ResourceProps, slots } from '@overkube/sdk';
-import { useList, usePage, useSay } from '@overkube/sdk/preact';
+import { ObjectRef, useList, usePage, useSay } from '@overkube/sdk/preact';
 import { Badge, Chips } from '@overkube/uikit';
 import { fill, slotElement } from '@overweave/ui/preact';
 import type { ComponentChildren } from 'preact';
 import { relatedField, useChipLabels } from '../details.tsx';
 import { titleOf } from '../kinds.ts';
-import { ObjectRef } from '../refs.tsx';
 import { RefusedQuietly, refused } from '../refused.tsx';
 import { type Selector, selectorFilter } from '../selectors.ts';
 import { T } from '../texts.ts';

@@ -304,8 +304,8 @@ export interface View {
   own?: ComponentChildren;
   /** An addon's tabs (between the core's Events and YAML). */
   tabs?: [label: string, icon: string, by: string][];
-  /** An addon's buttons in the header. */
-  header?: [label: string, icon: string][];
+  /** Its actions (the footer's: the core has none yet — an addon's), a dangerous one red; none, no footer. */
+  actions?: [label: string, icon: string, dangerous?: boolean][];
   /** An addon's mark beside its title (a revision, how vulnerable it is): a pill, more of it under the pointer. */
   badge?: ComponentChildren;
   conditions?: Condition[];
@@ -339,15 +339,6 @@ export function ResourceSketch({ view }: { view: View }) {
           {view.namespace && <small>{view.namespace}</small>}
         </h2>
         {view.badge}
-        {view.header && (
-          <Ext slot="resource.view.header" by="addons" inline>
-            {view.header.map(([label, icon]) => (
-              <Button key={label} variant="ghost" size="sm" icon={icon}>
-                {label}
-              </Button>
-            ))}
-          </Ext>
-        )}
         <Segmented label="Layout" value="right" onChange={() => {}} options={LAYOUTS} />
         <Button variant="ghost" icon="x" aria-label="Close" />
       </header>
@@ -390,14 +381,17 @@ export function ResourceSketch({ view }: { view: View }) {
           </Section>
         )}
       </div>
-      <footer class="uk-modal-footer">
-        <Button size="sm" icon="copy">
-          Copy YAML
-        </Button>
-        <Button size="sm" variant="danger" icon="trash">
-          Delete
-        </Button>
-      </footer>
+      {view.actions && (
+        <footer class="uk-modal-footer">
+          <Ext slot="resource.view.footer · Action" by="addons" inline>
+            {view.actions.map(([label, icon, dangerous]) => (
+              <Button key={label} size="sm" icon={icon} {...(dangerous ? { variant: 'danger' as const } : {})}>
+                {label}
+              </Button>
+            ))}
+          </Ext>
+        </footer>
+      )}
     </div>
   );
 }

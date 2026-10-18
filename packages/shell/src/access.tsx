@@ -116,35 +116,47 @@ function layer(registry: Registry<any>, cluster: Cluster, options: { mark?: bool
   };
 
   /**
-   * What needs ask of a subject, each with whether it is of a namespace: a
-   * need with a resource, that one (of a namespace); with none, the
-   * subject's kind. One of the subject's own kind (its subresource too) is
-   * of its object, by its name — a rule may name only it; no kind, nothing.
+   * What needs ask of a subject, each the asks of which one is enough (its
+   * names', any one) with whether it is of a namespace: a need with a
+   * resource, that one (of a namespace — or, said of the cluster, of none);
+   * with none, the subject's kind. One
+   * of the subject's own kind (its subresource too) is of its object, by its
+   * name — a rule may name only it; one naming its own (or its object's
+   * names), by those; no kind, nothing.
    */
-  const asksOf = (needs: readonly Need[], subject: AccessSubject = {}): [AccessAsk, boolean][] =>
-    needs.flatMap((n): [AccessAsk, boolean][] => {
+  const asksOf = (needs: readonly Need[], subject: AccessSubject = {}): [AccessAsk[], boolean][] =>
+    needs.flatMap((n): [AccessAsk[], boolean][] => {
       const { kind, object } = subject;
       if (!n.resource && !kind) return [];
       const group = n.group ?? (n.resource ? '' : (kind?.group ?? ''));
       const resource = n.resource ?? kind?.plural ?? '';
       const own = kind !== undefined && resource === kind.plural && group === kind.group;
-      const name = own ? object?.metadata?.name : undefined;
-      const ask: AccessAsk = { verb: n.verb, group, resource, ...(n.subresource ? { subresource: n.subresource } : {}), ...(name ? { name } : {}) };
-      return [[ask, own ? kind.namespaced : true]];
+      const said = typeof n.name === 'function' ? (object ? n.name(object) : []) : n.name;
+      const names = said === undefined ? (own && object?.metadata?.name ? [object.metadata.name] : []) : typeof said === 'string' ? [said] : [...said];
+      const ask: AccessAsk = { verb: n.verb, group, resource, ...(n.subresource ? { subresource: n.subresource } : {}) };
+      return [[names.length ? names.map((name) => ({ ...ask, name })) : [ask], n.cluster ? false : own ? (kind?.namespaced ?? true) : true]];
     });
 
-  /** Whether needs are had for a subject: in its object's namespace, else anywhere (a kind of no namespace: in the cluster). */
+  /** Whether needs are had for a subject — each by one of its asks: in its object's namespace, else anywhere (of no namespace: in the cluster's rules alone). */
   const accessFor = (needs: readonly Need[]) => (subject: AccessSubject) => {
     const namespace = subject.object?.metadata?.namespace ?? subject.namespace;
-    for (const [ask, namespaced] of asksOf(needs, subject)) {
-      if ((namespace === undefined ? anywhere(ask, namespaced) : allowed(rulesOf(namespace), ask)) === false) return denied;
+    for (const [asks, namespaced] of asksOf(needs, subject)) {
+      const said = asks.map((ask) => (namespace === undefined || !namespaced ? anywhere(ask, namespaced) : allowed(rulesOf(namespace), ask)));
+      if (said.every((s) => s === false)) return denied;
     }
     return 'allowed' as const;
   };
   /** One function for the same needs: a patch said again the same is nothing. */
   const fns = new Map<string, (subject: AccessSubject) => Access>();
+  // A need's name said by a function: that function, by an id of its own (the same function, the same key).
+  const named = new WeakMap<object, number>();
+  let functions = 0;
+  const idOf = (fn: object) => {
+    if (!named.has(fn)) named.set(fn, functions++);
+    return named.get(fn);
+  };
   const fnOf = (needs: readonly Need[]) => {
-    const key = JSON.stringify(needs);
+    const key = JSON.stringify(needs, (k, v) => (k === 'name' && typeof v === 'function' ? `fn:${idOf(v)}` : v));
     let fn = fns.get(key);
     if (!fn) {
       fn = accessFor(needs);
@@ -186,7 +198,7 @@ function layer(registry: Registry<any>, cluster: Cluster, options: { mark?: bool
         const needs = (d.spec as { needs?: Need[] }).needs;
         if (!needs?.length) continue;
         // A page listed in the navigation: hidden where it is had nowhere.
-        const nowhere = of === Page && asksOf(needs).some(([ask, namespaced]) => anywhere(ask, namespaced) === false);
+        const nowhere = of === Page && asksOf(needs).some(([asks, namespaced]) => asks.every((ask) => anywhere(ask, namespaced) === false));
         const patch = { access: fnOf(needs), ...(nowhere ? hide : {}) };
         want.set(`${of.name}/${d.name}`, { kind: of.name, name: d.name, patch, text: JSON.stringify([needs, nowhere && hide]) });
       }

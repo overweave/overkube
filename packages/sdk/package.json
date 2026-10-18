@@ -2,7 +2,7 @@
   "name": "@overkube/sdk",
   "version": "0.1.2",
   "private": true,
-  "description": "What overkube's addons are written with: the dashboard's kinds over overweave (KindView, Category, Column, Field, TableView, Page, Action), its slots, defineAddon and what an addon is given — its contributor and the cluster (queries, live); hooks for its components",
+  "description": "What overkube's addons are written with: the dashboard's kinds over overweave (KindView, Category, Column, Field, TableView, Page, Action), its slots, defineAddon and what an addon is given \u2014 its contributor and the cluster (queries, live); hooks for its components",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@overkube/source": "0.1.2",
+    "@overkube/testkit": "0.1.2",
     "@overweave/testkit": "0.5.0",
     "@preact/signals": "2.11.3",
     "@testing-library/preact": "3.2.4",

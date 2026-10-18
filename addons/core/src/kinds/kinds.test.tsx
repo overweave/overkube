@@ -392,8 +392,8 @@ describe('a workload', () => {
     // What it owns, and what those own in turn (by them).
     expect(related()).toEqual([
       ['Selector', 'appweb'],
-      ['ReplicaSets', 'ReplicaSets1'],
-      ['Pods', 'Pods2by its ReplicaSets'],
+      ['ReplicaSets', '1'],
+      ['Pods', '2by its ReplicaSets'],
     ]);
   });
 

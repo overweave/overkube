@@ -28,7 +28,9 @@ export {
   usePage,
   usePageProps,
 } from './page.ts';
+export { ObjectRef } from './refs.tsx';
 export { useSay } from './say.ts';
+export { StatusOf, statusFormat } from './status.tsx';
 export { KindTable } from './table.ts';
 export { tipField } from './tips.ts';
 export { UserProvider, useUser } from './user.ts';

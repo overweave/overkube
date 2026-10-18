@@ -243,7 +243,7 @@ function OverTime({ keeper, of, charts }: { keeper: Keeper; of: Of; charts: Char
         </span>
       </div>
       {failed ? (
-        <Notice icon="alert" title={say(T.tab.failed, { keeper: keeper.title, message: failed })} />
+        <Notice icon="warning" title={say(T.tab.failed, { keeper: keeper.title, message: failed })} />
       ) : !got ? (
         <div class="uk-charts">
           <Skeleton width="100%" />

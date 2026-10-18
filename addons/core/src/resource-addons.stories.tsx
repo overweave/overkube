@@ -4,7 +4,7 @@ import { Ext, FLUX, link, mono, Pairs, ResourceSketch, Route, Row, ref, Stage, s
 /*
  * What addons would add to a resource opened (a sketch: marked, not
  * connected) — each in the core's slots: its tab, its mark in the header,
- * its buttons, its sections. A shell, Flux, Traefik, cert-manager, Trivy.
+ * its buttons, its sections. A shell, Flux, Traefik, Trivy.
  */
 
 export default { title: 'core/resource/Addons', parameters: { controls: { disable: true } } };
@@ -49,7 +49,7 @@ export const Flux = () => (
             </Badge>
           </Ext>
         ),
-        header: [
+        actions: [
           ['Reconcile', 'refresh'],
           ['Suspend', 'pause'],
         ],
@@ -121,97 +121,6 @@ export const Traefik = () => (
           ['Certificate', ref('Certificate', 'shield', 'shop-tls')],
         ],
         events: [],
-      }}
-    />
-  </Stage>
-);
-
-/** A cert-manager Certificate (its addon's): its life (valid from, renewed at, now, valid to), what it is for, how it was issued (issuer → request → order → challenge). */
-export const CertManager = () => (
-  <Stage>
-    <ResourceSketch
-      view={{
-        kind: 'Certificate',
-        name: 'shop-tls',
-        namespace: 'shop',
-        badge: (
-          <Ext slot="resource.view.header" by="cert-manager addon" inline>
-            <Badge level="ok" title="Valid till 2027-01-12 — renewed on 2026-12-13 (in 59 days)">
-              <Icon name="shield" /> 89 days left
-            </Badge>
-          </Ext>
-        ),
-        header: [['Renew now', 'refresh']],
-        summary: [
-          ['Status', state('ok', 'circle-check', 'Ready')],
-          ['Issuer', ref('ClusterIssuer', 'shield', 'letsencrypt-prod')],
-          ['Secret', ref('', 'key', 'shop-tls')],
-          ['Renews', 'in 59 days'],
-        ],
-        own: (
-          <Ext slot="resource.view.sections" by="cert-manager addon">
-            <Section title="Validity">
-              <div class="rv-life">
-                <div class="rv-life-track">
-                  <i style={{ width: '100%' }} />
-                  <span class="rv-life-mark" style={{ left: '34%' }} title="Now" />
-                  <span class="rv-life-mark" data-kind="renew" style={{ left: '67%' }} title="Renewed then" />
-                </div>
-                <div class="rv-life-labels">
-                  <span>From 2026-10-14</span>
-                  <span>Now</span>
-                  <span>Renewal 2026-12-13</span>
-                  <span>Till 2027-01-12</span>
-                </div>
-                <Pairs
-                  pairs={[
-                    ['For', <span class="rv-line">{['shop.example.com', 'www.shop.example.com'].map((d) => mono(d))}</span>],
-                    ['Key', 'ECDSA P-256'],
-                  ]}
-                />
-              </div>
-            </Section>
-            <Section title="How it was issued">
-              <div class="uk-rows">
-                <Row
-                  lead={
-                    <>
-                      {ref('ClusterIssuer', 'shield', 'letsencrypt-prod')} {state('ok', 'circle-check', 'Ready')}
-                    </>
-                  }
-                  end="ACME, HTTP-01"
-                />
-                <Row
-                  lead={
-                    <>
-                      {ref('CertificateRequest', 'file', 'shop-tls-1')} {state('ok', 'circle-check', 'Issued')}
-                    </>
-                  }
-                  end="3d ago"
-                />
-                <Row
-                  lead={
-                    <>
-                      {ref('Order', 'file', 'shop-tls-1-2847')} {state('ok', 'circle-check', 'valid')}
-                    </>
-                  }
-                  end="3d ago"
-                />
-                <Row
-                  lead={
-                    <>
-                      {ref('Challenge', 'globe', 'shop.example.com')} {state('done', 'circle-check', 'valid')}
-                    </>
-                  }
-                  end="3d ago"
-                  under="HTTP-01: /.well-known/acme-challenge/… answered"
-                />
-              </div>
-            </Section>
-          </Ext>
-        ),
-        conditions: [['Ready', 'True', 'Ready · Certificate is up to date and has not expired', '3d']],
-        events: [['Normal', 'Issuing', 'The certificate has been successfully issued', '3d']],
       }}
     />
   </Stage>
@@ -292,5 +201,4 @@ export const Trivy = () => (
 Flux.storyName = 'Addons - Flux';
 FluxManaged.storyName = 'Addons - Flux (what it manages)';
 Traefik.storyName = 'Addons - Traefik';
-CertManager.storyName = 'Addons - cert-manager';
 Trivy.storyName = 'Addons - Trivy';

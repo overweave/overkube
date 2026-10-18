@@ -95,7 +95,8 @@ DURATION ?= 8h
 dev-token:
 	@$(DEV) exec -T kube kubectl -n seed-ops create token $(SA) --duration=$(DURATION)
 
-# The seed (dev/seed): cert-manager from its release, then every usual kind, a few of each, on busybox.
+# The seed (dev/seed): cert-manager from its release, then every usual kind, a few of each, on busybox; the
+# certificates it needs made by hand, made anew (dev/seed/tls.sh).
 # cert-manager's webhook answers a while after its deployment is available (its CA injected): asked
 # with a dry run until it does, then the seed applied once.
 CERT_MANAGER_VERSION ?= v1.18.2
@@ -111,6 +112,11 @@ dev-seed:
 		printf .; sleep 2; \
 	done; echo; echo "cert-manager's webhook did not answer"; exit 1
 	for f in dev/seed/*.yaml; do cat $$f; echo ---; done | $(KUBECTL) apply -f -
+	@# Certificates made anew (openssl, in the node image): none kept in the repository.
+	$(RUN) $(NODE_IMAGE) sh dev/seed/tls.sh secrets | $(KUBECTL) apply -f -
+	@# The pending request made anew: its spec is not changed once made, and it waits again.
+	$(KUBECTL) -n seed-shop delete certificaterequest pending-1 --ignore-not-found
+	$(RUN) $(NODE_IMAGE) sh dev/seed/tls.sh request | $(KUBECTL) create -f -
 
 # All the seed made, by its label (overkube.dev/seed=true): its namespaces, its cluster-wide objects, the
 # volumes its claims kept (a retaining class's), then cert-manager.
@@ -119,7 +125,7 @@ dev-clean:
 	$(KUBECTL) delete apiservice -l overkube.dev/seed=true
 	$(KUBECTL) delete namespace -l overkube.dev/seed=true --timeout=300s
 	-$(KUBECTL) delete clusterissuers.cert-manager.io -l overkube.dev/seed=true
-	$(KUBECTL) delete clusterrolebinding,clusterrole,priorityclass,ingressclass,persistentvolume,storageclass,certificatesigningrequest -l overkube.dev/seed=true
+	$(KUBECTL) delete clusterrolebinding,clusterrole,priorityclass,ingressclass,persistentvolume,storageclass,certificatesigningrequest,customresourcedefinition -l overkube.dev/seed=true
 	$(KUBECTL) -n kube-system delete rolebinding -l overkube.dev/seed=true
 	$(DEV) exec -T kube sh -c "kubectl get pv -o jsonpath='{range .items[*]}{.metadata.name} {.spec.claimRef.namespace}{\"\\n\"}{end}' | awk '\$$2 ~ /^seed-/ {print \$$1}' | xargs -r kubectl delete pv"
 	$(KUBECTL) delete --ignore-not-found -f $(CERT_MANAGER)

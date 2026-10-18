@@ -1,8 +1,8 @@
 import type { StatusAnswer } from '@overkube/gateway/protocol';
 import { type KindInfo, kinds } from '@overkube/kube-types';
 import { type CountResult, canonical, type Item, type Result, type Value, type Where } from '@overkube/query';
-import { KindView, type KubeContributor, kindPath, kindRef, openIn, type PageProps, type Say, StatusLook, slots, TableView } from '@overkube/sdk';
-import { fill, useAddons, useCluster, useCount, useGet, useList, usePage, useSay, useUser } from '@overkube/sdk/preact';
+import { humanDuration, KindView, type KubeContributor, kindPath, kindRef, lookOf, openIn, type PageProps, type Say, StatusLook, slots, TableView } from '@overkube/sdk';
+import { fill, StatusOf, useAddons, useCluster, useCount, useGet, useList, usePage, useSay, useUser } from '@overkube/sdk/preact';
 import {
   Badge,
   Board,
@@ -33,11 +33,10 @@ import {
 import { slotElement, useDefinition, useDefinitions } from '@overweave/ui/preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Since } from './details.tsx';
-import { bytes, cores, EMPTY, humanDuration } from './format.ts';
+import { bytes, cores, EMPTY } from './format.ts';
 import { KindTitle } from './headers.tsx';
 import { type Chosen, scopeOf } from './namespaces.tsx';
 import { RefusedQuietly, refused } from './refused.tsx';
-import { lookOf, StatusOf } from './statuses.tsx';
 import { T } from './texts.ts';
 
 /*

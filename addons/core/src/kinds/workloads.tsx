@@ -1,11 +1,10 @@
 import { type KubeObject, kinds, type ObjectOf } from '@overkube/kube-types';
 import type { Where } from '@overkube/query';
 import { type KubeContributor, kindRef, type ResourceProps, section } from '@overkube/sdk';
-import { KindTable, useCount, useList, useSay } from '@overkube/sdk/preact';
+import { KindTable, ObjectRef, useCount, useList, useSay } from '@overkube/sdk/preact';
 import { KeyValue, Nothing, Section, Table } from '@overkube/uikit';
 import type { ComponentChildren } from 'preact';
 import { useMemo } from 'preact/hooks';
-import { ObjectRef } from '../refs.tsx';
 import { Refused, refused } from '../refused.tsx';
 import { T } from '../texts.ts';
 import { Containers, specOf } from './pod.tsx';

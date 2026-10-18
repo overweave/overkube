@@ -1,11 +1,10 @@
 import { type KindInfo, kinds, type ObjectOf } from '@overkube/kube-types';
 import type { FieldName } from '@overkube/query';
-import { KindView, type KubeContributor, kindRef, type ResourceProps, StatusLook, section } from '@overkube/sdk';
-import { useCount, useList, useSay } from '@overkube/sdk/preact';
+import { KindView, type KubeContributor, kindRef, lookOf, type ResourceProps, StatusLook, section } from '@overkube/sdk';
+import { StatusOf, useCount, useList, useSay } from '@overkube/sdk/preact';
 import { Nothing, Ref, Section, Table } from '@overkube/uikit';
 import { useDefinitions } from '@overweave/ui/preact';
 import { Refused, RefusedQuietly, refused } from '../refused.tsx';
-import { lookOf, StatusOf } from '../statuses.tsx';
 import { T } from '../texts.ts';
 
 /*

@@ -1,9 +1,8 @@
 import { kinds, type ObjectOf } from '@overkube/kube-types';
 import { type KubeContributor, kindRef, type ResourceProps, section } from '@overkube/sdk';
-import { useList, useSay } from '@overkube/sdk/preact';
+import { ObjectRef, useList, useSay } from '@overkube/sdk/preact';
 import { Nothing, Section, Status, Table } from '@overkube/uikit';
 import { useMemo } from 'preact/hooks';
-import { ObjectRef } from '../refs.tsx';
 import { Refused, refused } from '../refused.tsx';
 import { T } from '../texts.ts';
 import { addRelated, pickingLink } from './shared.tsx';

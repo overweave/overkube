@@ -1,13 +1,12 @@
 import { kinds, type ObjectOf } from '@overkube/kube-types';
-import { type KubeContributor, type ResourceProps, section } from '@overkube/sdk';
-import { useCount, useKind, usePage, useSay } from '@overkube/sdk/preact';
+import { humanDuration, type KubeContributor, parseRequest, type ResourceProps, section } from '@overkube/sdk';
+import { ObjectRef, useCount, useKind, usePage, useSay } from '@overkube/sdk/preact';
 import { Badge, KeyValue, Notice, Ref, Section, Status, Table } from '@overkube/uikit';
 import type { ComponentChildren } from 'preact';
-import { humanDuration } from '../format.ts';
-import { ObjectRef } from '../refs.tsx';
+import { EMPTY } from '../format.ts';
 import { RefusedQuietly, refused } from '../refused.tsx';
 import { T } from '../texts.ts';
-import { parseRequest } from '../x509.ts';
+import { namesRows } from './config.tsx';
 import { addRelated } from './shared.tsx';
 
 /*
@@ -197,8 +196,8 @@ export function Asks({ object }: ResourceProps) {
       {asked ? (
         <KeyValue
           rows={[
-            [say(t.subject), mono(asked.subject)],
-            ...(asked.names.length ? [[say(t.names), <span class="uk-line">{asked.names.map(mono)}</span>] as [string, ComponentChildren]] : []),
+            [say(t.subject), mono(asked.subject || EMPTY)],
+            ...namesRows(say, asked.names),
             [say(t.key), asked.key],
             ...(csr.spec.expirationSeconds ? [[say(t.lasts), humanDuration(csr.spec.expirationSeconds * 1000)] as [string, ComponentChildren]] : []),
           ]}
