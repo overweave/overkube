@@ -1,0 +1,5 @@
+apiVersion: v2
+name: hello
+description: A chart of the stand's own, installed by helm (dev/seed/90-helm.yaml).
+version: 0.1.0
+appVersion: "1.37"

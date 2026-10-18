@@ -1,0 +1,4 @@
+# What it says, how many, on what image.
+message: hello
+replicas: 1
+image: busybox:1.37

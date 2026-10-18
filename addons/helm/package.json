@@ -1,0 +1,36 @@
+{
+  "name": "@overkube/addon-helm",
+  "version": "0.1.2",
+  "private": true,
+  "description": "overkube's Helm addon: what helm deployed, as its releases' Secrets hold it \u2014 each release's chart, state, values, manifest and history; what helm made, marked in the tables",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.tsx",
+      "default": "./src/index.tsx"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overkube/kube-types": "0.1.2",
+    "@overkube/query": "0.1.2",
+    "@overkube/sdk": "0.1.2",
+    "@overkube/uikit": "0.1.2",
+    "@overweave/ui": "0.5.0"
+  },
+  "devDependencies": {
+    "@overkube/addon-core": "0.1.2",
+    "@overkube/storybook": "0.1.2",
+    "@overkube/testkit": "0.1.2",
+    "@testing-library/preact": "3.2.4",
+    "happy-dom": "20.14.6",
+    "preact": "10.29.8"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.3",
+    "preact": "^10.29.8"
+  }
+}

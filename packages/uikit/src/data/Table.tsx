@@ -60,6 +60,8 @@ export interface TableProps<T> {
   columns: TableColumn<T>[];
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
+  /** The row chosen (its key): marked as it is (aria-selected). */
+  selected?: string | undefined;
   /** Its height at most (it scrolls inside). */
   height?: string;
   /** A row's height at least, and as it is taken before it is measured. */
@@ -132,6 +134,7 @@ export function Table<T>({
   onSort,
   rowKey,
   onRowClick,
+  selected,
   height = '70vh',
   rowHeight: asked = 34,
   overscan = 8,
@@ -597,6 +600,7 @@ export function Table<T>({
                     role="row"
                     aria-rowindex={index + 2}
                     data-clickable={onRowClick ? '' : undefined}
+                    aria-selected={selected === undefined ? undefined : selected === key}
                     style={{ gridTemplateColumns: template, minHeight: `${rowHeight}px` }}
                     tabIndex={onRowClick ? 0 : undefined}
                     onClick={

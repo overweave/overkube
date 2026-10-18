@@ -13,7 +13,8 @@ import { T } from './texts.ts';
  * serves (as its KindView says: its title, icon, category, order, whether
  * it is hidden or pinned) and every page with a title (a Page: hidden or
  * pinned as a kind is) —
- * in groups (a Category, else the kind's API group); and where the page is
+ * in groups (a Category, else the kind's API group; a page's category, else
+ * the pages'); and where the page is
  * now. navOf is the model, pure; useNav follows what it is made of (made
  * again only when that changes, not at each path). Drawn as tabs or as a
  * menu (the core's), or as another addon draws it.
@@ -88,7 +89,7 @@ export function navOf(
       icon: p.spec.icon,
       pinned: p.spec.pinned === true,
       order: p.spec.order ?? 500,
-      group: PAGES,
+      group: p.spec.category ?? PAGES,
     });
   }
   const ordered = inOrder(categories);

@@ -84,7 +84,6 @@ export const T = {
   images: {
     title: t('trivy.images.title', 'Images'),
     images: t('trivy.images.count', { one: '{count} image', other: '{count} images' }),
-    filter: t('trivy.images.filter', 'Filter'),
     placeholder: t('trivy.images.placeholder', 'Filter: repository, os = alpine, critical > 0'),
     image: t('trivy.images.image', 'Image'),
     os: t('trivy.images.os', 'OS'),

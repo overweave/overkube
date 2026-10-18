@@ -2,7 +2,6 @@ import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import {
   Action,
   type ActionSpec,
-  Appearance,
   accessOf,
   kindRef,
   type MissingState,
@@ -15,14 +14,17 @@ import {
   tabIn,
   takes,
 } from '@overkube/sdk';
-import { useGet, useMenu, useNotify, useOpened, usePage, useSay, useUser } from '@overkube/sdk/preact';
+import { useGet, useLayout, useMenu, useNotify, useOpened, usePage, useSay, useUser } from '@overkube/sdk/preact';
 import { Button, Modal, Notice, Segmented, TabBar, Tip, toYaml, YamlView } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
-import { slotElement, useDefinition, useDefinitions } from '@overweave/ui/preact';
+import { slotElement, useDefinitions } from '@overweave/ui/preact';
 import { useId, useMemo, useState } from 'preact/hooks';
 import { T } from './texts.ts';
 import { Waiting } from './Waiting.tsx';
+
+/** The opened header's props (none): the same each render, its fills not drawn again for nothing. */
+const NONE = {};
 
 /**
  * A resource, opened over a page (?open=): its parts, each a slot of
@@ -71,7 +73,12 @@ export function ResourceView({ kind, namespace, name }: ResourceRef) {
           {slotElement(slots.resource.view.marks, props)}
         </>
       }
-      actions={slotElement(slots.resource.view.header, props)}
+      actions={
+        <>
+          {slotElement(slots.resource.view.header, props)}
+          {slotElement(slots.opened.header, NONE)}
+        </>
+      }
       tabs={
         tabs.length > 1 && (
           <TabBar
@@ -126,10 +133,7 @@ export function ResourceOverview(props: ResourceProps) {
   );
 }
 
-/** How an opened resource is laid out, as the Appearance says (a side panel, unless said). */
-const useLayout = () => useDefinition(Appearance, 'default')?.spec.layout ?? 'right';
-
-/** How it is laid out, switched (the core's, in resource.view.header: as icons; the settings', in words): one for every resource opened — the user's (Appearance.layout), kept. */
+/** How it is laid out, switched (the core's, in opened.header: as icons; the settings', in words): one for every resource opened — the user's (Appearance.layout), kept. */
 export function LayoutSwitch({ words = false }: { words?: boolean }) {
   const say = useSay();
   const user = useUser();

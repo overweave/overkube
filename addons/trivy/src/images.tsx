@@ -1,23 +1,8 @@
-import { filteredIn, filterIn, type KubeContributor, slots } from '@overkube/sdk';
-import { fill, ObjectRef, useGet, useList, usePage, useSay, useTableView } from '@overkube/sdk/preact';
-import {
-  Badge,
-  KeyValue,
-  Modal,
-  Nothing,
-  PageHeader,
-  Panel,
-  QueryField,
-  SEVERITIES,
-  Section,
-  type Severity,
-  SeverityCount,
-  type SeverityCounts,
-  Table,
-  type TableColumn,
-} from '@overkube/uikit';
+import { filteredIn, type KubeContributor, slots } from '@overkube/sdk';
+import { fill, KindFilter, ObjectRef, OpenedView, useGet, useList, usePage, useSay, useTableView } from '@overkube/sdk/preact';
+import { Badge, KeyValue, Nothing, PageHeader, Panel, SEVERITIES, Section, type Severity, SeverityCount, type SeverityCounts, Table, type TableColumn } from '@overkube/uikit';
 import { useMemo, useState } from 'preact/hooks';
-import { F, REF, WORKLOADS } from './kinds.ts';
+import { F, REF, VulnerabilityReport, WORKLOADS } from './kinds.ts';
 import type { VulnerabilityReportObject } from './reports.tsx';
 import { ago } from './sections.tsx';
 import { VulnerabilityTable } from './tab.tsx';
@@ -147,7 +132,7 @@ function ImageOpened({ image, close }: { image: ImageRow; close: () => void }) {
     { id: 'containers', header: say(t.containers), width: 'minmax(0, 1fr)', cell: (u) => <span class="uk-quiet">{u.container}</span> },
   ];
   return (
-    <Modal placement="right" onClose={close} title={image.tag ? `${image.repository}:${image.tag}` : image.repository}>
+    <OpenedView onClose={close} title={image.tag ? `${image.repository}:${image.tag}` : image.repository}>
       <div class="uk-stack">
         <KeyValue
           rows={[
@@ -169,7 +154,7 @@ function ImageOpened({ image, close }: { image: ImageRow; close: () => void }) {
           <Table plain rows={image.uses} rowKey={(u) => `${u.kind}/${u.namespace}/${u.name}/${u.container}`} columns={uses} reorderable={false} />
         </Section>
       </div>
-    </Modal>
+    </OpenedView>
   );
 }
 
@@ -180,9 +165,8 @@ function ImagesPage() {
   const page = usePage();
   // As a kind's table's: in its link (kept, shared).
   const filter = filteredIn(page.path.value) ?? '';
-  const setFilter = (value: string) => page.navigate(filterIn(page.path.peek(), value || undefined), { replace: true });
   const [opened, setOpened] = useState<string>();
-  const { images, state, error } = useImages(filter);
+  const { images, state } = useImages(filter);
   const open = images.find((i) => i.key === opened);
   const columns: TableColumn<ImageRow>[] = [
     {
@@ -204,8 +188,6 @@ function ImagesPage() {
   const table = useTableView(IMAGES_VIEW, columns);
   const by = table.sort && BY[table.sort.id];
   const rows = by ? [...images].sort((a, b) => (table.sort?.desc ? -1 : 1) * by(a, b)) : [...images].sort(worstFirst);
-  // What is wrong with the filter, where it is (said of none of it: of all of it).
-  const problems = error && filter.trim() ? [{ start: error.at?.start ?? 0, end: error.at?.end ?? filter.length, message: error.message }] : [];
   return (
     <Panel
       header={
@@ -213,7 +195,7 @@ function ImagesPage() {
           level={2}
           icon="packages"
           sub={<span>{say(t.images, { count: images.length })}</span>}
-          end={<QueryField label={say(t.filter)} placeholder={say(t.placeholder)} value={filter} onChange={setFilter} problems={problems} code />}
+          end={<KindFilter kind={VulnerabilityReport} placeholder={t.placeholder} />}
         >
           {say(t.title)}
         </PageHeader>

@@ -188,6 +188,7 @@ export default defineAddon({
     c.add('Fill', 'core.kind.header.count', fill(header.sub, { order: 200, render: (p) => <KindCount {...p} chosen={namespaces} /> }));
     // Its filter (?filter=, the page's): over its table, before its columns — one for each kind (one's typing not another's).
     c.add('Fill', 'core.kind.header.filter', fill(header.actions, { order: 500, render: (p) => <KindFilter key={p.kind.id} {...p} chosen={namespaces} /> }));
+    c.add('Fill', 'core.kind.filter', fill(slots.kind.filter, { render: (p) => <KindFilter key={p.kind.id} {...p} chosen={namespaces} /> }), { fallback: true });
     // Its columns' settings, over its table: the user's to turn on and off.
     c.add('Fill', 'core.kind.header.columns', fill(header.actions, { order: 1000, render: ColumnsButton }));
     // At its end, last: its columns, to show or hide.
@@ -223,7 +224,7 @@ export default defineAddon({
     );
     // How it is laid out (a side panel, a window, all the window): one for all of them, switched in its header — kept while the page runs.
     c.add('Fill', 'core.resource.view', { slot: slots.resource.view.name, order: 1000, render: (p: ResourceRef) => <ResourceView {...p} /> });
-    c.add('Fill', 'core.resource.view.layout', fill(slots.resource.view.header, { order: 1000, render: () => <LayoutSwitch /> }));
+    c.add('Fill', 'core.opened.layout', fill(slots.opened.header, { order: 1000, render: () => <LayoutSwitch /> }));
     // Its tabs: the Overview (its summary, its sections), its YAML — every kind's, another's among them.
     c.add('ResourceTab', 'core.overview', { target: {}, title: T.resource.view.tabs.overview, icon: 'grid', order: 100 });
     c.add('Fill', 'core.resource.view.overview', fill(slots.resource.view.tab('core.overview'), { render: ResourceOverview }));

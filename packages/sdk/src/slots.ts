@@ -284,6 +284,23 @@ export const slots = {
       column: { content: slot<KindProps & { column: { name: string; header: string } }>('kind.table.column.content') },
       empty: slot<KindTableProps & { list: ListState }>('kind.table.empty'),
     },
+    /**
+     * A kind's filter, wherever it is drawn (<KindFilter>: an addon's page
+     * filtering what it shows by a kind's objects): one fill drawn, the
+     * first that takes the kind — the core's the last (the kind page's
+     * own: a field compared, CEL; the kind's fields offered; in the page's
+     * link, ?filter=).
+     */
+    filter: slot<KindProps & { placeholder?: Label }>('kind.filter'),
+  },
+  /**
+   * Anything opened over the page — a resource, an addon's own (a Helm
+   * release, an image): beside its title, in its header, in order (the
+   * core's: how it is laid out — a side panel, a window, all the window:
+   * one choice for every one of them).
+   */
+  opened: {
+    header: slot<Record<string, never>>('opened.header'),
   },
   resource: {
     /**

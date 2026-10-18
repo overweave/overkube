@@ -1,6 +1,6 @@
 # @overkube/sdk
 
-What overkube's addons are written with: the dashboard's kinds over [overweave](https://github.com/overweave/overweave) — `KindView`, `Category`, `Column`, `Field`, `TableView`, `Page`, `Action`, `MenuItem`, `Appearance`, `AddonChoices`, `Namespaces`, `Messages`, `Language`, and the UI's `Slot`, `Fill`, `Wrap` — its slots (`slots`), the usual definitions written short (`column`, `section`, `action`, `menuItem`, `tile`, `wrap`), `defineAddon`, and what an addon is given when it runs: its `Ctx` — its contributor (a priority, rights) and the cluster (`Cluster`: queries, live; `Reach`: a workload's port as data).
+What overkube's addons are written with: the dashboard's kinds over [overweave](https://github.com/overweave/overweave) — `KindView`, `Category`, `Column`, `NameMark` (a mark beside an object's name in its kind's tables: what manages it), `Field`, `TableView`, `Page`, `Action`, `MenuItem`, `Appearance`, `AddonChoices`, `Namespaces`, `Messages`, `Language`, and the UI's `Slot`, `Fill`, `Wrap` — its slots (`slots`), the usual definitions written short (`column`, `section`, `action`, `menuItem`, `tile`, `wrap`), `defineAddon`, and what an addon is given when it runs: its `Ctx` — its contributor (a priority, rights) and the cluster (`Cluster`: queries, live; `Reach`: a workload's port as data).
 
 ```ts
 import { column, defineAddon } from '@overkube/sdk';

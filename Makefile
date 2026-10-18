@@ -97,7 +97,7 @@ dev-token:
 
 # The seed (dev/seed): cert-manager and trivy-operator from their releases (its scans: three at once, the
 # stand being one node; no Java database, near a gigabyte, none of the seed's images has a jar), then every usual kind, a few of each, on busybox; the certificates
-# it needs made by hand, made anew (dev/seed/tls.sh).
+# it needs made by hand, made anew (dev/seed/tls.sh); helm releases, made by helm itself (dev/seed/90-helm.yaml).
 # cert-manager's webhook answers a while after its deployment is available (its CA injected): asked
 # with a dry run until it does, then the seed applied once.
 CERT_MANAGER_VERSION ?= v1.18.2
@@ -118,7 +118,11 @@ dev-seed:
 	$(KUBECTL) -n trivy-system patch configmap trivy-operator-config --type merge -p '{"data":{"OPERATOR_CONCURRENT_SCAN_JOBS_LIMIT":"3","OPERATOR_SCAN_JOB_TIMEOUT":"10m"}}'
 	$(KUBECTL) -n trivy-system patch configmap trivy-operator-trivy-config --type merge -p '{"data":{"trivy.skipJavaDBUpdate":"true","trivy.resources.limits.memory":"1Gi"}}'
 	$(KUBECTL) -n trivy-system rollout restart deployment trivy-operator
+	@# helm's Job made anew (a Job's spec is not changed once made): it runs helm again.
+	$(KUBECTL) -n seed-helm delete job helm-seed --ignore-not-found
 	for f in dev/seed/*.yaml; do cat $$f; echo ---; done | $(KUBECTL) apply -f -
+	@# The chart helm installs (dev/seed/charts), in a ConfigMap its Job reads (tar'd in the node image: no host's metadata in it).
+	$(RUN) $(NODE_IMAGE) tar -C dev/seed/charts -cf - hello | $(KUBECTL) -n seed-helm create configmap helm-charts --from-file=charts.tar=/dev/stdin --dry-run=client -o yaml | $(KUBECTL) apply -f -
 	@# Certificates made anew (openssl, in the node image): none kept in the repository.
 	$(RUN) $(NODE_IMAGE) sh dev/seed/tls.sh secrets | $(KUBECTL) apply -f -
 	@# The pending request made anew: its spec is not changed once made, and it waits again.

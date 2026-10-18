@@ -432,6 +432,10 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-table-row .uk-line > .uk-badge { flex: none; }
 .uk-line > .uk-badge { align-self: baseline; }
 /* A mark alone in a line (a state's icon, its words in its tip): by the line's middle, not its text's baseline. */
+/* A mark that leads somewhere (beside a name: what manages it): quiet, its link's colour under the pointer. */
+.uk-line > .uk-mark-link { align-self: center; display: flex; color: var(--uk-muted); text-decoration: none; }
+.uk-line > .uk-mark-link:hover { color: var(--uk-accent); }
+.uk-mark-link .uk-status { --uk-status-c: currentColor; }
 .uk-line > .uk-tip-at:has(> .uk-status[role='img']), .uk-line > .uk-status[role='img'] { align-self: center; display: flex; }
 /* Some badges (ports), some refs (what a pod uses): side by side, wrapping. */
 .uk-badges { display: inline-flex; flex-wrap: wrap; gap: 6px; }
@@ -483,6 +487,42 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-card-end { margin-left: auto; display: flex; align-items: baseline; gap: 10px; color: var(--uk-muted); font-size: 12px; white-space: nowrap; }
 .uk-card-end > .uk-button { align-self: center; }
 .uk-card > :not(.uk-card-head) + * { margin-top: 18px; }
+/* Two texts compared (Diff), as a code host shows a file's changes: framed; its head (its name, + and − counts, a bar of them); its hunks, each headed (@@ … @@, a button showing what it skips); a row a line — two numbers, its text (a mark before it), not wrapped: it scrolls sideways. */
+.uk-diff { overflow: hidden; border: 1px solid var(--uk-border); border-radius: var(--uk-radius-lg); background: var(--uk-bg); }
+.uk-diff-head { display: flex; align-items: center; gap: 12px; min-height: 36px; padding: 6px 12px; border-bottom: 1px solid var(--uk-border); background: var(--uk-panel-2); font-size: 12px; }
+.uk-diff-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px var(--uk-mono); }
+.uk-diff-counts { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font: 600 12px var(--uk-mono); }
+.uk-diff-counts > [data-d='+'] { color: var(--uk-ok); }
+.uk-diff-counts > [data-d='-'] { color: var(--uk-error); }
+.uk-diff-blocks { display: inline-flex; gap: 1px; margin-left: 2px; }
+.uk-diff-blocks > i { width: 8px; height: 8px; border-radius: 1px; background: color-mix(in srgb, var(--uk-muted) 35%, transparent); }
+.uk-diff-blocks > [data-d='+'] { background: var(--uk-ok); }
+.uk-diff-blocks > [data-d='-'] { background: var(--uk-error); }
+.uk-diff-same { margin: 0; padding: 10px 12px; color: var(--uk-muted); font-size: 12px; }
+.uk-diff-body { overflow-x: auto; }
+.uk-diff-lines { display: grid; grid-template-columns: auto auto minmax(max-content, 1fr); min-width: 100%; width: max-content; font: 12px/20px var(--uk-mono); }
+.uk-diff-row { display: contents; }
+.uk-diff-row > span { white-space: pre; }
+.uk-diff-n { min-width: 40px; padding: 0 8px; text-align: right; color: color-mix(in srgb, var(--uk-muted) 75%, transparent); user-select: none; }
+.uk-diff-row > .uk-diff-n:nth-child(2) { border-right: 1px solid var(--uk-border); }
+.uk-diff-text { padding: 0 16px 0 4px; }
+.uk-diff-mark { display: inline-block; width: 16px; text-align: center; user-select: none; }
+.uk-diff-row[data-d='-'] > .uk-diff-text { background: color-mix(in srgb, var(--uk-error) 12%, transparent); }
+.uk-diff-row[data-d='-'] > .uk-diff-n { background: color-mix(in srgb, var(--uk-error) 20%, transparent); }
+.uk-diff-row[data-d='+'] > .uk-diff-text { background: color-mix(in srgb, var(--uk-ok) 12%, transparent); }
+.uk-diff-row[data-d='+'] > .uk-diff-n { background: color-mix(in srgb, var(--uk-ok) 20%, transparent); }
+.uk-diff-row[data-d='-'] .uk-diff-mark { color: var(--uk-error); }
+.uk-diff-row[data-d='+'] .uk-diff-mark { color: var(--uk-ok); }
+.uk-diff-text > mark { border-radius: 2px; color: inherit; }
+.uk-diff-row[data-d='-'] .uk-diff-text > mark { background: color-mix(in srgb, var(--uk-error) 35%, transparent); }
+.uk-diff-row[data-d='+'] .uk-diff-text > mark { background: color-mix(in srgb, var(--uk-ok) 35%, transparent); }
+.uk-diff-hunk > span { background: color-mix(in srgb, var(--uk-info) 10%, transparent); color: var(--uk-muted); }
+.uk-diff-hunk > .uk-diff-expand { grid-column: 1 / 3; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--uk-border); background: color-mix(in srgb, var(--uk-info) 18%, transparent); }
+.uk-diff-expand > button { all: unset; display: flex; align-items: center; justify-content: center; width: 100%; height: 20px; color: var(--uk-muted); cursor: pointer; }
+.uk-diff-expand > button:hover { color: var(--uk-text); background: color-mix(in srgb, var(--uk-info) 30%, transparent); }
+.uk-diff-expand > button:focus-visible { box-shadow: inset 0 0 0 2px var(--uk-focus); }
+.uk-diff-expand .uk-icon { width: 14px; height: 14px; }
+.uk-diff-hunk > .uk-diff-text { padding-left: 12px; }
 /* Severities (data/Severity), each its colour — of the tones: critical an error's, high between it and a warning, medium a warning's, low quieter, unknown grey. */
 :host, .uk-root { --uk-sev-critical: var(--uk-error); --uk-sev-high: color-mix(in srgb, var(--uk-error) 45%, var(--uk-warn)); --uk-sev-medium: var(--uk-warn); --uk-sev-low: color-mix(in srgb, var(--uk-info) 75%, var(--uk-muted)); --uk-sev-unknown: var(--uk-muted); }
 [data-sev='critical'] { --uk-sev: var(--uk-sev-critical); }
@@ -670,6 +710,7 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-table-resize:hover::after, .uk-table-resize:focus-visible::after, .uk-table-th[data-resizing] .uk-table-resize::after { top: 4px; bottom: 4px; width: 2px; left: 7px; background: var(--uk-accent); }
 .uk-table-row { min-height: var(--uk-row); border-bottom: 1px solid var(--uk-border); cursor: default; }
 .uk-table-row[data-clickable] { cursor: pointer; }
+.uk-table-row[aria-selected='true'] { background: color-mix(in srgb, var(--uk-accent) 10%, transparent); box-shadow: inset 2px 0 0 var(--uk-accent); }
 /* Plain (in a section, a card): no frame, no ground; its head and rows from its edges, the head not held on scrolling (nothing under it to hide the rows), the last row unruled — what holds it frames it. */
 .uk-table[data-plain] { border: 0; border-radius: 0; background: transparent; }
 .uk-table[data-plain] :is(.uk-table-head, .uk-table-row) { padding: 0; }
@@ -1029,6 +1070,8 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-dot { transition: background .3s; }
 /* One of a few ways, side by side: small square buttons in a quiet track, the chosen one raised. */
 .uk-segmented { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: var(--uk-radius); background: var(--uk-panel-2); border: 1px solid var(--uk-border); }
+/* In a stack (one under another): as wide as its options, not the stack. */
+.uk-stack > .uk-segmented { justify-self: start; }
 .uk-segmented-option { all: unset; display: inline-grid; place-items: center; min-width: 26px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: calc(var(--uk-radius) - 2px); color: var(--uk-muted); font-size: 12px; cursor: pointer; transition: background .12s, color .12s, box-shadow .12s; }
 .uk-segmented-option .uk-icon { width: 15px; height: 15px; }
 .uk-segmented-option:hover { color: var(--uk-text); }

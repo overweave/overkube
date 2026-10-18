@@ -28,6 +28,9 @@ export const ICONS = {
   folder: 'folder',
   activity: 'activity',
   packages: 'packages',
+  helm: 'steering-wheel',
+  unfold: 'arrows-vertical',
+  rocket: 'rocket',
   volume: 'database-export',
   // Controls
   search: 'search',

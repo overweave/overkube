@@ -1,6 +1,6 @@
 import { type Cel, CelError, createCel, type FilterVariable, filterCaret, filterParts, filterValue, filterVariables, planFilter, resugar } from '@overkube/cel';
 import type { Where } from '@overkube/query';
-import { filteredIn, filterIn, type KindProps, kindRef, kindRefIn } from '@overkube/sdk';
+import { filteredIn, filterIn, type KindProps, kindRef, type Label } from '@overkube/sdk';
 import { useCount, useFields, usePage, useSay } from '@overkube/sdk/preact';
 import { QueryField, type QueryProblem, type QuerySuggestion, type QuerySuggestions } from '@overkube/uikit';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -8,7 +8,7 @@ import { type Chosen, scopeOf } from './namespaces.tsx';
 import { T } from './texts.ts';
 
 /*
- * A kind's filter (core.kind.header.filter): typed as a user types it (a
+ * A kind's filter (core.kind.header.filter; anywhere, the kind.filter slot's — an addon's page's): typed as a user types it (a
  * field compared, a label selector, words of a name — or CEL), its parts
  * coloured, what is wrong under where it is, what may go at the caret (the
  * kind's fields, the operators, the values its objects have, with how many
@@ -55,11 +55,13 @@ interface Asking {
   where?: Where;
 }
 
-export function KindFilter({ kind, chosen }: KindProps & { chosen: Chosen }) {
+export function KindFilter({ kind, chosen, placeholder }: KindProps & { chosen: Chosen; placeholder?: Label }) {
   const page = usePage();
   const say = useSay();
   const ref = kindRef(kind);
   const path = page.path.value;
+  /** The page it is on (its path but its query): what it filters, while the page is it. */
+  const home = useRef(path.split('?')[0]);
   const applied = filteredIn(path);
   const { catalog } = useFields(ref);
   const cel = useMemo(() => celOf(catalog?.functions), [catalog?.functions]);
@@ -160,10 +162,10 @@ export function KindFilter({ kind, chosen }: KindProps & { chosen: Chosen }) {
     return matching.length ? { from: at.from, to: at.to, items: matching.slice(0, OFFERED) } : undefined;
   };
 
-  /** The page filtered by what is typed (nothing: not filtered; wrong: as it was) — a step of its own (Back: as it was) when it was not filtered or it is asked (Enter), else in its place. The page gone to another kind: nothing. */
+  /** The page filtered by what is typed (nothing: not filtered; wrong: as it was) — a step of its own (Back: as it was) when it was not filtered or it is asked (Enter), else in its place. The page gone elsewhere: nothing. */
   const apply = (enter: boolean) => {
     const now = page.path.value;
-    if (kindRefIn(now) !== ref) return;
+    if (now.split('?')[0] !== home.current) return;
     const was = filteredIn(now);
     const next = text.trim() ? checked.cel : undefined;
     if ((text.trim() && !next) || next === was) return;
@@ -181,7 +183,7 @@ export function KindFilter({ kind, chosen }: KindProps & { chosen: Chosen }) {
   return (
     <QueryField
       label={say(T.kind.filter.label)}
-      placeholder={say(T.kind.filter.placeholder)}
+      placeholder={say(placeholder ?? T.kind.filter.placeholder)}
       icon="search"
       value={text}
       onChange={(v) => {

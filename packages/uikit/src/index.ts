@@ -10,6 +10,7 @@ export { Chip, Chips, type ChipsLabels, type ChipsProps } from './data/Chips';
 export { Code } from './data/Code';
 export { Compare, type CompareRow } from './data/Compare';
 export { CONFIG_LABELS, ConfigViewer, type ConfigViewerLabels, type ConfigViewerProps, entriesOf, sizeOf, textOf } from './data/ConfigViewer';
+export { Diff, diffLines } from './data/Diff';
 export { FILE_LABELS, FILE_LINES, File, type FileLabels } from './data/File';
 export { Gauge } from './data/Gauge';
 export { KeyValue } from './data/KeyValue';

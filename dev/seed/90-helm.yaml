@@ -1,0 +1,51 @@
+# Helm releases as helm itself makes them (no Flux): a Job runs helm in seed-helm, the chart of the stand's own
+# (dev/seed/charts/hello: make dev-seed puts it in a ConfigMap, helm-charts). Its releases: hello — installed,
+# then upgraded (two revisions); broken — its image not there, its install waited for and failed; retired —
+# uninstalled, its history kept. Made again each time the seed is (the Job deleted first): each run upgrades
+# hello once more.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: seed-helm
+  labels: { overkube.dev/seed: "true" }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: helm, namespace: seed-helm, labels: { overkube.dev/seed: "true" } }
+---
+# helm as a namespace's admin: its releases' secrets, what its chart makes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: helm-admin, namespace: seed-helm, labels: { overkube.dev/seed: "true" } }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: admin }
+subjects: [{ kind: ServiceAccount, name: helm, namespace: seed-helm }]
+---
+apiVersion: batch/v1
+kind: Job
+metadata: { name: helm-seed, namespace: seed-helm, labels: { overkube.dev/seed: "true" } }
+spec:
+  backoffLimit: 2
+  template:
+    metadata: { labels: { overkube.dev/seed: "true" } }
+    spec:
+      serviceAccountName: helm
+      restartPolicy: Never
+      containers:
+        - name: helm
+          image: alpine/helm:4.3.0
+          command:
+            - sh
+            - -ec
+            - |
+              mkdir -p /tmp/charts && tar -xf /seed/charts.tar -C /tmp/charts
+              chart=/tmp/charts/hello
+              helm upgrade --install hello "$chart" -n seed-helm --set message=installed
+              helm upgrade hello "$chart" -n seed-helm --set message=upgraded --set replicas=2
+              helm upgrade --install broken "$chart" -n seed-helm --set image=busybox:0.0.0-does-not-exist --wait --timeout 45s || true
+              if ! helm status retired -n seed-helm >/dev/null 2>&1; then
+                helm install retired "$chart" -n seed-helm --set message=retired
+                helm uninstall retired -n seed-helm --keep-history
+              fi
+          volumeMounts: [{ name: charts, mountPath: /seed }]
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 256Mi } }
+      volumes: [{ name: charts, configMap: { name: helm-charts } }]

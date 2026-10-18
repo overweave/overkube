@@ -1,6 +1,21 @@
 import { type KindInfo, kinds } from '@overkube/kube-types';
 import type { FieldCatalog, Value } from '@overkube/query';
-import { type CellValue, Column, type ColumnContext, type ColumnSpec, closeIn, column, covers, humanDuration, type KubeContributor, kindRef, openIn, takes } from '@overkube/sdk';
+import {
+  type CellValue,
+  Column,
+  type ColumnContext,
+  type ColumnSpec,
+  closeIn,
+  column,
+  covers,
+  humanDuration,
+  type KubeContributor,
+  kindRef,
+  NameMark,
+  type NameMarkSpec,
+  openIn,
+  takes,
+} from '@overkube/sdk';
 import { ObjectRef, StatusOf, statusFormat, useFields, usePage, useSay } from '@overkube/sdk/preact';
 import { Chips, Ratio, Status, Tip } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
@@ -475,20 +490,24 @@ export function useColumns(
   // A field defined (an addon's) that cannot be: its owner's failure.
   for (const [name, why] of Object.entries(fields.rejected ?? {})) if (name) failed(fieldOf(name), 'Field', name, 'definition', new Error(why));
   const definitions = useDefinitions(Column);
+  const marks = useDefinitions(NameMark);
   const [placed, offered] = useMemo(() => {
     // Its CRD says its state itself (a Status, Ready or State column, or an addon's in its place): kstatus's not drawn beside it.
     const says = ['status', 'ready', 'state'].some(
       (s) => (fields.columns ?? []).some((k) => slug(k.name) === s) || definitions.some((c) => c.name === `core.${kind.id}.${s}` && takes(c.spec.target, kind)),
     );
-    const all = definitions.filter((c) => {
-      if (!takes(c.spec.target, kind) || (says && c.name === 'core.health')) return false;
-      try {
-        return c.spec.when?.(kind) ?? true;
-      } catch (error) {
-        failed(c, 'Column', c.name, 'when', error);
-        return false;
-      }
-    });
+    const ofKind = inOrder(marks.filter((m) => takes(m.spec.target, kind)));
+    const all = definitions
+      .filter((c) => {
+        if (!takes(c.spec.target, kind) || (says && c.name === 'core.health')) return false;
+        try {
+          return c.spec.when?.(kind) ?? true;
+        } catch (error) {
+          failed(c, 'Column', c.name, 'when', error);
+          return false;
+        }
+      })
+      .map((c) => (c.name === 'core.name' ? marked(c, ofKind) : c));
     const named = new Set(all.map((c) => c.name));
     // Its CRD's, as it says them: after the name and namespace, before the age.
     const crd = (fields.columns ?? [])
@@ -516,8 +535,36 @@ export function useColumns(
       // Every column there is for it (a CRD's, the core's): who gives it, whether only wide, whether shown — what the columns' settings offer.
       ordered.map((definition) => ({ definition, by: definition.definedBy ?? 'core', wide: isWide(definition), more: definition.spec.more === true, shown: shown(definition) })),
     ];
-  }, [definitions, fields.columns, kind, view.columns, view.hidden, wide, failed]);
+  }, [definitions, marks, fields.columns, kind, view.columns, view.hidden, wide, failed]);
   return { placed, offered, catalog: fields.catalog };
+}
+
+/** The name's column with its kind's marks after what it draws (each of its field's value; none, empty: none), their fields among its values. */
+function marked(c: Definition<ColumnSpec>, marks: readonly Definition<NameMarkSpec>[]): Definition<ColumnSpec> {
+  if (!marks.length) return c;
+  const own = fieldsOfColumn(c.spec);
+  const at = own.indexOf('core.namespace');
+  const format = c.spec.format;
+  const spec: ColumnSpec = {
+    ...c.spec,
+    values: [...own, ...marks.map((m) => m.spec.field)],
+    format: (values, context) => {
+      const namespace = at >= 0 ? one(values[at]) : null;
+      return (
+        <span class="uk-line">
+          {format ? format(values.slice(0, own.length), context) : String(one(values[0]) ?? '')}
+          {marks.map((m, i) => {
+            const value = one(values[own.length + i] ?? null);
+            const Mark = m.spec.render;
+            return typeof value === 'string' && value ? (
+              <Mark key={m.name} value={value} kind={context.kind} namespace={typeof namespace === 'string' ? namespace : undefined} />
+            ) : null;
+          })}
+        </span>
+      );
+    },
+  };
+  return { ...c, spec } as Definition<ColumnSpec>;
 }
 
 /** Columns as a TableView sets them out: those it names first, in its order; the others after, in theirs. */

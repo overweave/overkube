@@ -4,7 +4,7 @@ import { TOKENS, TONES, type Tokens, type Tone } from '@overkube/uikit';
 import { defineKind, type Problem } from '@overweave/core';
 import { uiKinds } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
-import type { ComponentChildren } from 'preact';
+import type { ComponentChildren, ComponentType } from 'preact';
 import type { Notification } from './addon.ts';
 import type { Say } from './say.ts';
 import type { NavTabProps, ResourceProps } from './slots.ts';
@@ -264,6 +264,35 @@ export const Column = defineKind<ColumnSpec>()('Column', {
 });
 
 /**
+ * A mark beside an object's name in its kind's tables (what manages it: a
+ * Helm release, a Flux Kustomization): of these kinds (none: every one),
+ * drawn of a field's value — none there, or empty: no mark. What draws it
+ * is given the value, the kind, the object's namespace (an icon, what it
+ * means in its tip, where it leads). Those of a kind, in order, after the
+ * name whichever column draws it (core.name).
+ */
+export interface NameMarkSpec {
+  target: Target;
+  field: FieldName;
+  render: ComponentType<NameMarkProps>;
+  order?: number;
+}
+
+/** What a name's mark is drawn of. */
+export interface NameMarkProps {
+  value: string;
+  kind: KindInfo;
+  namespace: string | undefined;
+}
+
+export const NameMark = defineKind<NameMarkSpec>()('NameMark', {
+  required: ['target', 'field', 'render'],
+  createRight: behaviour,
+  validate: fields({ target: [target, 'notATarget'], field: [text, 'notAField'], render: [fn, 'notAFunction'], order: [finite, 'notANumber'] }),
+  patchRights: { target: behaviour, field: behaviour, render: behaviour, order: configure },
+});
+
+/**
  * A field addons ask by, beside the kinds' own (@overkube/kube-fields):
  * named as it is asked by (its addon's: images.tag), of these kinds' refs
  * (none: every kind), its value a path or CEL (self: the object) — data, so
@@ -343,7 +372,8 @@ export interface PageProps {
  * what is in them — the core declares its own. The most specific path takes
  * a path (more fixed parts first); between equals, the stronger layer's, by
  * order, then name. A title: it is shown where pages are (the navigation),
- * as a kind is — pinned (kept at hand: a tab), hidden (not listed). A
+ * as a kind is — in its category's group (none: among the pages), pinned
+ * (kept at hand: a tab), hidden (not listed). A
  * resource opened (?open=) is drawn over any page.
  */
 export interface PageSpec {
@@ -355,6 +385,8 @@ export interface PageSpec {
   pinned?: boolean;
   /** Not listed in the navigation (still there at its path). */
   hidden?: boolean;
+  /** Its group in the navigation (a Category's name, as a kind's KindView says one; none: among the pages). */
+  category?: string;
   regions?: Region[];
   /** What it needs of the cluster (each). */
   needs?: Need[];
@@ -370,11 +402,12 @@ export const Page = defineKind<PageSpec>()('Page', {
     path: [path, 'notAPath'],
     pinned: [flag, 'notAFlag'],
     hidden: [flag, 'notAFlag'],
+    category: [text, 'notText'],
     regions: [regions, 'notRegions'],
     needs: [needs, 'notNeeds'],
     access: [fn, 'notAFunction'],
   }),
-  patchRights: { title: configure, icon: configure, order: configure, pinned: configure, hidden: configure, regions: configure, needs: behaviour, access },
+  patchRights: { title: configure, icon: configure, order: configure, pinned: configure, hidden: configure, category: configure, regions: configure, needs: behaviour, access },
   merge: { lists: { regions: { key: 'name' } } },
 });
 
@@ -664,6 +697,7 @@ export const kubeOwnKinds = [
   KindView,
   Category,
   Column,
+  NameMark,
   StatusLook,
   Field,
   TableView,

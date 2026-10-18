@@ -1,7 +1,8 @@
 import { slotElement, useDefinition } from '@overweave/ui/preact';
 import { useMemo } from 'preact/hooks';
 import { TableView } from '../kinds.ts';
-import { type KindTableProps, slots } from '../slots.ts';
+import { type KindProps, type KindTableProps, slots } from '../slots.ts';
+import type { Label } from '../text.ts';
 import { useUser } from './user.ts';
 
 /**
@@ -13,6 +14,17 @@ export function KindTable({ kind, where, scope, title, plain }: KindTableProps) 
   // The same props while they are the same (the table not drawn again for its parent's drawing).
   const props = useMemo(() => ({ kind, where, scope, title, plain }), [kind, JSON.stringify(where), JSON.stringify(scope), title, plain]);
   return slotElement(slots.kind.table, props, { limit: 1 });
+}
+
+/**
+ * A kind's filter, on any page (an addon's: what it shows filtered by a
+ * kind's objects): drawn by the kind.filter slot's fill (the core's: as a
+ * kind's page's) — what is typed made CEL, kept in the page's link
+ * (?filter=: filteredIn(path) reads it).
+ */
+export function KindFilter({ kind, placeholder }: { kind: KindProps['kind']; placeholder?: Label }) {
+  const props = useMemo(() => ({ kind, ...(placeholder ? { placeholder } : {}) }), [kind, placeholder]);
+  return slotElement(slots.kind.filter, props, { limit: 1 });
 }
 
 /** How a table is sorted: by a column, either way (the kit's TableSort). */
