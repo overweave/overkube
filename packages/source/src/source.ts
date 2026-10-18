@@ -323,6 +323,16 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
               for (const { feed } of j.parts) if (feed.state.value !== 'error' && feed.objects.has(key)) return feed.objects.get(key);
               return undefined;
             },
+            // All its feeds' (those failed: none; a borrowed one's: its namespaces only), their revisions their version.
+            all: () => ({
+              objects: (function* () {
+                for (const { feed, only } of j.parts) {
+                  if (feed.state.value === 'error') continue;
+                  for (const o of feed.objects.values()) if (!only || only.has(o.metadata?.namespace ?? '')) yield o;
+                }
+              })(),
+              version: j.parts.map((p) => `${p.feed.state.value === 'error' ? 'x' : p.feed.revision.value}`).join(','),
+            }),
             fields: () => j.fields,
           }
         );

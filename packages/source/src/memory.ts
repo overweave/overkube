@@ -116,6 +116,11 @@ export function memorySource(objects: ReadonlySignal<Readonly<Record<KindRef, re
     if (!kind || (options.serves && !options.serves(kind))) return undefined;
     return {
       find: (key) => (stateOf(from).answers ? indexOf(objects.value[from] ?? NO_OBJECTS).get(key) : undefined),
+      // Its list, as it is now: itself its version (a change makes another).
+      all: () => {
+        const list = stateOf(from).answers ? (objects.value[from] ?? NO_OBJECTS) : NO_OBJECTS;
+        return { objects: list, version: list };
+      },
       fields: () => madeOf(kind),
     };
   };

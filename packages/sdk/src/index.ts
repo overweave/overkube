@@ -104,7 +104,7 @@ export {
   type ThemeSpec,
   ui,
 } from './kinds.ts';
-export { closeIn, filteredIn, filterIn, KIND_PAGE, kindOfRef, kindPath, kindRef, kindRefIn, openedIn, openIn } from './links.ts';
+export { closeIn, filteredIn, filterIn, KIND_PAGE, kindOfRef, kindPath, kindRef, kindRefIn, openedIn, openIn, tabbedIn, tabIn } from './links.ts';
 export { DANGER, MENU_GROUPS, type MenuGroupOf, menuOf } from './menu.ts';
 export { type MessagesOf, messagesName, type Params, type Say, sayer } from './say.ts';
 export {

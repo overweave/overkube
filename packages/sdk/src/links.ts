@@ -6,8 +6,9 @@ import { kindOfRef, kindRef } from '@overkube/query';
  * (<plural>.<version>[.<group>]: pods.v1, deployments.v1.apps) — one part of
  * a path, read back unambiguously — its page at /k/<kind> (KIND_PAGE: the
  * core's Page 'kind'); a resource opened over any page,
- * ?open=<kind>/<namespace>/<name> (<kind>/<name>: one of the whole cluster);
- * a kind's page filtered, ?filter=<CEL> (its objects those it holds).
+ * ?open=<kind>/<namespace>/<name> (<kind>/<name>: one of the whole cluster),
+ * on one of its tabs, &open-tab=<name> (none: its first); a kind's page
+ * filtered, ?filter=<CEL> (its objects those it holds).
  */
 
 type KindLike = Pick<KindInfo, 'plural' | 'version' | 'group'>;
@@ -43,19 +44,39 @@ function split(path: string): [string, string] {
  * opened by its name alone, whatever namespace it is given (an owner's,
  * named by what it owns).
  */
-export function openIn(path: string, kind: KindLike & { namespaced?: boolean }, object: Named): string {
+export function openIn(path: string, kind: KindLike & { namespaced?: boolean }, object: Named, tab?: string): string {
   const { name = '' } = object.metadata ?? {};
   const namespace = kind.namespaced === false ? undefined : object.metadata?.namespace;
   const open = [kindRef(kind), ...(namespace ? [namespace] : []), name].map(encodeURIComponent).join('/');
   const rest = closeIn(path);
-  return `${rest}${rest.includes('?') ? '&' : '?'}open=${open}`;
+  return `${rest}${rest.includes('?') ? '&' : '?'}open=${open}${tab ? `&open-tab=${encodeURIComponent(tab)}` : ''}`;
 }
 
-/** A path with nothing opened over its page. */
+/** A path with nothing opened over its page (nor its tab). */
 export function closeIn(path: string): string {
   const [where, query] = split(path);
-  const rest = query.split('&').filter((p) => p && !p.startsWith('open='));
+  const rest = query.split('&').filter((p) => p && !p.startsWith('open=') && !p.startsWith('open-tab='));
   return rest.length ? `${where}?${rest.join('&')}` : where;
+}
+
+/** The tab what is opened is on, as the path says it; none: its first. */
+export function tabIn(path: string): string | undefined {
+  const raw = split(path)[1]
+    .split('&')
+    .find((p) => p.startsWith('open-tab='));
+  try {
+    return raw ? decodeURIComponent(raw.slice('open-tab='.length)) || undefined : undefined;
+  } catch {
+    // Not one to be read: its first.
+    return undefined;
+  }
+}
+
+/** A path with what is opened on this tab (none: its first); the rest as it is. */
+export function tabbedIn(path: string, tab: string | undefined): string {
+  const [where, query] = split(path);
+  const all = [...query.split('&').filter((p) => p && !p.startsWith('open-tab=')), ...(tab ? [`open-tab=${encodeURIComponent(tab)}`] : [])];
+  return all.length ? `${where}?${all.join('&')}` : where;
 }
 
 /** The resource a path has opened over its page: its kind's ref, namespace (if it says one), name. */

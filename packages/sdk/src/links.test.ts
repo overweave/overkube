@@ -1,6 +1,6 @@
 import { kinds } from '@overkube/kube-types';
 import { describe, expect, it } from 'vitest';
-import { closeIn, filteredIn, filterIn, KIND_PAGE, kindPath, kindRefIn, openedIn, openIn } from './links.ts';
+import { closeIn, filteredIn, filterIn, KIND_PAGE, kindPath, kindRefIn, openedIn, openIn, tabbedIn, tabIn } from './links.ts';
 
 /* Where things are, as paths: a kind's page, and a resource opened over any page (?open=) — its other parameters kept as they are. */
 
@@ -14,6 +14,20 @@ describe('links', () => {
     // A kind of the whole cluster by its name alone, a namespace given or not (an owner named by what it owns).
     expect(openIn('/certs', Node, { metadata: { name: 'n1', namespace: 'kube-system' } })).toBe('/certs?open=nodes.v1/n1');
     expect(openIn('/certs?open=nodes.v1/n1&tab=2', Pod, pod)).toBe('/certs?tab=2&open=pods.v1/shop/my%20pod');
+  });
+
+  it('opens it on a tab of its (a link to it), read back; another chosen in its place; closed, its tab with it — the page’s own "tab" its own', () => {
+    const on = openIn('/certs?tab=2', Pod, pod, 'trivy.vulnerabilities');
+    expect([on, tabIn(on), tabIn('/certs?tab=2&open=pods.v1/shop/web')]).toEqual([
+      '/certs?tab=2&open=pods.v1/shop/my%20pod&open-tab=trivy.vulnerabilities',
+      'trivy.vulnerabilities',
+      undefined,
+    ]);
+    expect([tabbedIn(on, 'core.yaml'), tabbedIn(on, undefined), closeIn(on)]).toEqual([
+      '/certs?tab=2&open=pods.v1/shop/my%20pod&open-tab=core.yaml',
+      '/certs?tab=2&open=pods.v1/shop/my%20pod',
+      '/certs?tab=2',
+    ]);
   });
 
   it('closes what is open, wherever it is in the query, and keeps the rest (a "?" in it too)', () => {

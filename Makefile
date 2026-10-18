@@ -95,12 +95,15 @@ DURATION ?= 8h
 dev-token:
 	@$(DEV) exec -T kube kubectl -n seed-ops create token $(SA) --duration=$(DURATION)
 
-# The seed (dev/seed): cert-manager from its release, then every usual kind, a few of each, on busybox; the
-# certificates it needs made by hand, made anew (dev/seed/tls.sh).
+# The seed (dev/seed): cert-manager and trivy-operator from their releases (its scans: three at once, the
+# stand being one node; no Java database, near a gigabyte, none of the seed's images has a jar), then every usual kind, a few of each, on busybox; the certificates
+# it needs made by hand, made anew (dev/seed/tls.sh).
 # cert-manager's webhook answers a while after its deployment is available (its CA injected): asked
 # with a dry run until it does, then the seed applied once.
 CERT_MANAGER_VERSION ?= v1.18.2
 CERT_MANAGER = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+TRIVY_OPERATOR_VERSION ?= v0.35.0
+TRIVY_OPERATOR = https://raw.githubusercontent.com/aquasecurity/trivy-operator/$(TRIVY_OPERATOR_VERSION)/deploy/static/trivy-operator.yaml
 KUBECTL = $(DEV) exec -T kube kubectl
 WEBHOOK_PROBE = apiVersion: cert-manager.io/v1\nkind: ClusterIssuer\nmetadata: {name: seed-probe}\nspec: {selfSigned: {}}\n
 
@@ -111,6 +114,10 @@ dev-seed:
 		printf '$(WEBHOOK_PROBE)' | $(KUBECTL) create --dry-run=server -f - >/dev/null 2>&1 && echo && exit 0; \
 		printf .; sleep 2; \
 	done; echo; echo "cert-manager's webhook did not answer"; exit 1
+	$(KUBECTL) apply --server-side --force-conflicts -f $(TRIVY_OPERATOR) >/dev/null
+	$(KUBECTL) -n trivy-system patch configmap trivy-operator-config --type merge -p '{"data":{"OPERATOR_CONCURRENT_SCAN_JOBS_LIMIT":"3","OPERATOR_SCAN_JOB_TIMEOUT":"10m"}}'
+	$(KUBECTL) -n trivy-system patch configmap trivy-operator-trivy-config --type merge -p '{"data":{"trivy.skipJavaDBUpdate":"true","trivy.resources.limits.memory":"1Gi"}}'
+	$(KUBECTL) -n trivy-system rollout restart deployment trivy-operator
 	for f in dev/seed/*.yaml; do cat $$f; echo ---; done | $(KUBECTL) apply -f -
 	@# Certificates made anew (openssl, in the node image): none kept in the repository.
 	$(RUN) $(NODE_IMAGE) sh dev/seed/tls.sh secrets | $(KUBECTL) apply -f -
@@ -119,7 +126,8 @@ dev-seed:
 	$(RUN) $(NODE_IMAGE) sh dev/seed/tls.sh request | $(KUBECTL) create -f -
 
 # All the seed made, by its label (overkube.dev/seed=true): its namespaces, its cluster-wide objects, the
-# volumes its claims kept (a retaining class's), then cert-manager.
+# volumes its claims kept (a retaining class's), then cert-manager and trivy-operator (their reports with
+# their CRDs).
 dev-clean:
 	@# The seed's APIService first: one whose server is gone fails discovery, and namespaces are not deleted while it does.
 	$(KUBECTL) delete apiservice -l overkube.dev/seed=true
@@ -129,6 +137,7 @@ dev-clean:
 	$(KUBECTL) -n kube-system delete rolebinding -l overkube.dev/seed=true
 	$(DEV) exec -T kube sh -c "kubectl get pv -o jsonpath='{range .items[*]}{.metadata.name} {.spec.claimRef.namespace}{\"\\n\"}{end}' | awk '\$$2 ~ /^seed-/ {print \$$1}' | xargs -r kubectl delete pv"
 	$(KUBECTL) delete --ignore-not-found -f $(CERT_MANAGER)
+	$(KUBECTL) delete --ignore-not-found -f $(TRIVY_OPERATOR)
 
 # The cluster forgotten: its volume deleted, after asking.
 dev-reset:

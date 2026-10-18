@@ -275,7 +275,7 @@ export interface FieldSpec {
   type: FieldType;
   many?: boolean;
   unit?: Unit;
-  /** A path, CEL (self: the object), or another kind's object's field — the one of its namespace and name (a pod's metrics). */
+  /** A path, CEL (self: the object), or another kind's objects' field — the one of its namespace and name (a pod's metrics), or those whose key is one of its own (by, to), reduced (a workload's reports' worst). */
   value: Path | { readonly cel: string } | Join;
 }
 

@@ -1,10 +1,10 @@
 import { Badge, Icon, Ratio, Section } from '@overkube/uikit';
-import { Ext, FLUX, link, mono, Pairs, ResourceSketch, Route, Row, ref, Stage, state, Table, type Vuln } from './resource.sketch.tsx';
+import { Ext, FLUX, mono, Pairs, ResourceSketch, Route, Row, ref, Stage, state } from './resource.sketch.tsx';
 
 /*
  * What addons would add to a resource opened (a sketch: marked, not
  * connected) — each in the core's slots: its tab, its mark in the header,
- * its buttons, its sections. A shell, Flux, Traefik, Trivy.
+ * its buttons, its sections. A shell, Flux, Traefik (Trivy's: trivy.sketch.stories).
  */
 
 export default { title: 'core/resource/Addons', parameters: { controls: { disable: true } } };
@@ -126,79 +126,6 @@ export const Traefik = () => (
   </Stage>
 );
 
-/** A deployment, with Trivy's reports (the trivy addon's): how vulnerable in its header; each image's vulnerabilities, the worst first. */
-export const Trivy = () => (
-  <Stage>
-    <ResourceSketch
-      view={{
-        kind: 'Deployment',
-        name: 'api',
-        namespace: 'shop',
-        badge: (
-          <Ext slot="resource.view.header" by="trivy addon" inline>
-            <Badge level="error" title="Trivy, scanned 2h ago: 2 critical, 5 high, 11 medium, 23 low — in ghcr.io/acme/api:1.8.2">
-              <Icon name="shield" /> 2 critical · 5 high
-            </Badge>
-          </Ext>
-        ),
-        tabs: [['Vulnerabilities', 'shield', 'trivy addon']],
-        summary: [
-          ['Status', state('ok', 'circle-check', 'Healthy')],
-          ['Ready', <Ratio value={3} of={3} />],
-          ['Image', mono('ghcr.io/acme/api:1.8.2')],
-          ['Age', '21d'],
-        ],
-        own: (
-          <Ext slot="resource.view.sections" by="trivy addon">
-            <Section title="Vulnerabilities">
-              <div class="uk-rows">
-                <Row lead={<b class="rv-mono">ghcr.io/acme/api:1.8.2</b>} end="scanned 2h ago">
-                  <div class="uk-row-more rv-sev">
-                    <span data-sev="critical">
-                      <b>2</b>critical
-                    </span>
-                    <span data-sev="high">
-                      <b>5</b>high
-                    </span>
-                    <span data-sev="medium">
-                      <b>11</b>medium
-                    </span>
-                    <span data-sev="low">
-                      <b>23</b>low
-                    </span>
-                  </div>
-                  <div class="uk-row-more">
-                    <Table
-                      head={['ID', 'Severity', 'Package', 'Installed', 'Fixed in']}
-                      rows={(
-                        [
-                          ['CVE-2025-29923', 'critical', 'openssl', '3.0.13', '3.0.16'],
-                          ['CVE-2025-22869', 'critical', 'golang.org/x/crypto', '0.31.0', '0.35.0'],
-                          ['CVE-2025-30204', 'high', 'github.com/golang-jwt/jwt/v5', '5.2.1', '5.2.2'],
-                        ] as Vuln[]
-                      ).map(([id, sev, pkg, installed, fixed]) => [
-                        id,
-                        link(id),
-                        state(sev === 'medium' ? 'warn' : sev === 'low' ? 'done' : 'error', 'octagon', sev),
-                        mono(pkg),
-                        mono(installed),
-                        mono(fixed),
-                      ])}
-                    />
-                  </div>
-                </Row>
-              </div>
-            </Section>
-          </Ext>
-        ),
-        conditions: [['Available', 'True', 'MinimumReplicasAvailable', '21d']],
-        events: [],
-      }}
-    />
-  </Stage>
-);
-
 Flux.storyName = 'Addons - Flux';
 FluxManaged.storyName = 'Addons - Flux (what it manages)';
 Traefik.storyName = 'Addons - Traefik';
-Trivy.storyName = 'Addons - Trivy';

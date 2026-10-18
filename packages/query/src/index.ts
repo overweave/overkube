@@ -30,6 +30,7 @@ export type {
   Group,
   Item,
   Join,
+  JoinReduce,
   KindColumn,
   KindRef,
   ListQuery,

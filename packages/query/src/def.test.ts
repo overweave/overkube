@@ -10,7 +10,7 @@ describe('a field definition, from anyone', () => {
     ['no unit', { type: 'number', unit: 'parsecs', value: '.a' }, 'no unit "parsecs"'],
     ['kinds not refs', { type: 'string', kinds: [1], value: '.a' }, "kinds are at most 64 kinds' refs"],
     ['a path not one', { type: 'string', value: 'a' }, 'a path starts with . and is at most 1024 long'],
-    ['a value neither', { type: 'string', value: { cel: 'x', more: 1 } }, 'a value is a path, { cel } or { from, field }'],
+    ['a value neither', { type: 'string', value: { cel: 'x', more: 1 } }, 'a value is a path, { cel }, { from, field } or { from, field, by, to, reduce: max | sum | count }'],
   ])('is none: %s', (_, def, message) => {
     expect(checkFieldDef(def)).toEqual({ code: 'bad_field', message });
   });
@@ -29,7 +29,15 @@ describe('a field definition, from anyone', () => {
   it('is joined (another kind’s object’s field) only where a join is made — else left out, with why', () => {
     const def = { joined: { type: 'number', value: { from: 'things.v1', field: 'size' } } };
     expect(checkFieldDef(def.joined)).toBeUndefined();
-    expect(checkFieldDef({ type: 'number', value: { from: '', field: 'size' } })?.message).toBe('a value is a path, { cel } or { from, field }');
+    const said = 'a value is a path, { cel }, { from, field } or { from, field, by, to, reduce: max | sum | count }';
+    expect(checkFieldDef({ type: 'number', value: { from: '', field: 'size' } })?.message).toBe(said);
+    // Keyed: of those whose `to` is its `by`, reduced — all three said, a reduce of these.
+    expect(checkFieldDef({ type: 'number', value: { from: 'things.v1', field: 'size', by: 'mine', to: 'owner', reduce: 'max' } })).toBeUndefined();
+    expect(
+      [{ by: 'mine' }, { by: 'mine', to: 'owner', reduce: 'avg' }, { by: 'mine', to: 'owner', reduce: 'max', extra: 1 }].map(
+        (keyed) => checkFieldDef({ type: 'number', value: { from: 'things.v1', field: 'size', ...keyed } })?.message,
+      ),
+    ).toEqual([said, said, said]);
     expect(fieldsOf(def).rejected).toEqual({ joined: 'no joined fields here' });
     const made = fieldsOf(
       def,

@@ -5,7 +5,7 @@ import type { Decorator } from '@storybook/preact-vite';
 
 /** A kit's story on the page's ground: its styles, its root (the addons' draw their own, KubeStory). */
 const kit: Decorator = (Story, { title }) => {
-  if (title.startsWith('core') || title.startsWith('metrics') || title.startsWith('cert-manager')) return <Story />;
+  if (title.startsWith('core') || title.startsWith('metrics') || title.startsWith('cert-manager') || title.startsWith('trivy')) return <Story />;
   adoptStyles(document);
   return (
     <div class="uk-root" style={{ padding: '24px', minHeight: '100vh', background: 'var(--uk-bg)', fontFamily: FONT }}>
@@ -22,7 +22,9 @@ export default {
     // The core's first, by where it is on the page: a kind's page, the navigation, a resource opened (any kind's, each kind's), states, how it looks;
     // its sketches last. Then the other addons', then the kit's. Said here as it is: Storybook reads it without running this file.
     options: {
-      storySort: { order: ['core', ['Kind page', 'Navigation', 'Resource view', 'Resource view by kind', 'Statuses', 'Appearance', 'resource'], 'metrics', 'cert-manager'] },
+      storySort: {
+        order: ['core', ['Kind page', 'Navigation', 'Resource view', 'Resource view by kind', 'Statuses', 'Appearance', 'resource'], 'metrics', 'cert-manager', 'trivy'],
+      },
     },
   },
 };

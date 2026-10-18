@@ -46,10 +46,34 @@ function make(ref: KindRef, crd: CrdLike | undefined, layers: readonly Layer[]):
 
 /**
  * Another kind's objects as a join reads them, now (each time it is read):
- * by key (namespace/name), that kind's fields; none (not served, not had):
- * its joined values none.
+ * by key (namespace/name); all of them (a keyed join's, indexed by what
+ * reads them — again once their version moves); that kind's fields. None
+ * (not served, not had): its joined values none.
  */
-export type Joining = (from: KindRef) => { find(key: string): KubeObject | undefined; fields(): KindFields } | undefined;
+export type Joining = (from: KindRef) =>
+  | {
+      find(key: string): KubeObject | undefined;
+      /** All of them, now; and their version (the same version: the same objects). */
+      all(): { objects: Iterable<KubeObject>; version: unknown };
+      fields(): KindFields;
+    }
+  | undefined;
+
+/** An index of a kind's objects by a field's values, by namespace: those of each value (a keyed join's), with the version of the objects it was made of. */
+interface Index {
+  version: unknown;
+  of: Map<string, KubeObject[]>;
+}
+
+const indexKey = (namespace: string, value: unknown) => `${namespace}\u0000${String(value)}`;
+
+/** How a keyed join's values are said as one: the greatest number, all of them added, how many objects there are. */
+function reduced(how: 'max' | 'sum' | 'count', objects: number, values: readonly unknown[]): unknown {
+  if (how === 'count') return objects;
+  const numbers = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (!numbers.length) return undefined;
+  return how === 'max' ? Math.max(...numbers) : numbers.reduce((a, b) => a + b, 0);
+}
 
 /** The most bindings kept of a kind's fields (the plans reading it, each its way to the other kinds). */
 const BOUND = 8;
@@ -73,18 +97,63 @@ export function bindJoins(made: KindFields, joining: Joining, key: string): Kind
   const had = mine.get(key);
   if (had) return had;
   const fields = new Map(made.fields);
-  for (const [name, { from, field }] of made.joined) {
+  // A keyed join's indexes: by the other kind and its field joined to (made again once its objects' version moves).
+  const indexes = new Map<string, Index>();
+  for (const [name, { from, field, by, to, reduce }] of made.joined) {
     const spec = made.fields.get(name);
     if (!spec) continue;
-    const value = (object: unknown) => {
-      const other = joining(from);
-      if (!other) return undefined;
+    const theirsOf = (other: NonNullable<ReturnType<Joining>>) => {
       const theirs = other.fields();
-      if (theirs.joined.has(field)) throw Object.assign(new Error(`${from}'s ${field} is joined itself: a join reads no joined field`), { code: 'bad_join' });
-      if (!theirs.fields.has(field) && !isPath(field)) throw Object.assign(new Error(`${from} has no field ${field}`), { code: 'bad_join' });
-      const it = other.find(keyOf(object));
-      return it ? valuesOf(it, field, theirs.fields) : undefined;
+      for (const read of [field, ...(to ? [to] : [])]) {
+        if (theirs.joined.has(read)) throw Object.assign(new Error(`${from}'s ${read} is joined itself: a join reads no joined field`), { code: 'bad_join' });
+        if (!theirs.fields.has(read) && !isPath(read)) throw Object.assign(new Error(`${from} has no field ${read}`), { code: 'bad_join' });
+      }
+      return theirs;
     };
+    const value =
+      by && to && reduce
+        ? (object: unknown) => {
+            const other = joining(from);
+            if (!other) return undefined;
+            const theirs = theirsOf(other);
+            if (made.joined.has(by) || (!made.fields.has(by) && !isPath(by))) throw Object.assign(new Error(`no field ${by} of its own to join by`), { code: 'bad_join' });
+            const now = other.all();
+            const at = `${from}\u0000${to}`;
+            let index = indexes.get(at);
+            if (!index || index.version !== now.version) {
+              index = { version: now.version, of: new Map() };
+              for (const o of now.objects)
+                for (const v of valuesOf(o, to, theirs.fields)) {
+                  if (v === null) continue;
+                  const k = indexKey(o.metadata?.namespace ?? '', v);
+                  const list = index.of.get(k);
+                  if (list) list.push(o);
+                  else index.of.set(k, [o]);
+                }
+              indexes.set(at, index);
+            }
+            // Of its namespace; of none (a kind of the whole cluster): of every namespace.
+            const namespace = (object as KubeObject).metadata?.namespace;
+            const keys = valuesOf(object, by, made.fields).filter((v) => v !== null);
+            const found = new Set<KubeObject>();
+            for (const v of keys) {
+              if (namespace !== undefined) for (const o of index.of.get(indexKey(namespace, v)) ?? []) found.add(o);
+              else for (const [k, list] of index.of) if (k.endsWith(`\u0000${String(v)}`)) for (const o of list) found.add(o);
+            }
+            if (!found.size) return reduce === 'count' ? 0 : undefined;
+            return reduced(
+              reduce,
+              found.size,
+              [...found].flatMap((o) => valuesOf(o, field, theirs.fields)),
+            );
+          }
+        : (object: unknown) => {
+            const other = joining(from);
+            if (!other) return undefined;
+            const theirs = theirsOf(other);
+            const it = other.find(keyOf(object));
+            return it ? valuesOf(it, field, theirs.fields) : undefined;
+          };
     fields.set(name, Object.freeze({ ...spec, value: value as never }));
   }
   const out = { ...made, fields };

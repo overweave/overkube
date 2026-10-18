@@ -141,6 +141,8 @@ a.uk-chip:hover .uk-chip-name, .uk-badge-link:hover .uk-badge { color: var(--uk-
 .uk-panel-body .uk-row > .uk-row-under { grid-column: 1 / 2; }
 .uk-panel-body .uk-row[data-mark] > .uk-row-under { grid-column: 2 / 3; }
 .uk-panel-body > .uk-nothing { padding: 16px 0; }
+/* Parts one under another in a panel (a stack): apart from its head and its foot as its rows are. */
+.uk-panel-body > .uk-stack { gap: 16px; padding: 14px 0 6px; }
 .uk-panel-body > .uk-accordion { padding: 16px 0; }
 .uk-panel-body .uk-accordion-body .uk-board-facts { margin-top: 4px; }
 .uk-panel-body > .uk-board-loading { display: grid; gap: 12px; padding: 16px 0; }
@@ -256,6 +258,7 @@ button.uk-tile:hover .uk-tile-title { color: var(--uk-text); }
 .uk-life-cell .uk-life-now { top: -3px; bottom: -3px; }
 /* Blocks one under another (a section's notice, its facts), apart. */
 .uk-stack { display: grid; gap: 12px; }
+.uk-stack > * { min-width: 0; }
 /* What went wrong, as it was said (a controller's reason, a check's error): set apart, its words as they are. */
 .uk-why { display: block; padding: 10px 12px; border-left: 2px solid var(--uk-error); border-radius: 0 var(--uk-radius-sm) var(--uk-radius-sm) 0; background: color-mix(in srgb, var(--uk-error) 8%, transparent); font: 12px/1.6 var(--uk-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 /* How something goes (Steps): a step under another, a line between — done green, going a warning, stuck an error. */
@@ -498,9 +501,58 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-card-head > .uk-tip-at { align-self: center; display: flex; }
 .uk-card-head > b { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uk-card-head > .uk-badge { align-self: baseline; }
+/* Short of room, what is said quiet gives way first (cut short), its name after. */
+.uk-card-head > .uk-quiet { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uk-card-end .uk-sev-tally { flex-wrap: nowrap; }
 .uk-card-end { margin-left: auto; display: flex; align-items: baseline; gap: 10px; color: var(--uk-muted); font-size: 12px; white-space: nowrap; }
 .uk-card-end > .uk-button { align-self: center; }
 .uk-card > :not(.uk-card-head) + * { margin-top: 18px; }
+/* Severities (data/Severity), each its colour — of the tones: critical an error's, high between it and a warning, medium a warning's, low quieter, unknown grey. */
+:host, .uk-root { --uk-sev-critical: var(--uk-error); --uk-sev-high: color-mix(in srgb, var(--uk-error) 45%, var(--uk-warn)); --uk-sev-medium: var(--uk-warn); --uk-sev-low: color-mix(in srgb, var(--uk-info) 75%, var(--uk-muted)); --uk-sev-unknown: var(--uk-muted); }
+[data-sev='critical'] { --uk-sev: var(--uk-sev-critical); }
+[data-sev='high'] { --uk-sev: var(--uk-sev-high); }
+[data-sev='medium'] { --uk-sev: var(--uk-sev-medium); }
+[data-sev='low'] { --uk-sev: var(--uk-sev-low); }
+[data-sev='unknown'] { --uk-sev: var(--uk-sev-unknown); }
+:is(.uk-sev-n, .uk-sev-tally, .uk-sev-totals, .uk-sev-toggle) [data-sev], .uk-sev-n { color: var(--uk-sev); }
+/* A severity as a state: its shield and its word in its colour. */
+.uk-status.uk-sev-status { --uk-status-c: var(--uk-sev); color: var(--uk-sev); }
+/* One leading to what it found (a table's cell): brighter under the pointer. */
+.uk-sev-link { display: inline-flex; text-decoration: none; }
+.uk-sev-link:hover .uk-status-text { text-decoration: underline; }
+/* A count: at its column's right, bold; none, a quiet dash. */
+.uk-sev-n { display: flex; justify-content: flex-end; font-weight: 600; font-variant-numeric: tabular-nums; }
+.uk-sev-n:empty::before { content: '–'; color: var(--uk-muted); font-weight: 400; }
+/* A number in a cell: at its right. */
+.uk-num { display: flex; justify-content: flex-end; font-variant-numeric: tabular-nums; }
+/* A name in a cell that opens what it names (a button): the link's colour, cut short as the cell's words are. */
+.uk-cell-link { all: unset; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--uk-accent); cursor: pointer; }
+.uk-cell-link:hover { text-decoration: underline; }
+.uk-cell-link:focus-visible { border-radius: 3px; box-shadow: 0 0 0 2px var(--uk-focus); }
+.uk-sev-tally { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; color: var(--uk-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.uk-sev-tally b { font-weight: 600; }
+.uk-sev-totals { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.uk-sev-totals > div { display: grid; gap: 2px; min-width: 0; }
+.uk-sev-totals span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--uk-muted); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
+.uk-sev-totals b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* A matrix: its lead (a name over what it is of), a column a severity; ruled between rows. */
+.uk-sev-matrix { display: grid; grid-template-columns: minmax(0, 1fr) repeat(var(--uk-sev-cols, 5), 60px); align-items: center; column-gap: 6px; }
+.uk-sev-h { padding-bottom: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--uk-muted); font-size: 10px; letter-spacing: .03em; text-transform: uppercase; text-align: right; }
+.uk-sev-h:first-child { text-align: left; }
+.uk-sev-matrix > :is(.uk-sev-lead, .uk-sev-n, .uk-sev-instead) { align-self: stretch; display: flex; align-items: center; min-height: 40px; border-top: 1px solid var(--uk-border); }
+.uk-sev-matrix > .uk-sev-n { justify-content: flex-end; }
+.uk-sev-instead { grid-column: 2 / -1; justify-content: flex-end; }
+.uk-sev-matrix > .uk-sev-lead { flex-direction: column; justify-content: center; align-items: flex-start; gap: 2px; min-width: 0; padding: 8px 0; }
+.uk-sev-lead > span:first-child { display: flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0; }
+.uk-sev-under { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--uk-muted); font: 12px var(--uk-mono); }
+.uk-sev-under[data-marked] { padding-left: 24px; }
+.uk-sev-foot { grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--uk-border); color: var(--uk-muted); font-size: 12px; }
+/* A filter: a toggle each, pressed ones lit. */
+.uk-sev-filter { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.uk-sev-toggle { all: unset; display: inline-flex; align-items: baseline; gap: 6px; height: 26px; padding: 0 10px; line-height: 26px; border: 1px solid var(--uk-border); border-radius: 13px; color: var(--uk-muted); font-size: 12px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.uk-sev-toggle[aria-pressed='true'] { background: var(--uk-panel-2); color: var(--uk-text); }
+.uk-sev-toggle[aria-pressed='false'] b { color: inherit; }
+.uk-sev-toggle:focus-visible { box-shadow: 0 0 0 2px var(--uk-focus); }
 /* A meter (Meter): a field, its bar filled as far (nearly all: a warning; more than all: an error), what that is in words under it. */
 .uk-meter > dd { display: grid; gap: 4px; }
 .uk-meter-track { display: block; height: 6px; border-radius: 3px; background: var(--uk-panel-2); overflow: hidden; }

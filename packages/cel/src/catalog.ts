@@ -17,7 +17,7 @@ import { type Cel, CelError, type CelOptions, createCel, SEMANTICS } from './cel
 
 /** What a path means: query's JSONPath, as it is now (another meaning, another version). */
 export const PATH_SEMANTICS = 'jsonpath@1';
-/** What a join means: the other kind's object of the same namespace and name, its field's values. */
+/** What a join means: the other kind's object of the same namespace and name, its field's values; keyed (by, to): those whose to is its by, reduced. */
 export const JOIN_SEMANTICS = 'join@1';
 
 /**
@@ -28,8 +28,10 @@ export const JOIN_SEMANTICS = 'join@1';
 export function versionOf(def: Omit<FieldDef, 'version'>, cel: Cel, versions: ReadonlyMap<FieldName, string> = new Map()): FieldDef {
   if (typeof def.value === 'string') return { ...def, version: fieldVersion(def, PATH_SEMANTICS) };
   if (isJoin(def.value)) {
-    const read = isPath(def.value.field) ? PATH_SEMANTICS : (versions.get(def.value.field) ?? null);
-    return { ...def, version: fieldVersion(def, canonical([JOIN_SEMANTICS, read])) };
+    // Of the versions of the fields it reads: theirs, and (keyed) its own it is joined by, theirs it is joined to.
+    const versionOfField = (name: FieldName | undefined) => (name === undefined ? null : isPath(name) ? PATH_SEMANTICS : (versions.get(name) ?? null));
+    const { field, by, to } = def.value;
+    return { ...def, version: fieldVersion(def, canonical([JOIN_SEMANTICS, versionOfField(field), versionOfField(by), versionOfField(to)])) };
   }
   const seen = cel.inspect(def.value.cel);
   const salt = canonical([SEMANTICS, seen.functions.map((f) => [f, cel.functionVersion(f)])]);
@@ -99,7 +101,12 @@ export function prepareCatalog(input: unknown, options: PrepareOptions = {}): Pr
         type,
         ...(many ? { many } : {}),
         ...(unit ? { unit } : {}),
-        value: typeof value === 'string' ? value : isJoin(value) ? { from: value.from, field: value.field } : { cel: value.cel },
+        value:
+          typeof value === 'string'
+            ? value
+            : isJoin(value)
+              ? { from: value.from, field: value.field, ...(value.by ? { by: value.by, to: value.to, reduce: value.reduce } : {}) }
+              : { cel: value.cel },
       };
       const made = versionOf(copy, cel, versions);
       versions.set(name, made.version);

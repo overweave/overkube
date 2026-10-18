@@ -18,6 +18,20 @@ export { type LogRow, LogView, type LogViewLabels } from './data/LogView';
 export { Meter } from './data/Meter';
 export { Ratio, ratioTone } from './data/Ratio';
 export { Runway, type RunwayRow } from './data/Runway';
+export {
+  SEVERITIES,
+  type Severity,
+  SeverityCount,
+  type SeverityCounts,
+  SeverityFilter,
+  SeverityMatrix,
+  type SeverityRow,
+  SeverityStatus,
+  SeverityTally,
+  SeverityTotals,
+  type SeverityWords,
+  worstOf,
+} from './data/Severity';
 export { Sparkline } from './data/Sparkline';
 export { Split, type SplitPart } from './data/Split';
 export { Step, type StepState, Steps } from './data/Steps';

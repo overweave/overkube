@@ -16,6 +16,7 @@
     "@overkube/addon-cert-manager": "0.1.2",
     "@overkube/addon-core": "0.1.2",
     "@overkube/addon-metrics": "0.1.2",
+    "@overkube/addon-trivy": "0.1.2",
     "@overkube/connector": "0.1.2",
     "@overkube/kube-types": "0.1.2",
     "@overkube/query": "0.1.2",

@@ -294,6 +294,33 @@ describe('what a query is told', () => {
     await until(() => by.value.items[0]?.values?.['core.name'] === 'p1');
   });
 
+  it('has fields joined by a key (those of its namespace whose field is its own), reduced — live as those change', async () => {
+    const thing = (name: string, namespace: string, owner: string, size: number) =>
+      ({ metadata: { name, namespace, uid: `t-${namespace}-${name}`, labels: { owner } }, spec: { size } }) as KubeObject;
+    const join = { from: 'things.v1.example.com', field: '.spec.size', by: 'core.name', to: '.metadata.labels.owner' };
+    const layers = signal<readonly Layer[]>([
+      {
+        fields: {
+          'acme.max': { kinds: ['pods.v1'], type: 'number', value: { ...join, reduce: 'max' } },
+          'acme.count': { kinds: ['pods.v1'], type: 'number', value: { ...join, reduce: 'count' } },
+        },
+      },
+    ]);
+    const { kube, source, read } = await setup([...spread(2), [Thing, thing('t1', 'a', 'p0', 3)], [Thing, thing('t2', 'a', 'p0', 8)], [Thing, thing('t3', 'a', 'p1', 50)]], {
+      layers,
+    });
+    const by = read(source.list({ kind: 'pods.v1', sort: [{ field: 'acme.max', desc: true }], page: { limit: 5 }, select: ['core.name', 'acme.max', 'acme.count'] }));
+    await until(() => by.value.items[0]?.values?.['acme.max'] === 8);
+    // p1 is in b: t3 (of a) is not its.
+    expect(by.value.items.map((i) => [i.values?.['core.name'], i.values?.['acme.max'], i.values?.['acme.count']])).toEqual([
+      ['p0', 8, 2],
+      ['p1', null, 0],
+    ]);
+    kube.put(Thing, thing('t4', 'b', 'p1', 20));
+    await until(() => by.value.items[0]?.values?.['core.name'] === 'p1');
+    expect(by.value.items[0]?.values).toEqual({ 'core.name': 'p1', 'acme.max': 20, 'acme.count': 1 });
+  });
+
   it('has a joined field none of another kind it may not list — its objects had before let go of', async () => {
     const thing = (name: string, namespace: string, size: number) => ({ metadata: { name, namespace, uid: `t-${namespace}-${name}` }, spec: { size } }) as KubeObject;
     const layers = signal<readonly Layer[]>([{ fields: { 'acme.size': { kinds: ['pods.v1'], type: 'number', value: { from: 'things.v1.example.com', field: '.spec.size' } } } }]);

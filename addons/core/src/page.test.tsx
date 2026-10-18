@@ -1196,6 +1196,17 @@ describe('an object’s view', () => {
     expect(opened().querySelector('h2')?.textContent).toBe('Pod gone shop');
   });
 
+  it('opens on the tab its link says (open-tab), the path keeping the one chosen — its first, none said; one it has not, its first', () => {
+    const page = renderPage(world('web'), '/k/pods.v1?open=pods.v1/shop/web&open-tab=core.yaml');
+    expect(shown()).toBe('core.yaml');
+    page.act(() => tabs()[1]?.click());
+    expect([shown(), page.path]).toEqual(['core.events', '/k/pods.v1?open=pods.v1/shop/web&open-tab=core.events']);
+    page.act(() => tabs()[0]?.click());
+    expect([shown(), page.path]).toEqual(['core.overview', '/k/pods.v1?open=pods.v1/shop/web']);
+    page.navigate('/k/pods.v1?open=pods.v1/shop/web&open-tab=nothing.here');
+    expect(shown()).toBe('core.overview');
+  });
+
   it('has its tabs in order — the core’s Overview first, a log’s (a pod’s, a workload’s), its YAML last, another’s between them for its kinds — each showing its own slot', () => {
     const w = world('web');
     w.cluster.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'shop' } }));

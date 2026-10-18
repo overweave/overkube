@@ -11,6 +11,8 @@ import {
   ResourceTab,
   type ResourceTabSpec,
   slots,
+  tabbedIn,
+  tabIn,
   takes,
 } from '@overkube/sdk';
 import { useGet, useMenu, useNotify, useOpened, usePage, useSay, useUser } from '@overkube/sdk/preact';
@@ -45,8 +47,9 @@ export function ResourceView({ kind, namespace, name }: ResourceRef) {
   const missing = useMemo(() => ({ kind, namespace, name, state, ...(error ? { error } : {}) }), [kind, namespace, name, state, error]);
   const named = `${kind.kind} ${namespace ? `${namespace}/` : ''}${name}`;
   const tabs = useTabs(kind, object);
-  // The tab shown: the one chosen, of this resource (another opened: its first).
-  const [chosen, choose] = useState<{ of: string; tab: string }>();
+  // The tab shown: the one the path says (&open-tab=: a link to it, kept as it is chosen); none, or not one of its: its first.
+  const page = usePage();
+  const asked = tabIn(page.path.value);
   const panel = useId();
   if (!object || !props) {
     return (
@@ -55,7 +58,7 @@ export function ResourceView({ kind, namespace, name }: ResourceRef) {
       </Modal>
     );
   }
-  const shown = tabs.find((t) => chosen?.of === named && t.name === chosen.tab) ?? tabs[0];
+  const shown = tabs.find((t) => t.name === asked) ?? tabs[0];
   return (
     <Modal
       title={
@@ -75,7 +78,7 @@ export function ResourceView({ kind, namespace, name }: ResourceRef) {
             label={say(T.resource.view.tabs.label)}
             tabs={tabs.map((t) => ({ key: t.name, label: say(t.spec.title), icon: accessOf(t, props) === 'marked' ? 'denied' : t.spec.icon }))}
             active={shown?.name}
-            onSelect={(tab) => choose({ of: named, tab })}
+            onSelect={(tab) => page.navigate(tabbedIn(page.path.peek(), tab === tabs[0]?.name ? undefined : tab), { replace: true })}
             panel={panel}
           />
         )

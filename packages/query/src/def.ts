@@ -33,6 +33,7 @@ const show = (v: unknown) => {
   }
 };
 const UNITS = new Set(['cores', 'bytes']);
+const REDUCE = new Set(['max', 'sum', 'count']);
 
 /** Whether a field's value is a join (another kind's object's field). */
 export const isJoin = (value: unknown): value is Join => typeof value === 'object' && value !== null && 'from' in value;
@@ -57,12 +58,13 @@ export function checkFieldDef(def: unknown): QueryError | undefined {
   if (typeof v === 'string') return v.startsWith('.') && v.length <= FIELD_LIMITS.text ? undefined : bad(`a path starts with . and is at most ${FIELD_LIMITS.text} long`);
   if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 1 && typeof (v as { cel?: unknown }).cel === 'string')
     return (v as { cel: string }).cel.length <= FIELD_LIMITS.cel ? undefined : bad(`CEL is at most ${FIELD_LIMITS.cel} long`);
-  if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 2) {
-    const { from, field } = v as { from?: unknown; field?: unknown };
+  if (typeof v === 'object' && v !== null && !Array.isArray(v) && 'from' in v) {
+    const { from, field, by, to, reduce, ...extra } = v as Record<string, unknown>;
     const name = (x: unknown) => typeof x === 'string' && x.length > 0 && x.length <= FIELD_LIMITS.text;
-    if (name(from) && name(field)) return undefined;
+    const keyed = by !== undefined || to !== undefined || reduce !== undefined;
+    if (!Object.keys(extra).length && name(from) && name(field) && (!keyed || (name(by) && name(to) && REDUCE.has(reduce as string)))) return undefined;
   }
-  return bad('a value is a path, { cel } or { from, field }');
+  return bad('a value is a path, { cel }, { from, field } or { from, field, by, to, reduce: max | sum | count }');
 }
 
 /** How CEL is made into what it says of an object (none given: no field of CEL is had). */

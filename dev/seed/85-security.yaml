@@ -1,0 +1,99 @@
+# What trivy-operator (make dev-seed installs it) finds something in, and something it finds nothing in,
+# in seed-sec: images with known vulnerabilities (old nginx, old alpine), a pod configured as it should
+# not be (privileged, root, the node's files, no limits), one with nothing to find (pause); roles giving
+# what they should not (escalate, bind, impersonate, every secret, exec into pods). No pod security
+# admission in this namespace: the privileged pod is let in, to be found.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: seed-sec
+  labels: { overkube.dev/seed: "true" }
+---
+# An old nginx on an old alpine: its OS's and its own vulnerabilities, many fixed since (no jar in it:
+# trivy needs no Java database).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy-web
+  namespace: seed-sec
+  labels: { overkube.dev/seed: "true", app: legacy-web }
+spec:
+  selector: { matchLabels: { app: legacy-web } }
+  template:
+    metadata:
+      labels: { overkube.dev/seed: "true", app: legacy-web }
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.19-alpine
+          ports: [{ name: http, containerPort: 80 }]
+          resources: { requests: { cpu: 10m, memory: 16Mi }, limits: { memory: 64Mi } }
+---
+# Everything a config audit says no to: privileged, root, the host's files and network, no limits, a
+# writable root filesystem — on an old alpine (vulnerabilities too), two containers.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: root-tools
+  namespace: seed-sec
+  labels: { overkube.dev/seed: "true", app: root-tools }
+spec:
+  selector: { matchLabels: { app: root-tools } }
+  template:
+    metadata:
+      labels: { overkube.dev/seed: "true", app: root-tools }
+    spec:
+      hostNetwork: true
+      containers:
+        - name: shell
+          image: alpine:3.12
+          command: [sh, -c, "sleep infinity"]
+          securityContext: { privileged: true, runAsUser: 0 }
+          volumeMounts: [{ name: logs, mountPath: /host/var/log }]
+        - name: sidecar
+          image: busybox:1.37
+          command: [sh, -c, "sleep infinity"]
+      volumes:
+        - name: logs
+          hostPath: { path: /var/log }
+---
+# Nothing to find: no OS, no packages; as it should be run.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clean
+  namespace: seed-sec
+  labels: { overkube.dev/seed: "true", app: clean }
+spec:
+  selector: { matchLabels: { app: clean } }
+  template:
+    metadata:
+      labels: { overkube.dev/seed: "true", app: clean }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 65532, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 1m, memory: 4Mi }, limits: { cpu: 10m, memory: 8Mi } }
+---
+# Roles that give what they should not: an RBAC assessment's findings.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: seed-sec-too-much
+  labels: { overkube.dev/seed: "true" }
+rules:
+  - { apiGroups: [""], resources: [secrets], verbs: ["*"] }
+  - { apiGroups: [rbac.authorization.k8s.io], resources: [clusterroles, roles], verbs: [escalate, bind] }
+  - { apiGroups: [""], resources: [users, groups, serviceaccounts], verbs: [impersonate] }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: debug
+  namespace: seed-sec
+  labels: { overkube.dev/seed: "true" }
+rules:
+  - { apiGroups: [""], resources: [pods/exec, pods/attach], verbs: [create] }
+  - { apiGroups: ["*"], resources: ["*"], verbs: [get, list] }

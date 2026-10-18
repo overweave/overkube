@@ -84,12 +84,6 @@ const SKETCH = `
 .rv-life-mark { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--uk-text); }
 .rv-life-mark[data-kind='renew'] { background: var(--uk-info); }
 .rv-life-labels { display: flex; justify-content: space-between; color: var(--uk-muted); font-size: 12px; }
-/* How vulnerable: a count of each severity, in its colour. */
-.rv-sev { display: flex; gap: 8px; flex-wrap: wrap; }
-.rv-sev > span { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: var(--uk-radius); background: var(--uk-panel-2); font-size: 12px; color: var(--uk-muted); }
-.rv-sev b { font-size: 16px; font-variant-numeric: tabular-nums; color: var(--uk-text); }
-.rv-sev [data-sev='critical'] b, .rv-sev [data-sev='high'] b { color: var(--uk-error); }
-.rv-sev [data-sev='medium'] b { color: var(--uk-warn); }
 /* A log: its tools over it; its lines, numbered, its time quiet, a warning's and an error's in their colours — on the page's ground. */
 /* An addon's place: outlined, its slot and whose in its corner (shown or not). */
 .rv-stage[data-ext] .rv-ext { position: relative; outline: 1px dashed color-mix(in srgb, var(--uk-accent) 60%, transparent); outline-offset: 4px; border-radius: var(--uk-radius-lg); }
@@ -671,5 +665,3 @@ export function Route({ entry, match, middlewares, to, tls }: { entry: string[];
     </div>
   );
 }
-
-export type Vuln = [id: string, severity: 'critical' | 'high' | 'medium' | 'low', pkg: string, installed: string, fixed: string];

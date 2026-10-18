@@ -20,7 +20,8 @@ import { parseQuantity, Quantity } from './quantity.ts';
  *   integers, the nearest), a timestamp as ms, a string, a bool, a list of
  *   them; a map, a list of lists: no answer of a field (bad_shape);
  * - Kubernetes' functions it needs: of lists, sum, indexOf, lastIndexOf,
- *   slice, flatten (CEL's equality, its types); quantity(), as
+ *   slice, flatten (CEL's equality, its types); of strings, CEL's own
+ *   (lastIndexOf, substring — by code point); quantity(), as
  *   apimachinery has it (./quantity.ts);
  * - functions of CEL (options.functions): name(self), each worked out once
  *   for each object however many fields ask it, its answer or its error;
