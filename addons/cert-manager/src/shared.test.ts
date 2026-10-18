@@ -1,10 +1,9 @@
 import { calendarDays } from '@overkube/sdk';
 import { describe, expect, it } from 'vitest';
-import { covers } from './ingress.tsx';
 import { signersOf } from './request.tsx';
 import { durationOf, durationSaid, leftSaid, levelOf, spanOf } from './shared.tsx';
 
-/* What the addon works out of times, names and hosts. */
+/* What the addon works out of times and names. */
 
 const HOUR = 3_600_000;
 const say = (label: { en: unknown }, params: Record<string, unknown> = {}) => String(label.en).replace(/\{(\w+)\}/g, (_, k) => String(params[k]));
@@ -34,17 +33,6 @@ describe('a duration', () => {
   it('is read as Go writes one, said in whole days where it is', () => {
     expect([durationOf('2160h0m0s'), durationOf('90m'), durationOf('soon'), durationOf(undefined)]).toEqual([2160 * HOUR, 90 * 60_000, undefined, undefined]);
     expect([durationSaid(2160 * HOUR), durationSaid(36 * HOUR)]).toEqual(['90d', '36h']);
-  });
-});
-
-describe('a TLS host', () => {
-  it('covers its own (case aside), and a wildcard its one label', () => {
-    expect([covers('Shop.test', 'shop.test'), covers('*.shop.test', 'www.shop.test'), covers('*.shop.test', 'a.b.shop.test'), covers('*.shop.test', 'shop.test')]).toEqual([
-      true,
-      true,
-      false,
-      false,
-    ]);
   });
 });
 

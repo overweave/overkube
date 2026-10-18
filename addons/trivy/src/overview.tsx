@@ -1,9 +1,8 @@
 import { type KubeContributor, tile } from '@overkube/sdk';
-import { ObjectRef, usePage, useSay } from '@overkube/sdk/preact';
+import { ObjectRef, usePage, useSay, useTableView } from '@overkube/sdk/preact';
 import { Panel, PanelBody, PanelHead, SeverityCount, SeverityTotals, Status, Table, type TableColumn } from '@overkube/uikit';
 import { type ImageRow, useImages } from './images.tsx';
 import { added, useScans, useWords } from './reports.tsx';
-import { useTableView } from './table.ts';
 import { T } from './texts.ts';
 
 /*

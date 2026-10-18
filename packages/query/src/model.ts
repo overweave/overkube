@@ -84,9 +84,10 @@ export type Unit = 'cores' | 'bytes';
  *
  * Or of those of its namespace (of every one, if this kind has none) whose
  * field `to` has a value this object's field `by` has (a workload's
- * reports: those whose owner is it), their values reduced: the greatest
- * (max), all added up (sum), how many they are (count) — none there: none
- * (count: 0). `by` is of this kind's own (a joined one: none).
+ * reports: those whose owner is it), their values reduced: the least
+ * (min: the soonest of times), the greatest (max), all added up (sum), how
+ * many they are (count) — of numbers (a time: a field declared one, not
+ * a path's words); none there: none (count: 0). `by` is of this kind's own (a joined one: none).
  */
 export interface Join {
   readonly from: KindRef;
@@ -97,7 +98,7 @@ export interface Join {
 }
 
 /** How a join of many objects is said as one value. */
-export type JoinReduce = 'max' | 'sum' | 'count';
+export type JoinReduce = 'min' | 'max' | 'sum' | 'count';
 
 /**
  * A field as it is defined — data only, so whoever answers queries (the

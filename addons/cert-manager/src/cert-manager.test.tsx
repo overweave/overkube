@@ -146,10 +146,23 @@ describe('where certificates are used', () => {
   });
 });
 
+describe('the Ingresses’ table', () => {
+  it('says when each one’s certificates end, beside the core’s TLS — sorted by it (the soonest first, none last)', async () => {
+    const page = renderPage(world(), '/k/ingresses.v1.networking.k8s.io');
+    await vi.waitFor(() => expect(column('Expires')).toEqual(['—', '60d']));
+    expect(column('TLS')).toEqual(['legacy-tls', 'shop-tls']);
+    page.act(() => ([...document.querySelectorAll<HTMLButtonElement>('[role="columnheader"] button')].find((b) => b.textContent === 'Expires') as HTMLButtonElement).click());
+    await vi.waitFor(() => expect(column('Name')).toEqual(['shop', 'legacy']));
+  });
+});
+
 describe('the start', () => {
-  it('has its certificates, the soonest end first', async () => {
+  it('has its certificates as a table: those not issued first, then the soonest end first; each its state, its lifetime, its issuer', async () => {
     renderPage(world(), '/');
-    await vi.waitFor(() => expect(document.querySelector('.uk-runway')?.textContent).toMatch(/api-tls.*shop-tls/));
+    const panel = () => [...document.querySelectorAll('.uk-panel')].find((p) => p.querySelector('.uk-panel-head')?.textContent?.startsWith('Certificates')) as HTMLElement;
+    await vi.waitFor(() => expect(column('Certificate', panel())).toEqual(['docs-tls', 'store-tls', 'api-tls', 'shop-tls']));
+    expect(table(panel()).header).toEqual(['Certificate', 'Namespace', 'Ready', 'Expires', 'Issuer']);
+    expect(column('Expires', panel())).toEqual(['—', '—', '3d', '60d']);
   });
 });
 

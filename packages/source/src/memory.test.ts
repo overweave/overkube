@@ -31,7 +31,7 @@ describe('a source in memory', () => {
     expect(source.count({ kind: 'pods.v1', sum: ['acme.n'] }).value.sums).toEqual({ 'acme.n': 59 });
   });
 
-  it('joins by a key: those of its namespace whose field is its own (a workload’s reports), reduced — the greatest, added up, how many; none, none (count: 0); live as they change', () => {
+  it('joins by a key: those of its namespace whose field is its own (a workload’s reports), reduced — the least, the greatest, added up, how many; none, none (count: 0); live as they change', () => {
     const report = (name: string, namespace: string, owner: string, critical: number) => ({ metadata: { name, namespace, labels: { owner } }, report: { critical } }) as KubeObject;
     const objects = signal<Record<string, KubeObject[]>>({
       'pods.v1': [pod('web', 'x', 0), pod('db', 'x', 0), pod('web', 'y', 0)],
@@ -42,24 +42,41 @@ describe('a source in memory', () => {
       type: 'number',
       value: { from: 'configmaps.v1', field: '.report.critical', by: 'core.name', to: '.metadata.labels.owner', reduce },
     });
-    const layers = signal([{ fields: { 'acme.max': joined('max'), 'acme.sum': joined('sum'), 'acme.count': joined('count') } }]);
+    const layers = signal([{ fields: { 'acme.min': joined('min'), 'acme.max': joined('max'), 'acme.sum': joined('sum'), 'acme.count': joined('count') } }]);
     const source = memorySource(objects, { layers });
     const list = source.list({
       kind: 'pods.v1',
       sort: [{ field: 'acme.max', desc: true }],
       page: { limit: 5 },
-      select: ['core.namespace', 'core.name', 'acme.max', 'acme.sum', 'acme.count'],
+      select: ['core.namespace', 'core.name', 'acme.min', 'acme.max', 'acme.sum', 'acme.count'],
     });
     const rows = () => list.value.items.map((i) => Object.values(i.values ?? {}));
     // web in x: its two (9, 2); db in x: none (r3 is of y); web in y: none (y's report is db's).
     expect(rows()).toEqual([
-      ['x', 'web', 9, 11, 2],
-      ['x', 'db', null, null, 0],
-      ['y', 'web', null, null, 0],
+      ['x', 'web', 2, 9, 11, 2],
+      ['x', 'db', null, null, null, 0],
+      ['y', 'web', null, null, null, 0],
     ]);
     objects.value = { ...objects.value, 'configmaps.v1': [...(objects.value['configmaps.v1'] ?? []), report('r4', 'y', 'web', 30)] };
-    expect(rows()[0]).toEqual(['y', 'web', 30, 30, 1]);
+    expect(rows()[0]).toEqual(['y', 'web', 30, 30, 30, 1]);
     expect(source.count({ kind: 'pods.v1', where: { field: 'acme.count', op: 'range', gt: 0 } }).value.total?.count).toBe(2);
+  });
+
+  it('joins the soonest of times by a key (min of a time field of theirs), sorted none last', () => {
+    const cert = (name: string, secret: string, notAfter: string) => ({ metadata: { name, namespace: 'x' }, spec: { secretName: secret }, status: { notAfter } }) as KubeObject;
+    const objects = signal<Record<string, KubeObject[]>>({
+      'configmaps.v1': [{ metadata: { name: 'a', namespace: 'x' }, data: { tls: 'one' } } as KubeObject, { metadata: { name: 'b', namespace: 'x' } } as KubeObject],
+      'secrets.v1': [cert('c1', 'one', '2030-01-02T00:00:00Z'), cert('c2', 'one', '2030-01-01T00:00:00Z')],
+    });
+    // Their time a declared field's (a time: a number to reduce), joined.
+    const notAfter = { kinds: ['secrets.v1'], type: 'time', value: '.status.notAfter' };
+    const field = { kinds: ['configmaps.v1'], type: 'time', value: { from: 'secrets.v1', field: 'acme.not-after', by: '.data.tls', to: '.spec.secretName', reduce: 'min' } };
+    const source = memorySource(objects, { layers: signal([{ fields: { 'acme.not-after': notAfter, 'acme.soonest': field } }]) });
+    const list = source.list({ kind: 'configmaps.v1', sort: [{ field: 'acme.soonest', desc: true }], page: { limit: 5 }, select: ['core.name', 'acme.soonest'] });
+    expect(list.value.items.map((i) => [i.values?.['core.name'], i.values?.['acme.soonest']])).toEqual([
+      ['a', Date.parse('2030-01-01T00:00:00Z')],
+      ['b', null],
+    ]);
   });
 
   it('joins a kind of no namespace by name; one not served, none; a field the other has not, or a joined one, told as its error', () => {

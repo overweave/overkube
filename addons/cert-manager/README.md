@@ -11,9 +11,9 @@ What it adds:
 - **a Certificate's view** — its Validity (Not Before, Renewal Time, Not After); its current revision as it goes: its CertificateRequest, the ACME Order of it, the Order's Challenges, its Secret — each its state, and where it stops what cert-manager says of it (a self check's failure, with what it usually means); its spec against what its Secret holds (DNS names, IP addresses, common name, key, duration); its failed issuance attempts and when cert-manager tries again (an hour, doubled each time, 32 at most) ([src/certificate.tsx](src/certificate.tsx));
 - **a CertificateRequest's** — its request (subject, names, key, usages, who asked), and one cert-manager does not approve (another's issuer) said so ([src/request.tsx](src/request.tsx)); **an Order's, a Challenge's** — its reason, its solver ([src/acme.tsx](src/acme.tsx));
 - **an issuer's** — a CA's own end (and that nothing renews it, where no Certificate manages its Secret), an ACME issuer's server, account and solvers, the certificates it issues ([src/issuer.tsx](src/issuer.tsx));
-- **where they are used** — an Ingress's TLS in the place of the core's: each entry's Certificate and its lifetime, a host no entry covers, the issuer its `cert-manager.io/(cluster-)issuer` annotation names not there; a Secret's Certificate ([src/ingress.tsx](src/ingress.tsx));
+- **where they are used** — an Ingress's table: when its certificates end, beside the core's TLS (the soonest; one not issued yet, its state); its TLS in the place of the core's section: each entry's Certificate and its lifetime, a host no entry covers, the issuer its `cert-manager.io/(cluster-)issuer` annotation names not there; a Secret's Certificate ([src/ingress.tsx](src/ingress.tsx));
 - **related** — each kind's issuer, Secret, request, solver, what uses it, in the core's Related section;
-- **the start** — its certificates, the soonest end first ([src/overview.tsx](src/overview.tsx)).
+- **the start** — its certificates as a table, those not issued first, then the soonest end first: each its state, its lifetime, its issuer — set out and sorted as the user sets it, kept ([src/overview.tsx](src/overview.tsx)).
 
 Its actions, each shown only to one who may (its `needs`, against what RBAC allows the one signed in):
 

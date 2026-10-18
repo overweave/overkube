@@ -1,5 +1,5 @@
 import { filteredIn, filterIn, type KubeContributor, slots } from '@overkube/sdk';
-import { fill, ObjectRef, useGet, useList, usePage, useSay } from '@overkube/sdk/preact';
+import { fill, ObjectRef, useGet, useList, usePage, useSay, useTableView } from '@overkube/sdk/preact';
 import {
   Badge,
   KeyValue,
@@ -21,7 +21,6 @@ import { F, REF, WORKLOADS } from './kinds.ts';
 import type { VulnerabilityReportObject } from './reports.tsx';
 import { ago } from './sections.tsx';
 import { VulnerabilityTable } from './tab.tsx';
-import { useTableView } from './table.ts';
 import { T } from './texts.ts';
 
 /*

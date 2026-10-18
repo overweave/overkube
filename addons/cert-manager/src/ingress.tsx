@@ -1,5 +1,5 @@
 import { kinds } from '@overkube/kube-types';
-import { type KubeContributor, type ResourceProps, wrap } from '@overkube/sdk';
+import { column, covers, type KubeContributor, type ResourceProps, wrap } from '@overkube/sdk';
 import { ObjectRef, StatusOf, useList, useSay } from '@overkube/sdk/preact';
 import { LifetimeCell, Notice, Row, Rows, Section, Status } from '@overkube/uikit';
 import { Certificate, ClusterIssuer, F, Issuer, REF } from './kinds.ts';
@@ -13,7 +13,8 @@ import { T } from './texts.ts';
  * covers (a wildcard covering its one label); the issuer its
  * cert-manager.io annotation names, not there (its
  * Certificate is made, never issued). A Secret's: the Certificate it is
- * managed by.
+ * managed by. An Ingress's table: when its certificates end, beside the
+ * core's TLS.
  */
 
 const { Ingress } = kinds.networking.v1;
@@ -28,15 +29,6 @@ const ANNOTATIONS: [annotation: string, kind: typeof Issuer][] = [
   ['cert-manager.io/cluster-issuer', ClusterIssuer],
   ['cert-manager.io/issuer', Issuer],
 ];
-
-/** Whether a TLS host covers a rule's host: the same (case aside), or a wildcard's one label (*.shop.test: www.shop.test, not a.b.shop.test). */
-export function covers(tlsHost: string, host: string): boolean {
-  const [a, b] = [tlsHost.toLowerCase(), host.toLowerCase()];
-  if (a === b) return true;
-  if (!a.startsWith('*.')) return false;
-  const dot = b.indexOf('.');
-  return dot > 0 && b.slice(dot + 1) === a.slice(2) && !b.startsWith('*');
-}
 
 function IngressTls({ object }: ResourceProps) {
   const say = useSay();
@@ -75,7 +67,9 @@ function IngressTls({ object }: ResourceProps) {
   const missing = issuer && (issuers.state === 'live' || issuers.state === 'stale') && issuers.items.length === 0;
   const of = new Map(certificates.items.map((i) => [String(i.values?.[F.secret]), i.values ?? {}]));
   const tlsHosts = tls.flatMap((t) => t.hosts ?? []);
-  const uncovered = [...new Set((o.spec?.rules ?? []).flatMap((r) => (r.host && !tlsHosts.some((h) => covers(h, r.host as string)) ? [r.host] : [])))];
+  // An entry of no hosts covers every one (the controller's default).
+  const anyHost = tls.some((t) => !t.hosts?.length);
+  const uncovered = anyHost ? [] : [...new Set((o.spec?.rules ?? []).flatMap((r) => (r.host && !tlsHosts.some((h) => covers(h, r.host as string)) ? [r.host] : [])))];
   const now = Date.now();
   const time = (v: unknown) => (typeof v === 'number' ? new Date(v).toISOString() : undefined);
   return (
@@ -103,7 +97,7 @@ function IngressTls({ object }: ResourceProps) {
             );
           })}
           {uncovered.map((host) => (
-            <Row key={host} mark={<Status tone="error" icon="link-off" />} lead={<span class="uk-mono">{host}</span>} end={say(T.ingress.notCovered)} />
+            <Row key={host} mark={<Status tone="warn" icon="link-off" />} lead={<span class="uk-mono">{host}</span>} end={say(T.ingress.notCovered)} />
           ))}
         </Rows>
         {missing && (
@@ -116,7 +110,50 @@ function IngressTls({ object }: ResourceProps) {
   );
 }
 
+/** An Ingress's certificates (of its TLS Secrets), in its table: the soonest end of them, as a Certificate's table says it; one not issued yet, its state instead (sorted by the issued ones' soonest end: its field's, joined). */
+function Expires({ secrets, namespace }: { secrets: readonly string[]; namespace: string }) {
+  const say = useSay();
+  const got = useList(
+    secrets.length
+      ? {
+          kind: REF.certificates,
+          scope: { namespaces: [namespace] },
+          where: { field: F.secret, op: 'in', values: [...secrets] },
+          page: { limit: 20 },
+          select: [F.state, F.notBefore, F.notAfter, F.renewal],
+        }
+      : undefined,
+  );
+  const now = Date.now();
+  const time = (v: unknown) => (typeof v === 'number' ? new Date(v).toISOString() : undefined);
+  const certs = got.items.map((i) => {
+    const v = i.values ?? {};
+    return { state: String(v[F.state] ?? ''), span: spanOf(time(v[F.notBefore]), time(v[F.notAfter]), time(v[F.renewal]), now) };
+  });
+  const pending = certs.find((c) => !c.span);
+  if (pending) return <StatusOf kind={Certificate} words={pending.state} />;
+  const soonest = certs.flatMap((c) => (c.span ? [c.span] : [])).sort((a, b) => a.till - b.till)[0];
+  if (!soonest) return <span class="uk-quiet">—</span>;
+  return <LifetimeCell {...soonest} level={levelOf(soonest)} said={leftSaid(say, soonest)} />;
+}
+
 export function addUses(c: KubeContributor): void {
+  // Beside the core's TLS: when its certificates end (none of cert-manager's: "—").
+  c.add(
+    'Column',
+    'cert-manager.ingresses.expires',
+    column({
+      kinds: [Ingress],
+      header: T.columns.expires,
+      order: 145,
+      width: 150,
+      sort: F.ingressNotAfter,
+      values: ['.spec.tls[*].secretName', 'core.namespace'],
+      format: ([secrets, namespace]) => (
+        <Expires secrets={Array.isArray(secrets) ? [...new Set(secrets.map(String))] : typeof secrets === 'string' ? [secrets] : []} namespace={String(namespace ?? '')} />
+      ),
+    }),
+  );
   // In the core's TLS section's place (drawn instead: its children not).
   c.add('Wrap', 'cert-manager.resource.view.ingress.tls', wrap<ResourceProps>('core.resource.view.ingress.tls', { kinds: [Ingress], order: 0, render: IngressTls }));
   addRelated(c, 'secret.managed', [Secret], 40, T.related.managedBy, ({ object }) => {

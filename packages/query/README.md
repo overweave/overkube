@@ -2,7 +2,7 @@
 
 What overkube asks of a cluster's data, as data — pure, with no dependencies: the page answers from what it watches, a server could from its indexes, and nothing that asks has to know which.
 
-- **fields** (`FieldDef`, `defineField`, `checkFieldDef`, `fieldsOf`): a value by a path into the object, worked out of it by CEL, or joined (`Join`: a field of another kind's object of the same namespace and name — a pod's metrics; or, keyed (`by`, `to`, `reduce`), of those of its namespace whose field `to` is its own `by`, reduced to the greatest, a sum or how many — a workload's reports); its type, unit, how it sorts;
+- **fields** (`FieldDef`, `defineField`, `checkFieldDef`, `fieldsOf`): a value by a path into the object, worked out of it by CEL, or joined (`Join`: a field of another kind's object of the same namespace and name — a pod's metrics; or, keyed (`by`, `to`, `reduce`), of those of its namespace whose field `to` is its own `by`, reduced to the least (a time: the soonest), the greatest, a sum or how many — a workload's reports, an Ingress's certificates' soonest end); its type, unit, how it sorts;
 - **queries** (`GetQuery`, `ListQuery`, `CountQuery`, `SearchQuery`, `LogQuery`): one object, a window of a list (`Where`, `Sort`, `Page`), a count by a field, a search, a log's window; checked (`checkQuery`) and bounded (`LIMITS`, `FIELD_LIMITS`);
 - **results** (`Result`, `Live`, `State`): live while read, with their state and errors;
 - **access** (`AccessRule`, `allowed`, `ruleAllows`): what one may do, as a SelfSubjectRulesReview tells it;

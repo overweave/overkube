@@ -8,7 +8,8 @@
  * alike: whom it asks for, the names it asks for, its key. DER read as far
  * as these need, its structure checked (each element's tag where these
  * are, lengths within their element, dates that are dates) — nothing else
- * (no signature, no chain). Not one: undefined.
+ * (no signature, no chain). Not one: undefined. And whether a TLS host
+ * (an Ingress's, a certificate's name) covers a host.
  */
 
 /** Subject alternative names, by their type. */
@@ -341,4 +342,13 @@ export function parseRequest(pem: string): Request | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Whether a TLS host covers a host: the same (case aside), or a wildcard's one label (*.shop.test: www.shop.test, not a.b.shop.test). */
+export function covers(tlsHost: string, host: string): boolean {
+  const [a, b] = [tlsHost.toLowerCase(), host.toLowerCase()];
+  if (a === b) return true;
+  if (!a.startsWith('*.')) return false;
+  const dot = b.indexOf('.');
+  return dot > 0 && b.slice(dot + 1) === a.slice(2) && !b.startsWith('*');
 }

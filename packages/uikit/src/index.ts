@@ -17,7 +17,6 @@ export { Lifetime, LifetimeCell, type LifetimeMark, type LifetimeSpan } from './
 export { type LogRow, LogView, type LogViewLabels } from './data/LogView';
 export { Meter } from './data/Meter';
 export { Ratio, ratioTone } from './data/Ratio';
-export { Runway, type RunwayRow } from './data/Runway';
 export {
   SEVERITIES,
   type Severity,

@@ -277,32 +277,6 @@ button.uk-tile:hover .uk-tile-title { color: var(--uk-text); }
 .uk-step-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 500; }
 .uk-step-meta { color: var(--uk-muted); font-size: 12px; }
 .uk-step-body { display: grid; gap: 12px; margin-top: 10px; font-size: 13px; line-height: 1.5; }
-/* Things on one time axis (Runway): a row each — its lead, a bar from now to its end (ended: back from now), what is said at its end. */
-.uk-runway-wrap { container: uk-runway / inline-size; }
-.uk-runway { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(0, 2.4fr); column-gap: 24px; align-items: center; font-size: 13px; }
-.uk-runway-axis { position: relative; height: 16px; margin: 0 56px 6px 0; color: var(--uk-muted); font-size: 11px; white-space: nowrap; }
-.uk-runway-axis > span { position: absolute; transform: translateX(-50%); }
-.uk-runway-lead { display: flex; align-items: center; gap: 8px; height: 40px; min-width: 0; white-space: nowrap; overflow: hidden; }
-/* Cut short where it is narrow: what is beside the name first (its namespace), then the name. */
-.uk-runway-lead > * { flex: none; min-width: 0; }
-.uk-runway-lead > .uk-ref { flex: 0 1 auto; }
-.uk-runway-lead > .uk-quiet { flex: 0 100 auto; overflow: hidden; text-overflow: ellipsis; }
-@container uk-runway (max-width: 560px) {
-  .uk-runway { grid-template-columns: minmax(0, 1fr); }
-  .uk-runway > span:first-child { display: none; }
-  .uk-runway-lead { height: auto; padding-top: 8px; }
-  .uk-runway-lane { height: 28px; }
-  /* The axis's ends alone: its ticks between would meet. */
-  .uk-runway-axis > span:not(:first-child):not(:last-child) { display: none; }
-}
-.uk-runway-lane { position: relative; height: 40px; margin-right: 56px; }
-.uk-runway-lane::before { content: ''; position: absolute; left: var(--now); top: 0; bottom: 0; width: 1px; background: var(--uk-border); }
-.uk-runway-bar { position: absolute; top: 50%; height: 8px; margin-top: -4px; border-radius: 4px; background: color-mix(in srgb, var(--uk-ok) 55%, transparent); }
-.uk-runway-bar[data-level='warn'] { background: color-mix(in srgb, var(--uk-warn) 65%, transparent); }
-.uk-runway-bar[data-level='error'] { background: color-mix(in srgb, var(--uk-error) 65%, transparent); }
-.uk-runway-said { position: absolute; top: 50%; transform: translateY(-50%); padding-left: 10px; line-height: 1; color: var(--uk-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.uk-runway-said[data-level='warn'] { color: var(--uk-warn); }
-.uk-runway-said[data-level='error'] { color: var(--uk-error); }
 /* What was asked against what is (Compare): a row each, its label (a check; a cross, the row tinted, where they differ). */
 .uk-compare { width: calc(100% + 16px); margin: 0 -8px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .uk-compare th, .uk-compare td { padding: 10px 8px; text-align: left; vertical-align: top; font-weight: inherit; }
@@ -457,6 +431,8 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-table-row .uk-line > .uk-quiet { flex-shrink: 1000; }
 .uk-table-row .uk-line > .uk-badge { flex: none; }
 .uk-line > .uk-badge { align-self: baseline; }
+/* A mark alone in a line (a state's icon, its words in its tip): by the line's middle, not its text's baseline. */
+.uk-line > .uk-tip-at:has(> .uk-status[role='img']), .uk-line > .uk-status[role='img'] { align-self: center; display: flex; }
 /* Some badges (ports), some refs (what a pod uses): side by side, wrapping. */
 .uk-badges { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .uk-refs { display: flex; flex-wrap: wrap; gap: 4px 16px; }

@@ -4,7 +4,8 @@
  * useGet, useFields), the page
  * (where it is, going elsewhere, telling the user: usePage, usePageProps,
  * useNotify; the resource opened over it: useOpened), a kind's table wherever it is wanted
- * (KindTable: the kind.table slot's), the user's changes (UserProvider,
+ * (KindTable: the kind.table slot's), a table of no one kind set out as the
+ * user sets it (useTableView), the user's changes (UserProvider,
  * useUser: kept by the page), and
  * fill() typed by the dashboard's slots (overweave's, re-exported with
  * <Slot> and <Wrapped>).
@@ -31,6 +32,6 @@ export {
 export { ObjectRef } from './refs.tsx';
 export { useSay } from './say.ts';
 export { StatusOf, statusFormat } from './status.tsx';
-export { KindTable } from './table.ts';
+export { KindTable, useTableView } from './table.ts';
 export { tipField } from './tips.ts';
 export { UserProvider, useUser } from './user.ts';

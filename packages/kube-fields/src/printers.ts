@@ -75,6 +75,12 @@ export const PRINTERS = define({
     type: 'string',
     value: { cel: "size(self.?spec.?tls.orValue([])) > 0 ? '80, 443' : '80'" },
   },
+  // A TLS entry with no hosts: for every host (the controller's default, as the API says).
+  'ingresses.v1.networking.k8s.io.tls-any-host': {
+    kinds: ['ingresses.v1.networking.k8s.io'],
+    type: 'bool',
+    value: { cel: 'self.?spec.?tls.orValue([]).exists(t, size(t.?hosts.orValue([])) == 0)' },
+  },
   'serviceaccounts.v1.secrets': { kinds: ['serviceaccounts.v1'], type: 'number', value: { cel: 'size(self.?secrets.orValue([]))' } },
   'horizontalpodautoscalers.v2.autoscaling.targets': { kinds: ['horizontalpodautoscalers.v2.autoscaling'], type: 'string', many: true, value: { cel: TARGETS } },
   'resourcequotas.v1.request': { kinds: ['resourcequotas.v1'], type: 'string', many: true, value: { cel: used(false) } },

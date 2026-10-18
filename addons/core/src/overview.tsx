@@ -1,8 +1,8 @@
 import type { StatusAnswer } from '@overkube/gateway/protocol';
 import { type KindInfo, kinds } from '@overkube/kube-types';
 import { type CountResult, canonical, type Item, type Result, type Value, type Where } from '@overkube/query';
-import { humanDuration, KindView, type KubeContributor, kindPath, kindRef, lookOf, openIn, type PageProps, type Say, StatusLook, slots, TableView } from '@overkube/sdk';
-import { fill, StatusOf, useAddons, useCluster, useCount, useGet, useList, usePage, useSay, useUser } from '@overkube/sdk/preact';
+import { humanDuration, KindView, type KubeContributor, kindPath, kindRef, lookOf, openIn, type PageProps, type Say, StatusLook, slots } from '@overkube/sdk';
+import { fill, StatusOf, useAddons, useCluster, useCount, useGet, useList, usePage, useSay, useTableView, useUser } from '@overkube/sdk/preact';
 import {
   Badge,
   Board,
@@ -25,7 +25,6 @@ import {
   Status,
   Table,
   type TableColumn,
-  type TableSort,
   Tile,
   Tiles,
   type Tone,
@@ -380,11 +379,6 @@ export function Unhealthy({ chosen }: { chosen: Chosen }) {
     // Not a trouble: on its way (ContainerCreating), going (Terminating); not known (a node's Unknown: lost), one.
     .filter((p) => p.tone !== 'progress' && p.tone !== 'gone' && !WELL.has(p.tone))
     .sort((a, b) => RANK[a.tone] - RANK[b.tone] || (b.since ?? '').localeCompare(a.since ?? ''));
-  // As the user sets it out, kept (its own TableView, patched): a column's width, the columns' order, a sort (none: the worst first).
-  const user = useUser();
-  const view = useDefinition(TableView, UNHEALTHY_VIEW)?.spec ?? {};
-  const order = view.columns ?? [];
-  const sort: TableSort | undefined = view.sort ? { id: view.sort.column, desc: view.sort.descending ?? false } : undefined;
   const columns: TableColumn<Problem>[] = [
     { id: 'name', header: say(t.name), width: 'minmax(160px, 1.4fr)', sortable: true, cell: (p) => <ObjectName kind={p.kind} name={p.name} namespace={p.namespace} /> },
     { id: 'kind', header: say(t.kind), width: '100px', sortable: true, cell: (p) => <Badge>{p.kind.kind}</Badge> },
@@ -400,10 +394,10 @@ export function Unhealthy({ chosen }: { chosen: Chosen }) {
     status: (p) => p.state,
     age: (p) => p.since ?? '',
   };
+  // As the user sets it out, kept (its own TableView): a column's width, the columns' order, a sort (none: the worst first).
+  const table = useTableView(UNHEALTHY_VIEW, columns);
+  const sort = table.sort;
   const sorted = sort && by[sort.id] ? [...problems].sort((a, b) => (sort.desc ? -1 : 1) * by[sort.id](a).localeCompare(by[sort.id](b))) : problems;
-  const placed = [...order.flatMap((id) => columns.filter((c) => c.id === id)), ...columns.filter((c) => !order.includes(c.id))].map((c) =>
-    view.widths?.[c.id] ? { ...c, width: `${view.widths[c.id]}px` } : c,
-  );
   return (
     <Panel header={<PanelHead title={say(t.title)} {...(loading ? {} : { count })} />}>
       {!loading && <Refusals answers={refusals} />}
@@ -423,11 +417,7 @@ export function Unhealthy({ chosen }: { chosen: Chosen }) {
           height="none"
           rows={sorted.slice(0, SHOWN)}
           rowKey={(p) => `${p.kind.id}/${p.namespace ?? ''}/${p.name}`}
-          columns={placed}
-          {...(sort ? { sort } : {})}
-          onSort={(s) => user.patch('TableView', UNHEALTHY_VIEW, { sort: { column: s.id, descending: s.desc ?? false } })}
-          onResize={(id, width) => user.patch('TableView', UNHEALTHY_VIEW, { widths: { [id]: width === undefined ? undefined : Number.parseFloat(width) } })}
-          onReorder={(ids) => user.patch('TableView', UNHEALTHY_VIEW, { columns: ids })}
+          {...table}
           onRowClick={(p) => page.navigate(openIn('/', p.kind, { metadata: { name: p.name, ...(p.namespace ? { namespace: p.namespace } : {}) } }))}
         />
       )}

@@ -116,7 +116,8 @@ export const T = {
   },
   overview: {
     title: t('cert-manager.overview.title', 'Certificates'),
-    now: t('cert-manager.overview.now', 'now'),
+    certificate: t('cert-manager.overview.certificate', 'Certificate'),
+    namespace: t('cert-manager.overview.namespace', 'Namespace'),
   },
   actions: {
     renew: t('cert-manager.action.renew', 'Renew'),

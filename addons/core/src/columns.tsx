@@ -1,7 +1,7 @@
 import { type KindInfo, kinds } from '@overkube/kube-types';
 import type { FieldCatalog, Value } from '@overkube/query';
-import { type CellValue, Column, type ColumnSpec, closeIn, column, humanDuration, type KubeContributor, kindRef, openIn, takes } from '@overkube/sdk';
-import { StatusOf, statusFormat, useFields, usePage, useSay } from '@overkube/sdk/preact';
+import { type CellValue, Column, type ColumnContext, type ColumnSpec, closeIn, column, covers, humanDuration, type KubeContributor, kindRef, openIn, takes } from '@overkube/sdk';
+import { ObjectRef, StatusOf, statusFormat, useFields, usePage, useSay } from '@overkube/sdk/preact';
 import { Chips, Ratio, Status, Tip } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
@@ -67,6 +67,21 @@ const serviceFormat = ([namespace, name]: readonly CellValue[]) => (one(name) ? 
 
 /** A cron job's history limits, its finished jobs kept (successful / failed; none said: 3 / 1, the API's). */
 const historyFormat = ([ok, failed]: readonly CellValue[]) => `${one(ok) ?? 3} / ${one(failed) ?? 1}`;
+
+/** An Ingress's TLS: its Secrets (links); a host of its rules no entry covers (an entry of no hosts covers every one), warned (which, in its tip); none: "—". */
+const tlsFormat = ([secrets, tlsHosts, hosts, namespace, anyHost]: readonly CellValue[], { say }: ColumnContext) => {
+  const names = [...new Set(all([secrets]))];
+  if (!names.length) return EMPTY;
+  const bare = one(anyHost) === true ? [] : [...new Set(all([hosts]).filter((h) => !all([tlsHosts]).some((t) => covers(t, h))))];
+  return (
+    <span class="uk-line">
+      {names.map((n) => (
+        <ObjectRef key={n} kind="v1/Secret" name={n} namespace={String(one(namespace) ?? '')} quiet />
+      ))}
+      {bare.length > 0 && <Status tone="warn" icon="link-off" title={say(T.columns.notCovered, { hosts: bare.join(', ') })} />}
+    </span>
+  );
+};
 
 /** A workload's pod template's columns, as kubectl's -o wide has them: its containers, images, selector (those asked for). */
 const templated = (kind: KindInfo, which: readonly ('containers' | 'images' | 'selector')[]): [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] =>
@@ -199,6 +214,16 @@ const OWN: [KindInfo, string, Omit<ColumnSpec, 'target' | 'header'>][] = [
   [networking.v1.Ingress, 'Hosts', { sort: '.spec.rules[*].host' }],
   [networking.v1.Ingress, 'Address', { sort: '.status.loadBalancer.ingress[*].ip' }],
   [networking.v1.Ingress, 'Ports', { sort: 'ingresses.v1.networking.k8s.io.ports' }],
+  // Not kubectl's: what its Secrets are, whether it covers its hosts.
+  [
+    networking.v1.Ingress,
+    'TLS',
+    {
+      values: ['.spec.tls[*].secretName', '.spec.tls[*].hosts[*]', '.spec.rules[*].host', 'core.namespace', 'ingresses.v1.networking.k8s.io.tls-any-host'],
+      format: tlsFormat,
+      width: 220,
+    },
+  ],
   [networking.v1.NetworkPolicy, 'Pod-Selector', { sort: 'networkpolicies.v1.networking.k8s.io.pods' }],
   [core.v1.ConfigMap, 'Data', { sort: 'configmaps.v1.keys' }],
   [core.v1.ConfigMap, 'Immutable', { sort: '.immutable', wide: true }],

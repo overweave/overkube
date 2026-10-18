@@ -1,6 +1,6 @@
 import { CSR_PEM, EC_PEM as EC, RSA_PEM as RSA } from '@overkube/testkit';
 import { describe, expect, it } from 'vitest';
-import { ipOf, parseCertificate, parseRequest } from './x509.ts';
+import { covers, ipOf, parseCertificate, parseRequest } from './x509.ts';
 
 describe('a certificate', () => {
   it('is read: valid from and till, whom it is of and by (the last part first), its names, its key, its serial', () => {
@@ -141,5 +141,16 @@ describe('an IP address', () => {
       '::',
     ]);
     expect(['10.0.0.256', 'a.test', '1::2::3', '1:2:3:4:5:6:7:8:9', '1.2.3.4::'].map(ipOf)).toEqual([undefined, undefined, undefined, undefined, undefined]);
+  });
+});
+
+describe('a TLS host', () => {
+  it('covers its own (case aside), and a wildcard its one label', () => {
+    expect([covers('Shop.test', 'shop.test'), covers('*.shop.test', 'www.shop.test'), covers('*.shop.test', 'a.b.shop.test'), covers('*.shop.test', 'shop.test')]).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
   });
 });

@@ -1,7 +1,21 @@
 import { type Cel, type Layer, layer, prepareCatalog } from '@overkube/cel';
 import { BUILT_IN, baseFields, COMMON, type CrdColumn, type CrdLike } from '@overkube/kube-fields';
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
-import { type Capabilities, type FieldCatalog, type FieldName, type Fields, fieldsOf, isJoin, isPath, type Join, type KindRef, keyOf, kindRef, valuesOf } from '@overkube/query';
+import {
+  type Capabilities,
+  type FieldCatalog,
+  type FieldName,
+  type Fields,
+  fieldsOf,
+  isJoin,
+  isPath,
+  type Join,
+  type JoinReduce,
+  type KindRef,
+  keyOf,
+  kindRef,
+  valuesOf,
+} from '@overkube/query';
 
 /*
  * The fields a kind's objects are asked by: every object's, the built-in
@@ -67,12 +81,12 @@ interface Index {
 
 const indexKey = (namespace: string, value: unknown) => `${namespace}\u0000${String(value)}`;
 
-/** How a keyed join's values are said as one: the greatest number, all of them added, how many objects there are. */
-function reduced(how: 'max' | 'sum' | 'count', objects: number, values: readonly unknown[]): unknown {
+/** How a keyed join's values are said as one: the least number (a time: the soonest), the greatest, all of them added, how many objects there are. */
+function reduced(how: JoinReduce, objects: number, values: readonly unknown[]): unknown {
   if (how === 'count') return objects;
   const numbers = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
   if (!numbers.length) return undefined;
-  return how === 'max' ? Math.max(...numbers) : numbers.reduce((a, b) => a + b, 0);
+  return how === 'min' ? Math.min(...numbers) : how === 'max' ? Math.max(...numbers) : numbers.reduce((a, b) => a + b, 0);
 }
 
 /** The most bindings kept of a kind's fields (the plans reading it, each its way to the other kinds). */

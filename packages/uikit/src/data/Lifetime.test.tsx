@@ -2,7 +2,6 @@ import { cleanup, render } from '@testing-library/preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Compare } from './Compare';
 import { Lifetime, LifetimeCell } from './Lifetime';
-import { Runway } from './Runway';
 import { Step, Steps } from './Steps';
 
 /* The kit's ways of telling how long something holds and how it goes: their parts as said, their tones. */
@@ -41,8 +40,8 @@ describe('Lifetime', () => {
   });
 });
 
-describe('Steps, Runway, Compare', () => {
-  it('say each step’s state; a row’s bar from now to its end (ended: back), none where its end is not known; a row that differs', () => {
+describe('Steps, Compare', () => {
+  it('say each step’s state; a row that differs', () => {
     const steps = render(
       <Steps>
         <Step state="done" title="a" />
@@ -52,21 +51,6 @@ describe('Steps, Runway, Compare', () => {
       </Steps>,
     ).container;
     expect([...steps.querySelectorAll('.uk-step')].map((s) => s.getAttribute('data-state'))).toEqual(['done', 'stuck']);
-    cleanup();
-    const runway = render(
-      <Runway
-        from={-50}
-        to={50}
-        ticks={[]}
-        rows={[
-          { key: 'a', lead: 'a', at: 25, said: '25' },
-          { key: 'b', lead: 'b', at: -25, said: 'ended', level: 'error' },
-          { key: 'c', lead: 'c', said: 'issuing' },
-        ]}
-      />,
-    ).container;
-    const bars = [...runway.querySelectorAll('.uk-runway-bar')] as HTMLElement[];
-    expect([bars.length, bars[0].style.left, bars[1].style.left]).toEqual([2, '50%', '25%']);
     cleanup();
     const compare = render(
       <Compare

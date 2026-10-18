@@ -635,7 +635,15 @@ describe('a kind’s table', () => {
         status: { currentNumberScheduled: 3, desiredNumberScheduled: 3, numberMisscheduled: 0, numberReady: 3 },
       } as never),
     );
-    w.cluster.add(Ingress, make(Ingress, { metadata: { name: 'i', namespace: 'shop' }, spec: { tls: [{ secretName: 'x' }] } }));
+    w.cluster.add(
+      Ingress,
+      make(Ingress, {
+        metadata: { name: 'i', namespace: 'shop' },
+        spec: { tls: [{ secretName: 'x', hosts: ['*.shop.test'] }], rules: [{ host: 'www.shop.test' }, { host: 'a.b.shop.test' }] },
+      } as never),
+    );
+    // An entry of no hosts: every host covered.
+    w.cluster.add(Ingress, make(Ingress, { metadata: { name: 'j', namespace: 'shop' }, spec: { tls: [{ secretName: 'y' }], rules: [{ host: 'a.test' }] } } as never));
     w.cluster.add(PersistentVolume, make(PersistentVolume, { metadata: { name: 'pv' }, spec: {}, status: { phase: 'Failed', reason: 'ProvisioningFailed' } } as never));
     w.cluster.add(ResourceQuota, make(ResourceQuota, { metadata: { name: 'q', namespace: 'shop' }, status: { hard: { pods: '50', 'limits.cpu': '4' }, used: { pods: '3' } } }));
     w.cluster.add(ServiceAccount, make(ServiceAccount, { metadata: { name: 'sa', namespace: 'shop' }, secrets: [{ name: 't' }] }));
@@ -660,7 +668,10 @@ describe('a kind’s table', () => {
     page.navigate('/k/daemonsets.v1.apps');
     expect([page.column('Current'), page.column('Node Selector')]).toEqual([['3'], ['os=linux']]);
     page.navigate('/k/ingresses.v1.networking.k8s.io');
-    expect(page.column('Ports')).toEqual(['80, 443']);
+    expect(page.column('Ports')).toEqual(['80, 443', '80, 443']);
+    // Its TLS: its Secrets; a host its wildcard does not cover (two labels), warned — an entry of no hosts, none.
+    expect(page.column('TLS')).toEqual(['x', 'y']);
+    expect([...document.querySelectorAll('[role="cell"] .uk-status[data-tone="warn"]')].map((e) => e.getAttribute('aria-label'))).toEqual(['Not covered by TLS: a.b.shop.test']);
     page.navigate('/k/persistentvolumes.v1');
     expect(page.column('Reason')).toEqual(['ProvisioningFailed']);
     page.navigate('/k/resourcequotas.v1');

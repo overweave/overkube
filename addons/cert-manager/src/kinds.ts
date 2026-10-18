@@ -7,7 +7,9 @@ import type { FieldSpec } from '@overkube/sdk';
  * Certificate's, a CertificateRequest's, an issuer's state in
  * cert-manager's own words (its conditions' types and reasons, as kubectl
  * describe says them), a Certificate's times, what a request or an order
- * is of (cert-manager's annotations), what a Secret is managed by.
+ * is of (cert-manager's annotations), what a Secret is managed by; and an
+ * Ingress's: its certificates' soonest end (joined: those writing its TLS
+ * Secrets).
  */
 
 const kind = (group: string, name: string, plural: string, namespaced: boolean): KindInfo => ({
@@ -71,6 +73,8 @@ export const F = {
   issuerType: 'cert-manager.issuers.type',
   /** The Certificate a Secret is managed by (cert-manager's annotation; none: ''). */
   managedBy: 'cert-manager.secrets.certificate',
+  /** An Ingress's certificates' soonest end (of those writing its TLS Secrets; none: none). */
+  ingressNotAfter: 'cert-manager.ingresses.not-after',
 } as const;
 
 const certificates = [REF.certificates];
@@ -138,4 +142,9 @@ export const FIELDS: Record<string, FieldSpec> = {
     },
   },
   [F.managedBy]: { kinds: ['secrets.v1'], type: 'string', value: { cel: annotation('certificate-name') } },
+  [F.ingressNotAfter]: {
+    kinds: ['ingresses.v1.networking.k8s.io'],
+    type: 'time',
+    value: { from: REF.certificates, field: F.notAfter, by: '.spec.tls[*].secretName', to: F.secret, reduce: 'min' },
+  },
 };

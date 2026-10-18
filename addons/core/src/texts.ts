@@ -23,6 +23,7 @@ export const T = {
     age: t('core.column.age', 'Age'),
     status: t('core.column.status', 'Status'),
     every: t('core.column.every', 'every {period}'),
+    notCovered: t('core.column.not-covered', 'Not covered by TLS: {hosts}'),
     inTime: t('core.column.in-time', 'in {time}'),
     controllerZone: t('core.column.controller-zone', "kube-controller-manager's time zone (computed as UTC)"),
     labels: t('core.column.labels', 'Labels'),
