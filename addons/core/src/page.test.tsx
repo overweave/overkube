@@ -1228,13 +1228,13 @@ describe('an object’s view', () => {
       }),
     );
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
-    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'Shell', 'Logs', 'YAML'], 'core.overview']);
+    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'Shell', 'Logs', 'Map', 'YAML'], 'core.overview']);
     page.act(() => tabs()[2]?.click());
     expect([shown(), opened().querySelector('.shell')?.textContent]).toEqual(['shell.shell', 'web said hello']);
-    page.act(() => tabs()[4]?.click());
+    page.act(() => tabs()[5]?.click());
     expect([shown(), opened().querySelector('[role="tabpanel"]')?.textContent?.includes('name: web')]).toEqual(['core.yaml', true]);
     page.navigate('/k/deployments.v1.apps?open=deployments.v1.apps/shop/web');
-    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'Logs', 'YAML'], 'core.overview']);
+    expect([tabs().map((t) => t.textContent), shown()]).toEqual([['Overview', 'Events', 'Logs', 'Map', 'YAML'], 'core.overview']);
   });
 
   it('shows a tab only for the objects it is for (its when), one whose when fails not at all — said to its owner', async () => {
@@ -1252,9 +1252,9 @@ describe('an object’s view', () => {
       }),
     );
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
-    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'Web', 'Logs', 'YAML']);
+    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'Web', 'Logs', 'Map', 'YAML']);
     page.navigate('/k/pods.v1?open=pods.v1/shop/db');
-    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'Logs', 'YAML']);
+    expect(tabs().map((t) => t.textContent)).toEqual(['Overview', 'Events', 'Logs', 'Map', 'YAML']);
     await expect.poll(() => page.failures.map((f) => `${f.definition.kind}/${f.definition.name}`)).toContain('ResourceTab/more.broken');
   });
 
@@ -1272,7 +1272,7 @@ describe('an object’s view', () => {
 
   it('draws no tabs when there is one (the user hid the rest), and none when there are none', () => {
     const w = world('web');
-    for (const tab of ['core.events', 'core.yaml', 'core.logs']) w.user.patch('ResourceTab', tab, { hidden: true });
+    for (const tab of ['core.events', 'core.yaml', 'core.logs', 'core.map']) w.user.patch('ResourceTab', tab, { hidden: true });
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
     expect([tabs().length, shown()]).toEqual([0, 'core.overview']);
     page.act(() => void w.user.patch('ResourceTab', 'core.overview', { hidden: true }));
@@ -1415,7 +1415,7 @@ describe('the navigation', () => {
       '/',
       ['Unhealthy', 'Events', 'Cluster', 'Capacity', 'Nodes', 'Namespaces'],
     ]);
-    expect(page.links('Kinds')).toEqual(['Overview', 'Pods', 'Deployments', 'Services', 'ConfigMaps', 'Nodes', 'Namespaces']);
+    expect(page.links('Kinds')).toEqual(['Overview', 'Pods', 'Map', 'Deployments', 'Services', 'ConfigMaps', 'Nodes', 'Namespaces']);
     page.navigate('/k/events.v1');
     expect(page.links('Kinds').at(-1)).toBe('Events');
     expect(page.container.querySelector('.uk-rail')).toBeNull();
@@ -2088,9 +2088,10 @@ describe('what the one signed in may not have', () => {
   it('is not there: a kind listed nowhere, a tab it needs — hidden by the access layer, over the user’s word', async () => {
     const w = viewer();
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
-    await vi.waitFor(() => expect(page.links('Kinds')).toEqual(['Overview', 'Pods', 'Deployments', 'Nodes', 'Namespaces']));
+    await vi.waitFor(() => expect(page.links('Kinds')).toEqual(['Overview', 'Pods', 'Map', 'Deployments', 'Nodes', 'Namespaces']));
     expect(tabs()).toEqual([
       ['Overview', false],
+      ['Map', false],
       ['YAML', false],
     ]);
     // Who hid it: the access layer — what the user says under it changes nothing.
@@ -2100,7 +2101,7 @@ describe('what the one signed in may not have', () => {
     // Allowed again (rules said anew): there again.
     page.act(() => w.cluster.rules(null));
     await vi.waitFor(() => expect(page.links('Kinds')).toContain('Services'));
-    expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Events', 'Logs', 'YAML']);
+    expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Events', 'Logs', 'Map', 'YAML']);
   });
 
   it('allows a namespace’s own: a tab there, not elsewhere', async () => {
@@ -2111,9 +2112,9 @@ describe('what the one signed in may not have', () => {
       namespaces: { dev: [{ verbs: ['get'], apiGroups: [''], resources: ['pods/log'] }] },
     });
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/dev/api');
-    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Logs', 'YAML']));
+    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Logs', 'Map', 'YAML']));
     page.navigate('/k/pods.v1?open=pods.v1/shop/web');
-    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'YAML']));
+    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Map', 'YAML']));
   });
 
   it('takes a rule of one object for that object alone: its log there, not on another', async () => {
@@ -2126,9 +2127,9 @@ describe('what the one signed in may not have', () => {
       ],
     });
     const page = renderPage(w, '/k/pods.v1?open=pods.v1/shop/web');
-    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Logs', 'YAML']));
+    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Logs', 'Map', 'YAML']));
     page.navigate('/k/pods.v1?open=pods.v1/shop/api');
-    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'YAML']));
+    await vi.waitFor(() => expect(tabs().map(([t]) => t)).toEqual(['Overview', 'Map', 'YAML']));
   });
 
   it('may not list the namespaces: those one uses added by name, kept as the user’s — what is had there shown, the rest hidden', async () => {
@@ -2152,7 +2153,7 @@ describe('what the one signed in may not have', () => {
     await vi.waitFor(() => expect(w.user.saved().patches).toContainEqual({ kind: 'Namespaces', name: 'default', fields: { known: { shop: true } } }));
     expect(picker().textContent).toContain('shop');
     // What may be had in it, and nothing else, in the navigation.
-    await vi.waitFor(() => expect(page.links('Kinds')).toEqual(['Overview', 'Pods']));
+    await vi.waitFor(() => expect(page.links('Kinds')).toEqual(['Overview', 'Pods', 'Map']));
   });
 
   it('marked (debugging): nothing hidden, what would be marked', async () => {
@@ -2163,6 +2164,7 @@ describe('what the one signed in may not have', () => {
         ['Overview', false],
         ['Events', true],
         ['Logs', true],
+        ['Map', false],
         ['YAML', false],
       ]),
     );

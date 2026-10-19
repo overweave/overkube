@@ -113,8 +113,7 @@ function ReleasesPage() {
 
 export function addPage(c: KubeContributor): void {
   c.add('TableView', RELEASES_VIEW, {}, { fallback: true });
-  // Under Delivery (how what runs got there: Helm here, a GitOps tool's beside it), kept at hand.
-  c.add('Category', 'delivery', { title: T.category, icon: 'rocket', order: 45 }, { fallback: true });
+  // Under Delivery (the core's: how what runs got there, Flux's beside it), kept at hand.
   c.add('Page', 'helm.releases', { path: PATH, title: T.page.title, icon: 'helm', order: 10, pinned: true, category: 'delivery', needs: [{ verb: 'list', resource: 'secrets' }] });
   c.add('Fill', 'helm.page.releases', fill(slots.page('helm.releases'), { render: () => <ReleasesPage /> }));
   c.add('Slot', slots.page('helm.releases').name, {}, { fallback: true });

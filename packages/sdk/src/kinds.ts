@@ -1,6 +1,6 @@
 import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { checkFieldDef, type FieldName, type FieldType, type Join, type Path, type Unit, type Value, type Where } from '@overkube/query';
-import { TOKENS, TONES, type Tokens, type Tone } from '@overkube/uikit';
+import { type MapGraph, TOKENS, TONES, type Tokens, type Tone } from '@overkube/uikit';
 import { defineKind, type Problem } from '@overweave/core';
 import { uiKinds } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
@@ -296,6 +296,37 @@ export const NameMark = defineKind<NameMarkSpec>()('NameMark', {
   validate: fields({ target: [target, 'notATarget'], field: [text, 'notAField'], render: [fn, 'notAFunction'], detail: [fn, 'notAFunction'], order: [finite, 'notANumber'] }),
   patchRights: { target: behaviour, field: behaviour, render: behaviour, detail: behaviour, order: configure },
 });
+
+/**
+ * An object's map, of these kinds' objects: its scope, its kind's — a
+ * workload's what it is linked to; a node's, its pods; a Flux source's,
+ * what applies it. Its view's Map tab (the core's), drawn by the kit's
+ * MapView; its graph made by its hook (use) while it is shown — a card
+ * each object (mapCard: its kind's ref, namespace, name), so a card opens
+ * its object, the map centred on it its own. The first in order of those
+ * that take its kind.
+ */
+export interface MapScopeSpec {
+  target: Target;
+  /** A hook, called while the map is shown: its graph (none yet: on its way). */
+  use: (props: ResourceProps) => MapGraph | undefined;
+  order?: number;
+}
+
+export const MapScope = defineKind<MapScopeSpec>()('MapScope', {
+  required: ['target', 'use'],
+  createRight: behaviour,
+  validate: fields({ target: [target, 'notATarget'], use: [fn, 'notAFunction'], order: [finite, 'notANumber'] }),
+  patchRights: { target: behaviour, use: behaviour, order: configure },
+});
+
+/** A map's card id of an object: its kind's ref, namespace ('' of none), name. */
+export const mapCard = (ref: string, namespace: string | undefined, name: string) => `${ref}|${namespace ?? ''}|${name}`;
+/** What a map's card is of (mapCard's): its kind's ref, namespace (none: undefined), name. */
+export function mapCardOf(id: string): { ref: string; namespace: string | undefined; name: string } {
+  const [ref = '', namespace = '', name = ''] = id.split('|');
+  return { ref, namespace: namespace || undefined, name };
+}
 
 /**
  * A field addons ask by, beside the kinds' own (@overkube/kube-fields):
@@ -703,6 +734,7 @@ export const kubeOwnKinds = [
   Category,
   Column,
   NameMark,
+  MapScope,
   StatusLook,
   Field,
   TableView,

@@ -1272,5 +1272,110 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-yaml [data-k='word'] { color: var(--uk-accent); }
 .uk-yaml [data-k='mark'] { color: var(--uk-muted); }
 .uk-yaml [data-k='comment'] { color: var(--uk-muted); font-style: italic; }
+/* A map (MapView): a plane of cards and links, panned and zoomed — dotted, its cards the panel's, their ports pips on their sides with their words. */
+.uk-map { --uk-map-ease: cubic-bezier(.2, .8, .2, 1); position: relative; width: 100%; height: 100%; min-height: 360px; overflow: hidden; border-radius: var(--uk-radius); background-color: color-mix(in srgb, var(--uk-text) 2%, transparent); background-image: radial-gradient(color-mix(in srgb, var(--uk-text) 9%, transparent) 1px, transparent 1px); background-size: 18px 18px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.uk-map:active { cursor: grabbing; }
+/* Its tints: a link's, its ports' pips, its chips' (data-tint, of its kind) — of the theme's states, mixed. */
+.uk-map [data-tint='green'] { --uk-map-c: var(--uk-ok); }
+.uk-map [data-tint='blue'] { --uk-map-c: var(--uk-info); }
+.uk-map [data-tint='teal'] { --uk-map-c: color-mix(in srgb, var(--uk-ok) 50%, var(--uk-info)); }
+.uk-map [data-tint='violet'] { --uk-map-c: color-mix(in srgb, var(--uk-info) 50%, var(--uk-error)); }
+.uk-map [data-tint='amber'] { --uk-map-c: var(--uk-warn); }
+.uk-map [data-tint='orange'] { --uk-map-c: color-mix(in srgb, var(--uk-warn) 50%, var(--uk-error)); }
+.uk-map [data-tint='pink'] { --uk-map-c: color-mix(in srgb, var(--uk-error) 70%, var(--uk-info)); }
+.uk-map [data-tint='slate'] { --uk-map-c: color-mix(in srgb, var(--uk-muted) 70%, var(--uk-info)); }
+.uk-map [data-tint='gray'] { --uk-map-c: var(--uk-muted); }
+.uk-map-plane { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
+/* Before its first layout nothing shows: its cards are being measured. */
+.uk-map:not(.is-laid) .uk-map-plane { visibility: hidden; }
+.uk-map-plane.is-gliding { transition: transform .35s var(--uk-map-ease); }
+.uk-map-links { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
+.uk-map-link { fill: none; stroke: var(--uk-map-c, color-mix(in srgb, var(--uk-text) 35%, transparent)); transition: opacity .2s, stroke-width .2s; }
+/* A link comes drawn in, from its port to the other (its path's length 1). */
+.uk-map-links .uk-map-link { stroke-dasharray: 1; stroke-dashoffset: 1; animation: uk-map-draw .7s var(--uk-map-ease) forwards; }
+@keyframes uk-map-draw { to { stroke-dashoffset: 0; } }
+/* Dashed: a way that is not there. */
+.uk-map-links .uk-map-link.is-missing { stroke-dasharray: .02 .016; stroke-dashoffset: 0; animation: uk-fade-in .5s ease-out backwards; opacity: .75; }
+.uk-map-link.is-lit { stroke-width: 2.4 !important; }
+.uk-map-link.is-dim { opacity: .15; }
+/* A glow running along a link, its start to its end, in its tint. */
+.uk-map-flow { fill: none; stroke: var(--uk-map-c); stroke-width: 4; stroke-linecap: round; stroke-dasharray: .08 1.2; stroke-dashoffset: .08; opacity: .45; filter: blur(1.5px); animation: uk-map-run 2.6s linear infinite backwards; transition: opacity .2s; }
+.uk-map-flow.is-dim { opacity: .05; }
+.uk-map-flow.is-lit { opacity: .8; }
+@keyframes uk-map-run { from { stroke-dashoffset: .08; } to { stroke-dashoffset: -1.1; } }
+/* A card: placed by the layout, gliding to a new place when it changes (not at first). */
+.uk-map-card { position: absolute; top: 0; left: 0; min-width: 160px; max-width: 260px; padding: 7px 12px 9px; border: 1px solid color-mix(in srgb, var(--uk-text) 16%, transparent); border-radius: var(--uk-radius); background: var(--uk-panel); box-shadow: 0 2px 8px color-mix(in srgb, var(--uk-shadow) 60%, transparent); font-size: 12px; line-height: 1.4; cursor: pointer; transition: transform .35s var(--uk-map-ease), opacity .2s, border-color .15s; }
+.uk-map:not(.is-settled) .uk-map-card { transition: none; }
+.uk-map-card:hover { border-color: color-mix(in srgb, var(--uk-text) 35%, transparent); }
+.uk-map-card.is-main { min-width: 190px; border-color: color-mix(in srgb, var(--uk-text) 28%, transparent); }
+.uk-map-card.is-main .uk-map-card-title { font-size: 14px; }
+.uk-map-card.is-dim { opacity: .35; }
+/* Not of its scope: faint. Not there: dashed. Not as it is meant to be: dashed in the warning's colour. */
+.uk-map-card.is-external { background: transparent; box-shadow: none; opacity: .7; }
+.uk-map-card.is-missing { border-style: dashed; background: transparent; box-shadow: none; opacity: .6; }
+.uk-map-card.is-pending { border-style: dashed; border-color: color-mix(in srgb, var(--uk-warn) 75%, transparent); }
+.uk-map-card.is-chosen { border-color: var(--uk-accent); box-shadow: 0 0 0 1px var(--uk-accent), 0 4px 14px color-mix(in srgb, var(--uk-shadow) 70%, transparent); opacity: 1; }
+.uk-map-card-kind { display: flex; align-items: center; gap: 5px; height: 15px; min-width: 0; font-size: 10px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; color: var(--uk-muted); }
+.uk-map-card-kind > .uk-icon { flex: none; width: 11px; height: 11px; }
+.uk-map-card-kind > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uk-map-card-head { display: flex; align-items: center; gap: 6px; height: 20px; margin-top: 2px; min-width: 0; }
+.uk-map-card-head > :is(.uk-status, .uk-tip-at) { flex: none; display: flex; }
+.uk-map-card-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.uk-map-card-meta { display: flex; align-items: center; gap: 8px; margin-top: 3px; min-width: 0; font-size: 11px; color: var(--uk-muted); }
+.uk-map-card-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Opens what the card is (its own view): small, faint till pointed at. */
+.uk-map-card-open { all: unset; flex: none; display: grid; place-items: center; margin-left: auto; padding: 2px; border-radius: var(--uk-radius-sm); color: var(--uk-muted); opacity: 0; cursor: pointer; transition: opacity .15s, background .15s; }
+.uk-map-card-open > .uk-icon { width: 12px; height: 12px; }
+.uk-map-card:hover .uk-map-card-open { opacity: .8; }
+.uk-map-card-open:hover { opacity: 1; color: var(--uk-text); background: color-mix(in srgb, var(--uk-text) 10%, transparent); }
+.uk-map-card-open:focus-visible { opacity: 1; outline: 2px solid var(--uk-focus); }
+/* What a card gathers (a workload's pods): a dot each in its state. */
+.uk-map-dots { display: flex; flex-wrap: wrap; gap: 3px; margin-left: auto; max-width: 120px; }
+.uk-map-dots > .uk-tip-at { display: flex; }
+.uk-map-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--uk-muted); }
+.uk-map-dot[data-tone='ok'] { background: var(--uk-ok); }
+.uk-map-dot:is([data-tone='warn'], [data-tone='progress']) { background: var(--uk-warn); }
+.uk-map-dot[data-tone='error'] { background: var(--uk-error); }
+.uk-map-dot:is([data-tone='done'], [data-tone='gone'], [data-tone='waiting']) { background: color-mix(in srgb, var(--uk-muted) 45%, transparent); }
+/* A frame round some cards (a namespace…): its title above them, behind them. */
+.uk-map-frame { position: absolute; top: 0; left: 0; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--uk-text) 14%, transparent); border-radius: var(--uk-radius-lg); background: color-mix(in srgb, var(--uk-text) 2.5%, transparent); pointer-events: none; transition: transform .35s var(--uk-map-ease), width .35s var(--uk-map-ease), height .35s var(--uk-map-ease); }
+.uk-map:not(.is-settled) .uk-map-frame { transition: none; }
+.uk-map-frame.is-external { border-style: dashed; background: transparent; opacity: .7; }
+.uk-map-frame-title { position: absolute; top: 7px; left: 12px; display: flex; align-items: center; gap: 6px; max-width: calc(100% - 24px); font-size: 11px; color: var(--uk-muted); white-space: nowrap; overflow: hidden; }
+.uk-map-frame-title > .uk-icon { flex: none; width: 12px; height: 12px; }
+.uk-map-frame-title > b { color: var(--uk-text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+/* Its ports: in on the left, out on the right, each a pip at its edge with its words. */
+.uk-map-ports { display: flex; justify-content: space-between; gap: 14px; margin-top: 7px; }
+/* Ports without words: one pip a side, level with the card's name (7 + 15 + 2 + 10 from its top); where each meets, there too. */
+.uk-map-pip.is-pin { position: absolute; top: 29.5px; }
+.uk-map-pip.is-pin.is-in { left: -5px; }
+.uk-map-pip.is-pin.is-out { right: -5px; }
+.uk-map-pin-at { position: absolute; top: 34px; width: 0; height: 0; }
+.uk-map-ins, .uk-map-outs { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.uk-map-outs { align-items: flex-end; }
+.uk-map-port { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 10.5px; color: var(--uk-muted); }
+.uk-map-port.is-in { margin-left: -15px; }
+.uk-map-port.is-out { margin-right: -15px; }
+.uk-map-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 170px; padding: 1px 6px; border: 1px solid color-mix(in srgb, var(--uk-map-c) 45%, transparent); border-radius: var(--uk-radius-sm); background: color-mix(in srgb, var(--uk-map-c) 12%, transparent); color: var(--uk-text); }
+.uk-map-chip.has-sub { max-width: 240px; }
+.uk-map-chip > .uk-icon { flex: none; width: 11px; height: 11px; color: var(--uk-map-c); }
+.uk-map-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10.5px var(--uk-mono); }
+.uk-map-chip-sub { flex: none; font: 10px var(--uk-mono); color: var(--uk-muted); }
+.uk-map-pip { flex: none; width: 9px; height: 9px; box-sizing: border-box; border: 1.5px solid var(--uk-map-c, color-mix(in srgb, var(--uk-text) 45%, transparent)); border-radius: 50%; background: var(--uk-panel); }
+/* What its links mean, in a corner; its tools in the other. */
+.uk-map-legend { position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 4px 14px; max-width: calc(100% - 80px); padding: 6px 10px; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); background: color-mix(in srgb, var(--uk-panel) 88%, transparent); font-size: 11px; color: var(--uk-muted); pointer-events: none; }
+.uk-map-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.uk-map-tools { position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
+.uk-map-tool { all: unset; display: grid; place-items: center; width: 28px; height: 28px; box-sizing: border-box; border: 1px solid var(--uk-border); border-radius: var(--uk-radius-sm); background: var(--uk-panel); color: var(--uk-muted); cursor: pointer; }
+.uk-map-tool > .uk-icon { width: 14px; height: 14px; }
+.uk-map-tool:hover { color: var(--uk-text); }
+.uk-map-tool:focus-visible { outline: 2px solid var(--uk-focus); }
+/* A card's details, beside it: over the map, moving with it. */
+.uk-map-pv { position: absolute; top: 0; left: 0; z-index: 5; display: flex; flex-direction: column; width: 340px; max-height: calc(100% - 16px); border: 1px solid var(--uk-border); border-radius: var(--uk-radius-lg); background: var(--uk-panel); box-shadow: 0 12px 36px color-mix(in srgb, var(--uk-shadow) 80%, transparent); cursor: auto; user-select: text; -webkit-user-select: text; animation: uk-fade-in .18s var(--uk-map-ease) both; }
+.uk-map-pv-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px 14px; border-bottom: 1px solid var(--uk-border); }
+.uk-map-pv-head > .uk-map-tool { width: 24px; height: 24px; }
+.uk-map-pv-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.uk-map-pv-body { overflow: auto; padding: 8px 14px 14px; }
+@media (prefers-reduced-motion: reduce) { .uk-map-card, .uk-map-link, .uk-map-plane.is-gliding { transition: none; } .uk-map-links .uk-map-link { animation: none; stroke-dashoffset: 0; } .uk-map-flow { display: none; } }
 `)}
 `;

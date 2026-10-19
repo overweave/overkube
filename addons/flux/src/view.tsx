@@ -1,7 +1,8 @@
-import type { KindInfo } from '@overkube/kube-types';
+import type { KindInfo, KubeObject } from '@overkube/kube-types';
 import { forKinds, type KubeContributor, kindRef, type ResourceProps, section, slots } from '@overkube/sdk';
-import { fill, KindTable, ObjectRef, StatusOf, useList, useSay, useServedKinds } from '@overkube/sdk/preact';
+import { fill, KindTable, ObjectRef, StatusOf, useGet, useList, useSay, useServedKinds } from '@overkube/sdk/preact';
 import { Badge, Nothing, Notice, Section, Status, Table } from '@overkube/uikit';
+import { slotElement } from '@overweave/ui/preact';
 import { useEffect, useState } from 'preact/hooks';
 import { APPLIERS, byName, F, Kustomization, own, ref, SOURCES, STATE, sourceRefOf, USERS } from './kinds.ts';
 import { ago, FluxState, stateOf, text } from './state.tsx';
@@ -9,7 +10,8 @@ import { T } from './texts.ts';
 
 /*
  * A Flux object opened (the resource view, as any is): a Kustomization's,
- * a HelmRelease's source as it is now — its state, its artifact; failing,
+ * a HelmRelease's source as it is now — its state, its artifact, its own
+ * actions (Reconcile it: fetched now, what uses it applied anew); failing,
  * that its last artifact is still served (no newer revision applied till
  * it is fetched). A source's: what uses it, their own tables (those naming
  * it). A Kustomization's Inventory: each object it applied (Flux's ids:
@@ -26,6 +28,8 @@ function SourceOf({ object }: ResourceProps) {
       ? { kind: ref(k), scope: { namespaces: [namespace] }, where: { field: 'core.name', op: 'eq', value: r.name }, page: { limit: 1 }, select: [...STATE, F.artifact, F.fetched] }
       : undefined,
   );
+  // The source itself: its actions (Reconcile it — a fresh fetch, what uses it applied anew — Suspend…), as its own view has them.
+  const source = useGet<KubeObject>(k && r ? { kind: ref(k), namespace, name: r.name } : undefined).object;
   if (!r || !k) return null;
   const v = got.items[0]?.values ?? {};
   const state = stateOf(STATE.map((f) => v[f]));
@@ -38,6 +42,7 @@ function SourceOf({ object }: ResourceProps) {
           {got.items[0] && <FluxState {...state} />}
           {artifact && <span class="uk-mono uk-quiet">{artifact}</span>}
         </span>
+        {source && <div class="uk-line">{slotElement(slots.resource.view.footer, { kind: k, object: source })}</div>}
         {state.ready === 'False' && !state.suspended && (
           <Notice level="warn" icon="warning" title={`${r.kind} ${r.name}: ${state.reason}`}>
             <div class="uk-stack">

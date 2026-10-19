@@ -6,7 +6,6 @@ import { t } from '@overkube/sdk';
  * status, helm history and helm get say them.
  */
 export const T = {
-  category: t('helm.category', 'Delivery'),
   page: {
     title: t('helm.page.title', 'Helm'),
     heading: t('helm.page.heading', 'Helm releases'),

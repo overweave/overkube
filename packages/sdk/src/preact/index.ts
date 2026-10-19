@@ -14,7 +14,7 @@
 
 export { fill, Slot, Wrapped } from '@overweave/ui/preact';
 export { AddonsProvider, useAddons } from './addons.ts';
-export { KubeProvider, useCluster, useCount, useFields, useGet, useList, useLog, useOwned, useSearch, useSize } from './hooks.ts';
+export { KubeProvider, useCluster, useCount, useFields, useGet, useList, useLists, useLog, useOwned, useSearch, useSize } from './hooks.ts';
 export { useKind, useServedKinds } from './kinds.ts';
 export { useMenu } from './menu.ts';
 export { OpenedView, useLayout } from './opened.tsx';

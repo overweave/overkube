@@ -7,7 +7,6 @@ import { t } from '@overkube/sdk';
  * condition's reason as it is).
  */
 export const T = {
-  category: t('flux.category', 'Delivery'),
   columns: {
     status: t('flux.column.status', 'Status'),
     url: t('flux.column.url', 'URL'),

@@ -5,9 +5,9 @@ overkube's core addon: everything the page shows that is not another addon's. Ev
 What it contributes ([src/index.tsx](src/index.tsx)):
 
 - **kinds** — a `KindView` for every built-in kind, in categories (workloads, config, network, storage, RBAC, scaling, nodes, namespaces, the API's own), with its columns, its sections when opened, its context menu; CRDs by their columns ([src/kinds](src/kinds));
-- **pages** — the overview (`page.overview`), a kind's page with its table (`page.kind`), a settings page; a missing kind or resource said;
+- **pages** — the overview (`page.overview`), a kind's page with its table (`page.kind`), the cluster's map (`page.map`, `/map`: each namespace a card — its workloads its dots —, each node one; a namespace zoomed into, `/map/<namespace>`, its own map), a settings page; a missing kind or resource said;
 - **a kind's table** wherever it is drawn (`kind.table`: [src/CoreTable.tsx](src/CoreTable.tsx) — its columns, filter, header, the columns' menu);
-- **a resource opened** over the page (`resource.view`: overview, YAML, conditions, events, owners and the owned, pod and workload logs);
+- **a resource opened** over the page (`resource.view`: overview, YAML, conditions, events, owners and the owned, pod and workload logs; its Map tab, of a kind a `MapScope` takes — the core's: a namespace's objects, what each is linked to (an Ingress its Services, a Service the workloads it selects, a workload what it reads and keeps, its pods its dots; Jobs, CronJobs, pods of none), a node's what runs on it, a namespace's whole: [src/map](src/map));
 - **the navigation** — tabs or a side menu, the namespaces' picker, the header's search;
 - **what the user is told** — toasts, waiting states, failures;
 - **appearance** — its theme (dark or light), in the kit's tokens.

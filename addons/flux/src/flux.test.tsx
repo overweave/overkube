@@ -1,5 +1,7 @@
 import core from '@overkube/addon-core';
-import { cleanup, fakeCluster, kubeWorld } from '@overkube/testkit';
+import helm from '@overkube/addon-helm';
+import { kinds } from '@overkube/kube-types';
+import { assertNothingRefused, cleanup, fakeCluster, kubeWorld } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fluxCluster } from './cluster.fixture.ts';
@@ -40,6 +42,15 @@ const KUSTOMIZATIONS = '/k/kustomizations.v1.kustomize.toolkit.fluxcd.io';
 const GIT = '/k/gitrepositories.v1.source.toolkit.fluxcd.io';
 const open = (path: string, ref: string, namespace: string, name: string, tab?: string) => `${path}?open=${ref}/${namespace}/${name}${tab ? `&open-tab=${tab}` : ''}`;
 const marks = () => [...document.querySelectorAll('.uk-mark-link')].map((m) => m.getAttribute('aria-label'));
+
+describe('beside the others', () => {
+  it('runs with Helm, nothing it adds refused (Delivery: the core’s, not one of theirs twice)', () => {
+    const w = world();
+    w.addon(helm);
+    assertNothingRefused(w);
+    expect(w.registry.get('Category', 'delivery')?.definedBy).toBe('core');
+  });
+});
 
 describe('the tables', () => {
   it('a source’s: its state, its URL and ref, its artifact (stale while its fetch fails), what uses it (another namespace’s too)', async () => {
@@ -102,6 +113,16 @@ describe('one opened', () => {
     renderPage(world(), open(KUSTOMIZATIONS, 'kustomizations.v1.kustomize.toolkit.fluxcd.io', 'flux-system', 'legacy'));
     await vi.waitFor(() => expect(part('source')?.textContent).toContain('GitOperationFailed'));
     expect(part('source')?.textContent).toContain('still served');
+  });
+
+  it('its source’s own actions in its Source: Reconcile it — fetched now, what uses it applied anew', async () => {
+    const w = world();
+    const page = renderPage(w, open(KUSTOMIZATIONS, 'kustomizations.v1.kustomize.toolkit.fluxcd.io', 'seed-flux', 'hello'));
+    const reconcile = () => [...(part('source')?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find((b) => b.textContent === 'Reconcile');
+    await vi.waitFor(() => expect(reconcile()).toBeDefined());
+    page.act(() => reconcile()?.click());
+    await vi.waitFor(() => expect(w.cluster.writes).toHaveLength(1));
+    expect([w.cluster.writes[0]?.kind, w.cluster.writes[0]?.name]).toEqual(['source.toolkit.fluxcd.io/v1/GitRepository', 'seed']);
   });
 
   it('its inventory: each object it applied as it is now (one gone, NotFound)', async () => {
@@ -198,5 +219,57 @@ describe('what Flux applied', () => {
     expect(part('managed-by')?.textContent).toContain('apps');
     expect(part('managed-by')?.textContent).toContain('OCIRepository');
     expect(document.querySelector('.uk-modal-head .uk-mark-link, .uk-modal .uk-mark-link')?.getAttribute('aria-label')).toBe('Flux Kustomization seed-flux/apps');
+  });
+});
+
+describe('its maps', () => {
+  const cards = () => [...document.querySelectorAll<HTMLElement>('[data-part="map"] [data-card]')];
+  const titles = () =>
+    cards()
+      .map((c) => `${c.querySelector('.uk-map-card-kind')?.textContent} ${c.querySelector('.uk-map-card-title')?.textContent}`)
+      .sort();
+  const card = (id: string) => document.querySelector<HTMLElement>(`[data-card="${id}"]`);
+  const K = 'kustomizations.v1.kustomize.toolkit.fluxcd.io';
+
+  it('a source’s: what uses it (its chart, of another namespace too), what each applied, as it is now', async () => {
+    renderPage(world(), open(GIT, 'gitrepositories.v1.source.toolkit.fluxcd.io', 'seed-flux', 'seed', 'core.map'));
+    await vi.waitFor(() => expect(titles()).toContain('Deployment hello-git'));
+    expect(titles()).toEqual([
+      'ConfigMap hello-git',
+      'Deployment hello-git',
+      'GitRepository seed',
+      'HelmChart seed-flux-hello-chart',
+      'HelmRelease hello-chart',
+      'Kustomization broken',
+      'Kustomization hello',
+      'Kustomization net',
+      'Namespace seed-flux',
+      'StatefulSet db',
+    ]);
+    expect(card('gitrepositories.v1.source.toolkit.fluxcd.io|seed-flux|seed')?.classList.contains('is-main')).toBe(true);
+    expect(card(`${K}|seed-flux|broken`)?.querySelector('.uk-status[data-tone="error"]')).not.toBeNull();
+  });
+
+  it('a Kustomization’s: its source, it, what it applied — one gone, dashed', async () => {
+    renderPage(world(), open(KUSTOMIZATIONS, K, 'seed-flux', 'apps', 'core.map'));
+    await vi.waitFor(() => expect(titles()).toContain('Service web'));
+    expect(titles()).toEqual(['ConfigMap gone', 'Deployment web', 'Kustomization apps', 'OCIRepository apps', 'Service web']);
+    expect(card('configmaps.v1|seed-flux|gone')?.classList.contains('is-missing')).toBe(true);
+    expect(card(`${K}|seed-flux|apps`)?.querySelector('.uk-status[data-tone="progress"]')).not.toBeNull();
+  });
+
+  it('a HelmRelease’s: its chart’s source, its chart (of its source’s namespace), it', async () => {
+    renderPage(world(), open('/k/helmreleases.v2.helm.toolkit.fluxcd.io', 'helmreleases.v2.helm.toolkit.fluxcd.io', 'seed-net', 'ingress', 'core.map'));
+    await vi.waitFor(() => expect(titles()).toContain('HelmRepository bitnami'));
+    expect(titles()).toEqual(['HelmChart seed-net-ingress', 'HelmRelease ingress', 'HelmRepository bitnami']);
+  });
+
+  it('what was applied where the one signed in may not look: not known, not drawn as gone', async () => {
+    const w = world();
+    // ConfigMaps denied them: apps' gone one is not known gone.
+    w.cluster.state(kinds.core.v1.ConfigMap, 'denied', { status: 403, code: 'Forbidden' });
+    renderPage(w, open(KUSTOMIZATIONS, K, 'seed-flux', 'apps', 'core.map'));
+    await vi.waitFor(() => expect(titles()).toContain('Service web'));
+    expect(card('configmaps.v1|seed-flux|gone')?.classList.contains('is-missing')).toBe(false);
   });
 });

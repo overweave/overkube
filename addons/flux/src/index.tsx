@@ -2,9 +2,9 @@ import { defineAddon } from '@overkube/sdk';
 import { addActions } from './actions.ts';
 import { addColumns } from './columns.tsx';
 import { Bucket, ExternalArtifact, FIELDS, GitRepository, HelmChart, HelmRelease, HelmRepository, Kustomization, OCIRepository, SOURCE_GROUP } from './kinds.ts';
+import { addMap } from './map.tsx';
 import { addMark } from './mark.tsx';
 import { addOverview } from './overview.tsx';
-import { T } from './texts.ts';
 import { addViews } from './view.tsx';
 
 /*
@@ -17,11 +17,12 @@ import { addViews } from './view.tsx';
  * inventory. Reconcile, Reconcile with source, Suspend, Resume — each
  * shown to one who may. The start's, what is not Ready; what Flux applied,
  * marked beside its name in every table (its pods too), and in its view.
+ * Its maps (an object's Map tab): a source, what uses it, what they applied.
  *
  *   kinds.ts     its kinds, the fields asked by      state.tsx    a state, a revision drawn
  *   columns.tsx  its tables                          view.tsx     one opened: its source, what uses it, its inventory
  *   actions.ts   Reconcile, Suspend, Resume          overview.tsx the start's panel
- *   mark.tsx     the tables' mark, Managed By
+ *   mark.tsx     the tables' mark, Managed By        map.tsx      its maps: a source's, an applier's
  *
  * Off until turned on (an addon): suggested where Flux is served.
  */
@@ -47,12 +48,12 @@ export default defineAddon({
   setup({ contributor: c, cluster }) {
     for (const [name, spec] of Object.entries(FIELDS)) c.add('Field', name, spec);
     c.add('Messages', 'en:flux', { messages: {} }, { fallback: true });
-    c.add('Category', 'delivery', { title: T.category, icon: 'rocket', order: 45 }, { fallback: true });
     for (const [i, [kind, title, icon]] of VIEWS.entries()) c.add('KindView', kind.id, { title, category: 'delivery', icon, order: 20 + i * 10 }, { fallback: true });
     addColumns(c);
     addViews(c);
     addActions(c, cluster);
     addOverview(c);
     addMark(c);
+    addMap(c);
   },
 });

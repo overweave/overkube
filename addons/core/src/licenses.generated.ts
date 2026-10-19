@@ -56,6 +56,11 @@ export const LIBRARIES: readonly Library[] = [
     "url": "https://tabler.io/icons"
   },
   {
+    "name": "elkjs",
+    "license": "EPL-2.0 OR GPL-3.0-or-later",
+    "url": "https://github.com/kieler/elkjs"
+  },
+  {
     "name": "preact",
     "license": "MIT",
     "url": "https://preactjs.com"

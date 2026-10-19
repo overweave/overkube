@@ -86,6 +86,8 @@ export { keepHidden } from './lib/order';
 export { ScaleContext, useScale } from './lib/scale';
 export { type SortableOptions, useSortable } from './lib/sortable';
 export { toYaml } from './lib/yaml';
+export { MAP_LABELS, type MapLabels, MapView, type MapViewProps } from './map/MapView';
+export type { MapCard, MapGraph, MapGroup, MapLink, MapLinkKind, MapPattern, MapPort, MapTint } from './map/types';
 export {
   CatalogBody,
   CatalogBox,

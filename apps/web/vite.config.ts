@@ -32,6 +32,8 @@ export default defineConfig({
       '@overweave/core',
       '@overweave/ui',
     ],
+    // Theirs a source of ours imports only when it is needed (the kit's map: ELK, a CommonJS module): pre-bundled all the same.
+    include: ['elkjs/lib/elk.bundled.js'],
   },
   // JSX as Preact's everywhere: a workspace package seen through node_modules has no tsconfig read for it.
   oxc: { jsx: { runtime: 'automatic', importSource: 'preact' } },

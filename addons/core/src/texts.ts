@@ -7,6 +7,18 @@ import { t } from '@overkube/sdk';
  * they are: terms, not words to translate.
  */
 export const T = {
+  map: {
+    center: t('core.map.center', 'Center on map'),
+    open: t('core.map.open', 'Open {kind}'),
+    notFound: t('core.map.not-found', '{kind} {name} not found'),
+    title: t('core.map.title', 'Map'),
+    cluster: t('core.map.cluster', 'Cluster'),
+    zoom: t('core.map.zoom', 'Zoom in'),
+    empty: t('core.map.empty', 'Nothing to show.'),
+    unlinked: t('core.map.unlinked', 'No object here references {kind} {name}, and it references none.'),
+    notServed: t('core.map.not-served', '{kind}: not a kind the cluster serves.'),
+    sub: t('core.map.sub', 'Namespaces and nodes; a namespace zoomed into: its objects and links'),
+  },
   retry: t('core.retry', 'Try again'),
   close: t('core.close', 'Close'),
 
@@ -16,6 +28,7 @@ export const T = {
     config: t('core.category.config', 'Config'),
     storage: t('core.category.storage', 'Storage'),
     cluster: t('core.category.cluster', 'Cluster'),
+    delivery: t('core.category.delivery', 'Delivery'),
   },
   columns: {
     name: t('core.column.name', 'Name'),
@@ -381,6 +394,7 @@ export const T = {
         events: t('core.resource.view.tabs.events', 'Events'),
         yaml: t('core.resource.view.tabs.yaml', 'YAML'),
         logs: t('core.resource.view.tabs.logs', 'Logs'),
+        map: t('core.resource.view.tabs.map', 'Map'),
       },
       actions: {
         sure: t('core.resource.view.actions.sure', 'Confirm {action}?'),

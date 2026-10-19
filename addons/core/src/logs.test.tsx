@@ -54,7 +54,7 @@ function opened(path: string) {
 describe('a log’s tab', () => {
   it('is a pod’s, before its YAML: its containers’ lines by time, whose each is said', () => {
     const { tabs, lines } = opened('/k/pods.v1?open=pods.v1/shop/web-a1');
-    expect(tabs.slice(-2).map((t) => t.textContent)).toEqual(['Logs', 'YAML']);
+    expect(tabs.slice(-3).map((t) => t.textContent)).toEqual(['Logs', 'Map', 'YAML']);
     expect(lines()).toEqual([
       ['app', 'GET / 200'],
       ['envoy', 'cds: updated'],

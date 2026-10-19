@@ -39,6 +39,8 @@ export const ICONS = {
   // Controls
   search: 'search',
   plus: 'plus',
+  minus: 'minus',
+  external: 'external-link',
   pin: 'pinned',
   'pin-filled': 'pinned:filled',
   'pin-off': 'pinned-off',

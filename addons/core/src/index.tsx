@@ -69,6 +69,8 @@ import { addWorkloads } from './kinds/workloads.tsx';
 import { titleOf } from './kinds.ts';
 import { LOGGED, PodLogs, WorkloadLogs } from './logs.tsx';
 import { Menu } from './Menu.tsx';
+import { addMap } from './map/map.tsx';
+import { addMapPage } from './map/page.tsx';
 import { addMarks } from './marks.tsx';
 import { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, type TabsState } from './Nav.tsx';
 import { type Chosen, KindNamespaces, NamespacePicker } from './namespaces.tsx';
@@ -148,6 +150,8 @@ const CATEGORIES: [string, Label, string][] = [
   ['config', T.categories.config, 'file'],
   ['storage', T.categories.storage, 'disk'],
   ['cluster', T.categories.cluster, 'server'],
+  // How what runs got there (Helm's, Flux's): one category the addons that deliver share, its own here (two declaring it, one refused).
+  ['delivery', T.categories.delivery, 'rocket'],
 ];
 
 /** The names of the slots in a tree of them (a page's, made by name, aside). */
@@ -287,6 +291,9 @@ export default defineAddon({
     c.add('Fill', 'core.resource.view.metadata', section({ order: 900, render: Metadata }));
     // What manages it (its kind's NameMarks): after its title, and in full under Managed By.
     addMarks(c);
+    // An object's map (its Map tab), of the kinds a scope takes.
+    addMap(c);
+    addMapPage(c);
     // The usual kinds' own: their sections, related fields.
     addPod(c);
     addWorkloads(c);
@@ -330,7 +337,8 @@ export default defineAddon({
       slots.page('overview').name,
       slots.page('settings').name,
       slots.page('kind').name,
-      ...['core.overview', 'core.events', 'core.yaml', 'core.logs'].map((t) => slots.resource.view.tab(t).name),
+      slots.page('map').name,
+      ...['core.overview', 'core.events', 'core.yaml', 'core.logs', 'core.map'].map((t) => slots.resource.view.tab(t).name),
     ])
       c.add('Slot', name, {}, fallback);
 

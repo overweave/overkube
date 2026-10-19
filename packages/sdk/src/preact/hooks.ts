@@ -63,6 +63,14 @@ const still = <T>(value: T): Live<T> => ({ value, subscribe: () => () => {} });
 /** A window of a kind's objects: where, which, in what order, which of their fields; none asked: none. */
 export const useList = <O = unknown>(query: ListQuery | undefined): ListResult<O> => useAnswer(query, (c, q) => (q ? c.source.list<O>(q) : still(NO_ITEMS as ListResult<O>)));
 
+/** Windows of several kinds' objects (as many as wanted, each its useList's answer): the same queries, the same answers. */
+export function useLists<O = unknown>(queries: readonly ListQuery[]): readonly ListResult<O>[] {
+  const cluster = useCluster();
+  const key = canonical(queries);
+  const lives = useMemo(() => queries.map((q) => cluster.source.list<O>(q)), [cluster, key]);
+  return lives.map((l) => l.value);
+}
+
 /** How many of a kind's objects, in all and by a field's values. */
 export const useCount = (query: CountQuery): CountResult => useAnswer(query, (c, q) => c.source.count(q));
 

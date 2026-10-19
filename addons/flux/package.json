@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@overkube/addon-core": "0.1.2",
+    "@overkube/addon-helm": "0.1.2",
     "@overkube/storybook": "0.1.2",
     "@overkube/testkit": "0.1.2",
     "@testing-library/preact": "3.2.4",

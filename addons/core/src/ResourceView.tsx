@@ -4,6 +4,7 @@ import {
   type ActionSpec,
   accessOf,
   kindRef,
+  MapScope,
   type MissingState,
   type ResourceProps,
   type ResourceRef,
@@ -20,6 +21,7 @@ import type { Definition } from '@overweave/core';
 import { inOrder } from '@overweave/ui';
 import { slotElement, useDefinitions } from '@overweave/ui/preact';
 import { useId, useMemo, useState } from 'preact/hooks';
+import { MAP_TAB } from './map/map.tsx';
 import { T } from './texts.ts';
 import { Waiting } from './Waiting.tsx';
 
@@ -112,8 +114,11 @@ export function ResourceView({ kind, namespace, name }: ResourceRef) {
 /** Its tabs: the ResourceTabs for its kind and object, not hidden, not denied the one signed in, in order. */
 function useTabs(kind: KindInfo, object: KubeObject | undefined): Definition<ResourceTabSpec>[] {
   const page = usePage();
+  // Its Map tab: of a kind some MapScope takes (an addon's of its own kinds, the core's of the usual ones).
+  const mapped = useDefinitions(MapScope).some((s) => takes(s.spec.target, kind));
   return inOrder(useDefinitions(ResourceTab)).filter((t) => {
     if (t.spec.hidden || !object || !takes(t.spec.target, kind) || accessOf(t, { kind, object }) === 'denied') return false;
+    if (t.name === MAP_TAB && !mapped) return false;
     try {
       return t.spec.when ? t.spec.when(object) : true;
     } catch (error) {
