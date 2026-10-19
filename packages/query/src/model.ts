@@ -87,7 +87,11 @@ export type Unit = 'cores' | 'bytes';
  * reports: those whose owner is it), their values reduced: the least
  * (min: the soonest of times), the greatest (max), all added up (sum), how
  * many they are (count) — of numbers (a time: a field declared one, not
- * a path's words); none there: none (count: 0). `by` is of this kind's own (a joined one: none).
+ * a path's words); none of them numbers, the least or greatest of strings
+ * (empty ones not counted); none there: none (count: 0). `by` is of this kind's own (a joined one: none).
+ * Across (a key that says its namespace itself: Kind/namespace/name), of
+ * those of every namespace, not of its own alone — that kind watched in
+ * all of them.
  */
 export interface Join {
   readonly from: KindRef;
@@ -95,6 +99,7 @@ export interface Join {
   readonly by?: FieldName;
   readonly to?: FieldName;
   readonly reduce?: JoinReduce;
+  readonly across?: boolean;
 }
 
 /** How a join of many objects is said as one value. */

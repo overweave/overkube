@@ -79,6 +79,39 @@ describe('a source in memory', () => {
     ]);
   });
 
+  it('joins the least or greatest of strings (none of them numbers), empty ones not counted', () => {
+    const owner = (name: string, by: string) => ({ metadata: { name, namespace: 'x', labels: { by } }, spec: { app: 'web' } }) as KubeObject;
+    const objects = signal<Record<string, KubeObject[]>>({
+      'pods.v1': [{ metadata: { name: 'p', namespace: 'x', labels: { app: 'web' } } } as KubeObject],
+      'configmaps.v1': [owner('b', 'flux'), owner('a', 'helm'), owner('c', '')],
+    });
+    const joined = (reduce: string) => ({
+      kinds: ['pods.v1'],
+      type: 'string',
+      value: { from: 'configmaps.v1', field: '.metadata.labels.by', by: '.metadata.labels.app', to: '.spec.app', reduce },
+    });
+    const source = memorySource(objects, { layers: signal([{ fields: { 'acme.least': joined('min'), 'acme.most': joined('max') } }]) });
+    const list = source.list({ kind: 'pods.v1', page: { limit: 5 }, select: ['acme.least', 'acme.most'] });
+    expect(list.value.items[0]?.values).toEqual({ 'acme.least': 'flux', 'acme.most': 'helm' });
+  });
+
+  it('joins across namespaces (a key that says its namespace itself): those of every namespace, its own too', () => {
+    const user = (name: string, namespace: string, uses: string) => ({ metadata: { name, namespace }, spec: { uses } }) as KubeObject;
+    const objects = signal<Record<string, KubeObject[]>>({
+      'secrets.v1': [{ metadata: { name: 'repo', namespace: 'flux' } } as KubeObject],
+      'configmaps.v1': [user('a', 'flux', 'flux/repo'), user('b', 'app', 'flux/repo'), user('c', 'app', 'app/repo')],
+    });
+    const key = { kinds: ['secrets.v1'], type: 'string', value: { cel: 'self.metadata.namespace + "/" + self.metadata.name' } };
+    const joined = (across?: boolean) => ({
+      kinds: ['secrets.v1'],
+      type: 'number',
+      value: { from: 'configmaps.v1', field: 'core.name', by: 'acme.key', to: '.spec.uses', reduce: 'count', ...(across ? { across } : {}) },
+    });
+    const source = memorySource(objects, { layers: signal([{ fields: { 'acme.key': key, 'acme.used': joined(), 'acme.used-across': joined(true) } }]) });
+    const list = source.list({ kind: 'secrets.v1', scope: { namespaces: ['flux'] }, page: { limit: 5 }, select: ['acme.used', 'acme.used-across'] });
+    expect(list.value.items[0]?.values).toEqual({ 'acme.used': 1, 'acme.used-across': 2 });
+  });
+
   it('joins a kind of no namespace by name; one not served, none; a field the other has not, or a joined one, told as its error', () => {
     const objects = signal<Record<string, KubeObject[]>>({
       'nodes.v1': [{ metadata: { name: 'n1' } } as KubeObject],

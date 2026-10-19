@@ -508,8 +508,8 @@ export function useColumns(
         }
       })
       .map((c) => (c.name === 'core.name' ? marked(c, ofKind) : c));
-    const named = new Set(all.map((c) => c.name));
-    // Its CRD's, as it says them: after the name and namespace, before the age.
+    // Its CRD's, as it says them: after the name and namespace, before the age — each in whose place another's of its name is, not drawn (that one shown or not: its when).
+    const named = new Set(definitions.filter((c) => takes(c.spec.target, kind)).map((c) => c.name));
     const crd = (fields.columns ?? [])
       .map((k, i) => ({
         name: `core.${kind.id}.${slug(k.name)}`,

@@ -8,11 +8,13 @@ import type { HelmStatus } from './release.ts';
  * as helm writes it) — hello, installed then upgraded (two revisions);
  * broken, its install failed (its image not there); retired, uninstalled,
  * its history kept; ingress, stuck in pending-upgrade — and what they made
- * (helm's annotations on it), beside a Deployment no release made.
+ * (helm's annotations on it; hello's pod and replica set, by their
+ * owners), beside a Deployment no release made.
  */
 
 const { Namespace, Secret, ConfigMap } = kinds.core.v1;
-const { Deployment } = kinds.apps.v1;
+const { Deployment, ReplicaSet } = kinds.apps.v1;
+const { Pod } = kinds.core.v1;
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -170,5 +172,21 @@ export function helmCluster(c: FakeCluster, now = Date.now()) {
   deploy('broken', 'seed-helm', 0, 'broken');
   deploy('ingress-nginx-controller', 'seed-net', 1, 'ingress');
   deploy('by-hand', 'seed-helm', 1);
+  // hello's replica set and pod: theirs its deployment's (their owner references, the pod's pod-template-hash).
+  const owner = (kind: string, name: string) => [{ apiVersion: 'apps/v1', kind, name, uid: `${name}-uid`, controller: true }];
+  put(ReplicaSet, {
+    metadata: { name: 'hello-7d4b9', namespace: 'seed-helm', creationTimestamp: made, labels: { 'pod-template-hash': '7d4b9' }, ownerReferences: owner('Deployment', 'hello') },
+  });
+  put(Pod, {
+    metadata: {
+      name: 'hello-7d4b9-x2k8p',
+      namespace: 'seed-helm',
+      creationTimestamp: made,
+      labels: { 'pod-template-hash': '7d4b9' },
+      ownerReferences: owner('ReplicaSet', 'hello-7d4b9'),
+    },
+    spec: { containers: [{ name: 'hello', image: 'busybox:1.37' }] },
+    status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'True' }] },
+  });
   for (const n of ['hello', 'broken']) put(ConfigMap, { metadata: { name: n, namespace: 'seed-helm', creationTimestamp: made, ...helm(n, 'seed-helm') }, data: { message: n } });
 }

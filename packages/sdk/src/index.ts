@@ -45,7 +45,7 @@ export {
 } from './addon.ts';
 export { type Cluster, type Discovery, foundIn, noReach, type ObjectChange, type Reach, reaches, reachOver, runReach, whereOf } from './cluster.ts';
 export { type FieldLayer, fieldLayers } from './fields.ts';
-export { action, column, menuItem, type ObjectOfKind, section, tile, wrap } from './helpers.ts';
+export { action, addNameMark, column, menuItem, type ObjectOfKind, section, tile, wrap } from './helpers.ts';
 export {
   type Access,
   type AccessSubject,

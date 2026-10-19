@@ -59,6 +59,10 @@ export const T = {
     reading: t('helm.release.reading', 'Reading its revision…'),
   },
   mark: t('helm.mark', 'Helm release {name}'),
+  managed: {
+    helm: t('helm.managed.helm', 'Helm'),
+    chart: t('helm.managed.chart', '{chart} · revision {revision}'),
+  },
   overview: {
     title: t('helm.overview.title', 'Helm releases'),
   },

@@ -781,6 +781,7 @@ export const T = {
         or: t('core.resource.view.scaling.or', 'or {policy}'),
         controllerDefault: t('core.resource.view.scaling.controller-default', 'controller default'),
       },
+      managedBy: t('core.resource.view.managed-by', 'Managed By'),
       metadata: {
         title: t('core.resource.view.metadata.title', 'Metadata'),
         created: t('core.resource.view.metadata.created', 'Created'),

@@ -269,12 +269,17 @@ export const Column = defineKind<ColumnSpec>()('Column', {
  * drawn of a field's value — none there, or empty: no mark. What draws it
  * is given the value, the kind, the object's namespace (an icon, what it
  * means in its tip, where it leads). Those of a kind, in order, after the
- * name whichever column draws it (core.name).
+ * name whichever column draws it (core.name); in a resource's view, after
+ * its title, and what each says of it in full (its detail) under Managed
+ * By. What a workload runs (its pods, its replica
+ * sets), its workload's: addNameMark.
  */
 export interface NameMarkSpec {
   target: Target;
   field: FieldName;
   render: ComponentType<NameMarkProps>;
+  /** What it says of the object in full, in its view's Managed By: its rows, each a <dt> and a <dd> (one list of all marks' rows, as the metadata's). */
+  detail?: ComponentType<NameMarkProps>;
   order?: number;
 }
 
@@ -288,8 +293,8 @@ export interface NameMarkProps {
 export const NameMark = defineKind<NameMarkSpec>()('NameMark', {
   required: ['target', 'field', 'render'],
   createRight: behaviour,
-  validate: fields({ target: [target, 'notATarget'], field: [text, 'notAField'], render: [fn, 'notAFunction'], order: [finite, 'notANumber'] }),
-  patchRights: { target: behaviour, field: behaviour, render: behaviour, order: configure },
+  validate: fields({ target: [target, 'notATarget'], field: [text, 'notAField'], render: [fn, 'notAFunction'], detail: [fn, 'notAFunction'], order: [finite, 'notANumber'] }),
+  patchRights: { target: behaviour, field: behaviour, render: behaviour, detail: behaviour, order: configure },
 });
 
 /**

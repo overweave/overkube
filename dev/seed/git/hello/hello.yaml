@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-git
+  labels: { app.kubernetes.io/name: hello-git }
+data:
+  message: hello from git
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-git
+  labels: { app.kubernetes.io/name: hello-git }
+spec:
+  selector: { matchLabels: { app.kubernetes.io/name: hello-git } }
+  template:
+    metadata: { labels: { app.kubernetes.io/name: hello-git } }
+    spec:
+      containers:
+        - name: hello
+          image: busybox:1.37
+          command: [sh, -c, "echo $MESSAGE; sleep infinity"]
+          env: [{ name: MESSAGE, valueFrom: { configMapKeyRef: { name: hello-git, key: message } } }]
+          resources: { requests: { cpu: 1m, memory: 4Mi }, limits: { memory: 16Mi } }

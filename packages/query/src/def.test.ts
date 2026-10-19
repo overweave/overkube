@@ -13,7 +13,7 @@ describe('a field definition, from anyone', () => {
     [
       'a value neither',
       { type: 'string', value: { cel: 'x', more: 1 } },
-      'a value is a path, { cel }, { from, field } or { from, field, by, to, reduce: min | max | sum | count }',
+      'a value is a path, { cel }, { from, field } or { from, field, by, to, reduce: min | max | sum | count, across? }',
     ],
   ])('is none: %s', (_, def, message) => {
     expect(checkFieldDef(def)).toEqual({ code: 'bad_field', message });
@@ -33,7 +33,7 @@ describe('a field definition, from anyone', () => {
   it('is joined (another kind’s object’s field) only where a join is made — else left out, with why', () => {
     const def = { joined: { type: 'number', value: { from: 'things.v1', field: 'size' } } };
     expect(checkFieldDef(def.joined)).toBeUndefined();
-    const said = 'a value is a path, { cel }, { from, field } or { from, field, by, to, reduce: min | max | sum | count }';
+    const said = 'a value is a path, { cel }, { from, field } or { from, field, by, to, reduce: min | max | sum | count, across? }';
     expect(checkFieldDef({ type: 'number', value: { from: '', field: 'size' } })?.message).toBe(said);
     // Keyed: of those whose `to` is its `by`, reduced — all three said, a reduce of these.
     expect(checkFieldDef({ type: 'number', value: { from: 'things.v1', field: 'size', by: 'mine', to: 'owner', reduce: 'max' } })).toBeUndefined();

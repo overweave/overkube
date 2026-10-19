@@ -1,8 +1,10 @@
 import type { KindInfo, KubeObject, ObjectOf } from '@overkube/kube-types';
+import { kinds } from '@overkube/kube-types';
 import type { FillSpec, Placement, WrapSpec } from '@overweave/ui';
 import type { PreactComponent } from '@overweave/ui/preact';
 import type { ComponentChildren, ComponentType } from 'preact';
-import type { ActionSpec, ColumnSpec, MenuItemSpec, MenuPage, MenuSubject, MenuSubjects, Need, PageProps, Target } from './kinds.ts';
+import type { KubeContributor } from './addon.ts';
+import type { ActionSpec, ColumnSpec, MenuItemSpec, MenuPage, MenuSubject, MenuSubjects, NameMarkSpec, Need, PageProps, Target } from './kinds.ts';
 import { type ResourceProps, slots } from './slots.ts';
 import { forKinds } from './target.ts';
 import type { Label } from './text.ts';
@@ -103,4 +105,30 @@ export function wrap<P>(
 ): WrapSpec<P, PreactComponent, Target> {
   const { kinds, ...rest } = spec;
   return { ...rest, wraps, ...(kinds ? { target: targetOf(kinds) } : {}), render: spec.render as PreactComponent };
+}
+
+/** What a workload runs, by the workload it is of (kube-fields' <kind>.workload fields — their names, these kinds: kept in step with them): a deployment's pods and replica sets, a stateful set's and a daemon set's pods. */
+const RUN = [
+  ['deployments.v1.apps', [kinds.core.v1.Pod, kinds.apps.v1.ReplicaSet]],
+  ['statefulsets.v1.apps', [kinds.core.v1.Pod]],
+  ['daemonsets.v1.apps', [kinds.core.v1.Pod]],
+] as const;
+const refOf = (k: KindInfo) => (k.group ? `${k.plural}.${k.version}.${k.group}` : `${k.plural}.${k.version}`);
+
+/**
+ * A mark beside a name (NameMark) — and on what a workload runs, its
+ * workload's: a pod's, a replica set's mark is its deployment's (its
+ * stateful set's, its daemon set's), joined once of each workload kind by
+ * the workload it is of. Its field is the workload's too (none of kinds,
+ * or theirs among them). What it costs: a table of pods watches those
+ * workloads (of its namespaces), once for every mark joined of them.
+ */
+export function addNameMark(c: KubeContributor, name: string, spec: NameMarkSpec): void {
+  c.add('NameMark', name, spec);
+  for (const [from, runs] of RUN)
+    for (const k of runs) {
+      const field = `${spec.field}.of.${refOf(k)}.${from}`;
+      c.add('Field', field, { kinds: [refOf(k)], type: 'string', value: { from, field: spec.field, by: `${refOf(k)}.workload`, to: `${from}.workload`, reduce: 'min' } });
+      c.add('NameMark', `${name}.${refOf(k)}.${from}`, { ...spec, target: forKinds(k), field });
+    }
 }

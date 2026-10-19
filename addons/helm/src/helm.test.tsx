@@ -147,4 +147,15 @@ describe('the tables', () => {
     expect(marks.map((m) => m.querySelector('.uk-status')?.getAttribute('aria-label'))).toEqual(['Helm release broken', 'Helm release hello', 'Helm release ingress']);
     expect(marks[1]?.getAttribute('href')).toContain('release=seed-helm%2Fhello');
   });
+
+  it('mark a deployment’s pods and replica sets as their deployment', async () => {
+    renderPage(world(), '/k/pods.v1');
+    await vi.waitFor(() => expect([...document.querySelectorAll('.uk-mark-link .uk-status')].map((m) => m.getAttribute('aria-label'))).toEqual(['Helm release hello']));
+  });
+
+  it('a pod opened: Managed By — its release as it is, its chart and revision', async () => {
+    renderPage(world(), '/k/pods.v1?open=pods.v1/seed-helm/hello-7d4b9-x2k8p');
+    await vi.waitFor(() => expect(part('managed-by')?.textContent).toContain('hello-0.1.0 · revision 2'));
+    expect(part('managed-by')?.textContent).toContain('deployed');
+  });
 });

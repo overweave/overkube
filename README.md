@@ -85,6 +85,7 @@ One npm workspace (`packages/*`, `apps/*`, `addons/*`); every package is ESM, Ty
 | [addons/cert-manager](addons/cert-manager/README.md) | The cert-manager addon: certificates, when they end, how they are issued and where it stops, their issuers; Renew, Approve, Deny |
 | [addons/trivy](addons/trivy/README.md) | The Trivy addon: vulnerabilities, config audits, RBAC assessments as trivy-operator reports them; the images the cluster runs; Rescan |
 | [addons/helm](addons/helm/README.md) | The Helm addon: what helm deployed — each release's chart, state, values, manifest and history; what helm made, marked in the tables |
+| [addons/flux](addons/flux/README.md) | The Flux addon: Flux's sources, Kustomizations and HelmReleases — their state, the revision applied, what each manages; Reconcile, Suspend, Resume; what Flux applied, marked in the tables |
 | [packages/sdk](packages/sdk/README.md) | `@overkube/sdk` — what addons are written with |
 | [packages/gateway](packages/gateway/README.md) | `@overkube/gateway` — the way to the cluster, for any Node host |
 | [packages/connector](packages/connector/README.md) | `@overkube/connector` — the page's side of the gateway: feeds, the stream, logs |

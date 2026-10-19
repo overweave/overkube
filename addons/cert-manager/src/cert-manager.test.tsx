@@ -1,7 +1,7 @@
 import core from '@overkube/addon-core';
 import { cleanup, fakeCluster, kubeWorld } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CERT_MANAGER_KINDS, certManagerCluster } from './cluster.fixture.ts';
 import certManager from './index.tsx';
 
@@ -14,7 +14,15 @@ import certManager from './index.tsx';
  * only to one who may.
  */
 
-afterEach(cleanup);
+// Days are said by calendar dates: the clock at noon, so that a time some hours past one from now falls on the same date whenever the tests run.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date().setUTCHours(12, 0, 0, 0));
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function world() {
   const w = kubeWorld({ cluster: fakeCluster({ kinds: CERT_MANAGER_KINDS }) });
@@ -105,7 +113,7 @@ describe('a Certificate’s view', () => {
   it('says its failed issuance attempts, and when cert-manager tries again (an hour, doubled each time)', async () => {
     renderPage(world(), '/k/certificates.v1.cert-manager.io?open=certificates.v1.cert-manager.io/shop/docs-tls');
     await vi.waitFor(() => expect(part('failed')?.textContent).toContain('Failed Issuance Attempts: 2'));
-    expect(part('failed')?.textContent).toMatch(/Last Failure Time.* \(30m\)Next Attempt.* \(in 89m\)/);
+    expect(part('failed')?.textContent).toMatch(/Last Failure Time.* \(30m\)Next Attempt.* \(in 90m\)/);
   });
 
   it('relates its issuer, its Secret, what serves it', async () => {

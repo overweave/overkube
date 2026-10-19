@@ -81,10 +81,19 @@ interface Index {
 
 const indexKey = (namespace: string, value: unknown) => `${namespace}\u0000${String(value)}`;
 
-/** How a keyed join's values are said as one: the least number (a time: the soonest), the greatest, all of them added, how many objects there are. */
+/**
+ * How a keyed join's values are said as one: the least number (a time: the
+ * soonest), the greatest, all of them added, how many objects there are.
+ * No numbers, the least or greatest of strings (a workload's owner's
+ * mark: the same whichever of them is read first).
+ */
 function reduced(how: JoinReduce, objects: number, values: readonly unknown[]): unknown {
   if (how === 'count') return objects;
   const numbers = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (!numbers.length && how !== 'sum') {
+    const strings = values.filter((v): v is string => typeof v === 'string' && v !== '').sort();
+    return how === 'min' ? strings[0] : strings[strings.length - 1];
+  }
   if (!numbers.length) return undefined;
   return how === 'min' ? Math.min(...numbers) : how === 'max' ? Math.max(...numbers) : numbers.reduce((a, b) => a + b, 0);
 }
@@ -113,7 +122,7 @@ export function bindJoins(made: KindFields, joining: Joining, key: string): Kind
   const fields = new Map(made.fields);
   // A keyed join's indexes: by the other kind and its field joined to (made again once its objects' version moves).
   const indexes = new Map<string, Index>();
-  for (const [name, { from, field, by, to, reduce }] of made.joined) {
+  for (const [name, { from, field, by, to, reduce, across }] of made.joined) {
     const spec = made.fields.get(name);
     if (!spec) continue;
     const theirsOf = (other: NonNullable<ReturnType<Joining>>) => {
@@ -132,22 +141,22 @@ export function bindJoins(made: KindFields, joining: Joining, key: string): Kind
             const theirs = theirsOf(other);
             if (made.joined.has(by) || (!made.fields.has(by) && !isPath(by))) throw Object.assign(new Error(`no field ${by} of its own to join by`), { code: 'bad_join' });
             const now = other.all();
-            const at = `${from}\u0000${to}`;
+            const at = `${from}\u0000${to}${across ? '\u0000across' : ''}`;
             let index = indexes.get(at);
             if (!index || index.version !== now.version) {
               index = { version: now.version, of: new Map() };
               for (const o of now.objects)
                 for (const v of valuesOf(o, to, theirs.fields)) {
                   if (v === null) continue;
-                  const k = indexKey(o.metadata?.namespace ?? '', v);
+                  const k = indexKey(across ? '' : (o.metadata?.namespace ?? ''), v);
                   const list = index.of.get(k);
                   if (list) list.push(o);
                   else index.of.set(k, [o]);
                 }
               indexes.set(at, index);
             }
-            // Of its namespace; of none (a kind of the whole cluster): of every namespace.
-            const namespace = (object as KubeObject).metadata?.namespace;
+            // Of its namespace; of none (a kind of the whole cluster), or across: of every namespace.
+            const namespace = across ? '' : (object as KubeObject).metadata?.namespace;
             const keys = valuesOf(object, by, made.fields).filter((v) => v !== null);
             const found = new Set<KubeObject>();
             for (const v of keys) {

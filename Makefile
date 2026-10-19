@@ -18,7 +18,7 @@ help:
 	@echo "make lint / format / typecheck / test / coverage   one of them; format rewrites the files"
 	@echo "make dev        the dev stand: KubeSolo, the server, the page (http://localhost:5173)"
 	@echo "make dev-down / dev-logs / dev-kubectl ARGS=\"get pods -A\" / dev-reset (forget the cluster)"
-	@echo "make dev-seed   the stand filled: cert-manager, then dev/seed (every usual kind, a few of each; metrics-server, VictoriaMetrics)"
+	@echo "make dev-seed   the stand filled: cert-manager, trivy-operator, Flux, then dev/seed (every usual kind, a few of each; metrics-server, VictoriaMetrics)"
 	@echo "make dev-clean  all the seed made deleted (cert-manager too); the rest of the cluster kept"
 	@echo "make storybook  the addons' stories and the kit's (http://localhost:6006): the page, its addons turned off and on"
 	@echo "make link-overweave     overweave from its sources beside this repository (../overweave), not the registry's"
@@ -97,13 +97,16 @@ dev-token:
 
 # The seed (dev/seed): cert-manager and trivy-operator from their releases (its scans: three at once, the
 # stand being one node; no Java database, near a gigabyte, none of the seed's images has a jar), then every usual kind, a few of each, on busybox; the certificates
-# it needs made by hand, made anew (dev/seed/tls.sh); helm releases, made by helm itself (dev/seed/90-helm.yaml).
+# it needs made by hand, made anew (dev/seed/tls.sh); helm releases, made by helm itself (dev/seed/90-helm.yaml);
+# Flux from its release, delivering from a git server in the cluster (dev/seed/95-flux.yaml, its keys dev/seed/git.sh).
 # cert-manager's webhook answers a while after its deployment is available (its CA injected): asked
 # with a dry run until it does, then the seed applied once.
 CERT_MANAGER_VERSION ?= v1.18.2
 CERT_MANAGER = https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
 TRIVY_OPERATOR_VERSION ?= v0.35.0
 TRIVY_OPERATOR = https://raw.githubusercontent.com/aquasecurity/trivy-operator/$(TRIVY_OPERATOR_VERSION)/deploy/static/trivy-operator.yaml
+FLUX_VERSION ?= v2.9.6
+FLUX = https://github.com/fluxcd/flux2/releases/download/$(FLUX_VERSION)/install.yaml
 KUBECTL = $(DEV) exec -T kube kubectl
 WEBHOOK_PROBE = apiVersion: cert-manager.io/v1\nkind: ClusterIssuer\nmetadata: {name: seed-probe}\nspec: {selfSigned: {}}\n
 
@@ -118,11 +121,19 @@ dev-seed:
 	$(KUBECTL) -n trivy-system patch configmap trivy-operator-config --type merge -p '{"data":{"OPERATOR_CONCURRENT_SCAN_JOBS_LIMIT":"3","OPERATOR_SCAN_JOB_TIMEOUT":"10m"}}'
 	$(KUBECTL) -n trivy-system patch configmap trivy-operator-trivy-config --type merge -p '{"data":{"trivy.skipJavaDBUpdate":"true","trivy.resources.limits.memory":"1Gi"}}'
 	$(KUBECTL) -n trivy-system rollout restart deployment trivy-operator
+	$(KUBECTL) apply --server-side --force-conflicts -f $(FLUX) >/dev/null
+	$(KUBECTL) -n flux-system wait --for=condition=Available deployment --all --timeout=300s
 	@# helm's Job made anew (a Job's spec is not changed once made): it runs helm again.
 	$(KUBECTL) -n seed-helm delete job helm-seed --ignore-not-found
 	for f in dev/seed/*.yaml; do cat $$f; echo ---; done | $(KUBECTL) apply -f -
 	@# The chart helm installs (dev/seed/charts), in a ConfigMap its Job reads (tar'd in the node image: no host's metadata in it).
 	$(RUN) $(NODE_IMAGE) tar -C dev/seed/charts -cf - hello | $(KUBECTL) -n seed-helm create configmap helm-charts --from-file=charts.tar=/dev/stdin --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	@# The git server's repository (dev/seed/git, and the chart as charts/hello), its keys and Flux's made anew (ssh-keygen,
+	@# in the node image: none kept in the repository); the server restarted to take them.
+	$(RUN) $(NODE_IMAGE) sh -c 'r=$$(mktemp -d) && cp -R dev/seed/git/. $$r && mkdir $$r/charts && cp -R dev/seed/charts/hello $$r/charts && tar -C $$r -cf - .' \
+		| $(KUBECTL) -n seed-flux create configmap git-repo --from-file=repo.tar=/dev/stdin --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(RUN) $(NODE_IMAGE) sh dev/seed/git.sh | $(KUBECTL) apply -f -
+	$(KUBECTL) -n seed-flux rollout restart deployment git
 	@# Certificates made anew (openssl, in the node image): none kept in the repository.
 	$(RUN) $(NODE_IMAGE) sh dev/seed/tls.sh secrets | $(KUBECTL) apply -f -
 	@# The pending request made anew: its spec is not changed once made, and it waits again.
@@ -130,8 +141,8 @@ dev-seed:
 	$(RUN) $(NODE_IMAGE) sh dev/seed/tls.sh request | $(KUBECTL) create -f -
 
 # All the seed made, by its label (overkube.dev/seed=true): its namespaces, its cluster-wide objects, the
-# volumes its claims kept (a retaining class's), then cert-manager and trivy-operator (their reports with
-# their CRDs).
+# volumes its claims kept (a retaining class's), then cert-manager, trivy-operator and Flux (their reports and
+# objects with their CRDs; Flux's own removed with seed-flux first, its controllers still there to let them go).
 dev-clean:
 	@# The seed's APIService first: one whose server is gone fails discovery, and namespaces are not deleted while it does.
 	$(KUBECTL) delete apiservice -l overkube.dev/seed=true
@@ -142,6 +153,7 @@ dev-clean:
 	$(DEV) exec -T kube sh -c "kubectl get pv -o jsonpath='{range .items[*]}{.metadata.name} {.spec.claimRef.namespace}{\"\\n\"}{end}' | awk '\$$2 ~ /^seed-/ {print \$$1}' | xargs -r kubectl delete pv"
 	$(KUBECTL) delete --ignore-not-found -f $(CERT_MANAGER)
 	$(KUBECTL) delete --ignore-not-found -f $(TRIVY_OPERATOR)
+	$(KUBECTL) delete --ignore-not-found -f $(FLUX)
 
 # The cluster forgotten: its volume deleted, after asking.
 dev-reset:

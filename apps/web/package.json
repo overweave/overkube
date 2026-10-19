@@ -15,6 +15,7 @@
     "@fontsource-variable/jetbrains-mono": "5.3.0",
     "@overkube/addon-cert-manager": "0.1.2",
     "@overkube/addon-core": "0.1.2",
+    "@overkube/addon-flux": "0.1.2",
     "@overkube/addon-helm": "0.1.2",
     "@overkube/addon-metrics": "0.1.2",
     "@overkube/addon-trivy": "0.1.2",

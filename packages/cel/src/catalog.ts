@@ -18,7 +18,7 @@ import { type Cel, CelError, type CelOptions, createCel, SEMANTICS } from './cel
 /** What a path means: query's JSONPath, as it is now (another meaning, another version). */
 export const PATH_SEMANTICS = 'jsonpath@1';
 /** What a join means: the other kind's object of the same namespace and name, its field's values; keyed (by, to): those whose to is its by, reduced. */
-export const JOIN_SEMANTICS = 'join@1';
+export const JOIN_SEMANTICS = 'join@2';
 
 /**
  * A field definition, its version worked out by this CEL (its kinds and
@@ -105,7 +105,7 @@ export function prepareCatalog(input: unknown, options: PrepareOptions = {}): Pr
           typeof value === 'string'
             ? value
             : isJoin(value)
-              ? { from: value.from, field: value.field, ...(value.by ? { by: value.by, to: value.to, reduce: value.reduce } : {}) }
+              ? { from: value.from, field: value.field, ...(value.by ? { by: value.by, to: value.to, reduce: value.reduce, ...(value.across ? { across: true } : {}) } : {}) }
               : { cel: value.cel },
       };
       const made = versionOf(copy, cel, versions);

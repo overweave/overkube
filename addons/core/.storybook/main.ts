@@ -8,6 +8,7 @@ export default storybook({
     '../../cert-manager/src/**/*.stories.tsx',
     '../../trivy/src/**/*.stories.tsx',
     '../../helm/src/**/*.stories.tsx',
+    '../../flux/src/**/*.stories.tsx',
     '../../../packages/uikit/src/**/*.stories.tsx',
   ],
   poll: true,

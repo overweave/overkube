@@ -59,12 +59,18 @@ export function checkFieldDef(def: unknown): QueryError | undefined {
   if (typeof v === 'object' && v !== null && !Array.isArray(v) && Object.keys(v).length === 1 && typeof (v as { cel?: unknown }).cel === 'string')
     return (v as { cel: string }).cel.length <= FIELD_LIMITS.cel ? undefined : bad(`CEL is at most ${FIELD_LIMITS.cel} long`);
   if (typeof v === 'object' && v !== null && !Array.isArray(v) && 'from' in v) {
-    const { from, field, by, to, reduce, ...extra } = v as Record<string, unknown>;
+    const { from, field, by, to, reduce, across, ...extra } = v as Record<string, unknown>;
     const name = (x: unknown) => typeof x === 'string' && x.length > 0 && x.length <= FIELD_LIMITS.text;
-    const keyed = by !== undefined || to !== undefined || reduce !== undefined;
-    if (!Object.keys(extra).length && name(from) && name(field) && (!keyed || (name(by) && name(to) && REDUCE.has(reduce as string)))) return undefined;
+    const keyed = by !== undefined || to !== undefined || reduce !== undefined || across !== undefined;
+    if (
+      !Object.keys(extra).length &&
+      name(from) &&
+      name(field) &&
+      (!keyed || (name(by) && name(to) && REDUCE.has(reduce as string) && (across === undefined || typeof across === 'boolean')))
+    )
+      return undefined;
   }
-  return bad('a value is a path, { cel }, { from, field } or { from, field, by, to, reduce: min | max | sum | count }');
+  return bad('a value is a path, { cel }, { from, field } or { from, field, by, to, reduce: min | max | sum | count, across? }');
 }
 
 /** How CEL is made into what it says of an object (none given: no field of CEL is had). */

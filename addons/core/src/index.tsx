@@ -69,6 +69,7 @@ import { addWorkloads } from './kinds/workloads.tsx';
 import { titleOf } from './kinds.ts';
 import { LOGGED, PodLogs, WorkloadLogs } from './logs.tsx';
 import { Menu } from './Menu.tsx';
+import { addMarks } from './marks.tsx';
 import { NavSide, NavTab, NavTabMark, NavTabs, PickerButton, type TabsState } from './Nav.tsx';
 import { type Chosen, KindNamespaces, NamespacePicker } from './namespaces.tsx';
 import { addOverview } from './overview.tsx';
@@ -284,6 +285,8 @@ export default defineAddon({
     c.add('Fill', 'core.resource.view.related.field.value', fill(related.field.value, { render: RelatedValue }));
     c.add('Fill', 'core.resource.view.related.owner', fill(related.owner, { order: 1000, render: Owner }));
     c.add('Fill', 'core.resource.view.metadata', section({ order: 900, render: Metadata }));
+    // What manages it (its kind's NameMarks): after its title, and in full under Managed By.
+    addMarks(c);
     // The usual kinds' own: their sections, related fields.
     addPod(c);
     addWorkloads(c);

@@ -27,6 +27,7 @@ const own: Record<string, { environment?: string }> = {
   'addons/cert-manager': { environment: 'happy-dom' },
   'addons/trivy': { environment: 'happy-dom' },
   'addons/helm': { environment: 'happy-dom' },
+  'addons/flux': { environment: 'happy-dom' },
 };
 
 // overweave from its sources (../overweave, linked): its imports resolved where it is linked, here — one Preact, one of each.

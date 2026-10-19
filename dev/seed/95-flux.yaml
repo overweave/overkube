@@ -1,0 +1,116 @@
+# Flux (make dev-seed installs it) delivering from a git server in the cluster, over SSH: git — sshd and
+# git-shell, nothing else (no UI, no API); its one repository, seed.git, made anew at its start of
+# dev/seed/git and the stand's chart (charts/hello: make dev-seed puts them in a ConfigMap, git-repo);
+# the keys both sides need made anew each time the seed is (dev/seed/git.sh), the server restarted then.
+# What Flux makes of it: GitRepository seed; Kustomization hello (./hello, applied); Kustomization broken
+# (a path not in it: not ready); HelmRelease hello-chart (the repository's chart, through a HelmChart).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: seed-flux
+  labels: { overkube.dev/seed: "true" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: git
+  namespace: seed-flux
+  labels: { overkube.dev/seed: "true", app: git }
+spec:
+  selector: { matchLabels: { app: git } }
+  strategy: { type: Recreate }
+  template:
+    metadata:
+      labels: { overkube.dev/seed: "true", app: git }
+    spec:
+      containers:
+        - name: git
+          image: alpine:3.22
+          command:
+            - sh
+            - -ec
+            - |
+              apk add --no-cache -q git openssh-server
+              # git, its shell git-shell (only git's own commands), its password none but not locked (sshd lets a key in).
+              adduser -D -h /srv/git -s /usr/bin/git-shell git
+              echo 'git:*' | chpasswd -e
+              install -d -m 700 -o git -g git /srv/git/.ssh
+              install -m 600 -o git -g git /keys/authorized_keys /srv/git/.ssh/authorized_keys
+              install -m 600 /keys/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key
+              mkdir /tmp/repo && tar -xf /repo/repo.tar -C /tmp/repo && cd /tmp/repo
+              git init -q -b main && git add -A && git -c user.name=seed -c user.email=seed@seed.test commit -qm "seed: hello and its chart"
+              git clone -q --bare /tmp/repo /srv/git/seed.git && chown -R git:git /srv/git/seed.git
+              exec /usr/sbin/sshd -D -e -o HostKey=/etc/ssh/ssh_host_ed25519_key -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no
+          ports: [{ name: ssh, containerPort: 22 }]
+          readinessProbe: { tcpSocket: { port: ssh }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: keys, mountPath: /keys, readOnly: true }
+            - { name: repo, mountPath: /repo, readOnly: true }
+          resources: { requests: { cpu: 5m, memory: 16Mi }, limits: { memory: 128Mi } }
+      volumes:
+        - { name: keys, secret: { secretName: git-keys } }
+        - { name: repo, configMap: { name: git-repo } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: git
+  namespace: seed-flux
+  labels: { overkube.dev/seed: "true" }
+spec:
+  selector: { app: git }
+  ports: [{ name: ssh, port: 22, targetPort: ssh }]
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: seed
+  namespace: seed-flux
+  labels: { overkube.dev/seed: "true" }
+spec:
+  url: ssh://git@git.seed-flux.svc.cluster.local/srv/git/seed.git
+  ref: { branch: main }
+  interval: 1m
+  secretRef: { name: flux-git }
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hello
+  namespace: seed-flux
+  labels: { overkube.dev/seed: "true" }
+spec:
+  sourceRef: { kind: GitRepository, name: seed }
+  path: ./hello
+  targetNamespace: seed-flux
+  prune: true
+  wait: true
+  interval: 5m
+  timeout: 2m
+---
+# A path the repository does not have: not ready, kustomize-controller's words why.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: broken
+  namespace: seed-flux
+  labels: { overkube.dev/seed: "true" }
+spec:
+  sourceRef: { kind: GitRepository, name: seed }
+  path: ./not-there
+  prune: true
+  interval: 5m
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: hello-chart
+  namespace: seed-flux
+  labels: { overkube.dev/seed: "true" }
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: ./charts/hello
+      sourceRef: { kind: GitRepository, name: seed }
+  values: { message: delivered by flux }

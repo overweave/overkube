@@ -31,6 +31,10 @@ export const ICONS = {
   helm: 'steering-wheel',
   unfold: 'arrows-vertical',
   rocket: 'rocket',
+  git: 'git-branch',
+  bucket: 'bucket',
+  books: 'books',
+  artifact: 'file-zip',
   volume: 'database-export',
   // Controls
   search: 'search',

@@ -5,7 +5,15 @@ import type { Decorator } from '@storybook/preact-vite';
 
 /** A kit's story on the page's ground: its styles, its root (the addons' draw their own, KubeStory). */
 const kit: Decorator = (Story, { title }) => {
-  if (title.startsWith('core') || title.startsWith('metrics') || title.startsWith('cert-manager') || title.startsWith('trivy') || title.startsWith('helm')) return <Story />;
+  if (
+    title.startsWith('core') ||
+    title.startsWith('metrics') ||
+    title.startsWith('cert-manager') ||
+    title.startsWith('trivy') ||
+    title.startsWith('helm') ||
+    title.startsWith('flux')
+  )
+    return <Story />;
   adoptStyles(document);
   return (
     <div class="uk-root" style={{ padding: '24px', minHeight: '100vh', background: 'var(--uk-bg)', fontFamily: FONT }}>

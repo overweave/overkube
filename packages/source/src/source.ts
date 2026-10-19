@@ -302,13 +302,14 @@ export function createSource(connector: Connector, options: SourceOptions = {}):
       const theirs = kind ? fieldsFor(kind) : undefined;
       if (!kind || !theirs || !('ref' in theirs)) return [];
       const every: FeedSpec = { kind };
-      const cover = plan.namespaces === 'all' || !kind.namespaced ? undefined : borrow(every);
-      const parts: Part[] =
-        plan.namespaces === 'all' || !kind.namespaced
-          ? [{ feed: want(every) }]
-          : cover
-            ? [{ feed: cover, only: new Set(plan.namespaces) }]
-            : plan.namespaces.map((namespace) => ({ feed: want({ kind, namespace }), namespace }));
+      // A join across namespaces: of every one of them, whatever namespaces are asked.
+      const all = plan.namespaces === 'all' || !kind.namespaced || used.some(([, j]) => j.from === from && j.across);
+      const cover = all ? undefined : borrow(every);
+      const parts: Part[] = all
+        ? [{ feed: want(every) }]
+        : cover
+          ? [{ feed: cover, only: new Set(plan.namespaces) }]
+          : plan.namespaces.map((namespace) => ({ feed: want({ kind, namespace }), namespace }));
       return [{ from, parts, fields: theirs }];
     });
     const way = joins.map((j) => `${j.from}:${j.parts.map((p) => `${idOf(p.feed)}${p.only ? `:${[...p.only].join(',')}` : ''}`).join(',')}:${idOf(j.fields)}`).join(';');

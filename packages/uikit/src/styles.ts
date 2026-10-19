@@ -435,6 +435,12 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 /* A mark that leads somewhere (beside a name: what manages it): quiet, its link's colour under the pointer. */
 .uk-line > .uk-mark-link { align-self: center; display: flex; color: var(--uk-muted); text-decoration: none; }
 .uk-line > .uk-mark-link:hover { color: var(--uk-accent); }
+/* A name and its marks in a cell: on one line, the marks whole (a tip's too), the name cut short with dots. */
+.uk-table-row .uk-line:has(> .uk-mark-link, > .uk-tip-at > .uk-mark-link) { flex-wrap: nowrap; }
+/* (Its name the one thing to give: all of the room missing, not a share — a factor under 1 alone gives only that much of it.) */
+.uk-table-row .uk-line:has(> .uk-mark-link, > .uk-tip-at > .uk-mark-link) > :first-child { flex-shrink: 1; }
+.uk-table-row .uk-line > :is(.uk-mark-link, .uk-tip-at:has(> .uk-mark-link)) { flex: none; overflow: visible; }
+.uk-line > .uk-tip-at:has(> .uk-mark-link) { align-self: center; display: flex; }
 .uk-mark-link .uk-status { --uk-status-c: currentColor; }
 .uk-line > .uk-tip-at:has(> .uk-status[role='img']), .uk-line > .uk-status[role='img'] { align-self: center; display: flex; }
 /* Some badges (ports), some refs (what a pod uses): side by side, wrapping. */

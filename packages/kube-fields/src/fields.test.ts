@@ -128,6 +128,30 @@ describe('when a job ran and a workload rolled out', () => {
     [{ status: { lastScaleTime: '2026-10-01T08:00:00Z' } }, BATCH, 'horizontalpodautoscalers.v2.autoscaling.lastScale', t('2026-10-01T08:00:00Z')],
     [{ metadata: { annotations: { 'deployment.kubernetes.io/revision': '7' } } }, WORKLOADS, 'deployments.v1.apps.revision', [7]],
     [{ metadata: {} }, WORKLOADS, 'replicasets.v1.apps.revision', [0]],
+    // The workload it is of: a deployment's pod, the deployment (its replica set's name but its hash); a stateful set's, it; none, "".
+    [{ metadata: { name: 'web' } }, WORKLOADS, 'deployments.v1.apps.workload', ['Deployment/web']],
+    [
+      { metadata: { labels: { 'pod-template-hash': '5f9c' }, ownerReferences: [{ kind: 'ReplicaSet', name: 'web-api-5f9c', controller: true }] } },
+      WORKLOADS,
+      'pods.v1.workload',
+      ['Deployment/web-api'],
+    ],
+    [{ metadata: { ownerReferences: [{ kind: 'ReplicaSet', name: 'bare', controller: true }] } }, WORKLOADS, 'pods.v1.workload', ['ReplicaSet/bare']],
+    [
+      {
+        metadata: {
+          ownerReferences: [
+            { kind: 'StatefulSet', name: 'db', controller: true },
+            { kind: 'Thing', name: 'x' },
+          ],
+        },
+      },
+      WORKLOADS,
+      'pods.v1.workload',
+      ['StatefulSet/db'],
+    ],
+    [{ metadata: {} }, WORKLOADS, 'pods.v1.workload', ['']],
+    [{ metadata: { ownerReferences: [{ kind: 'Deployment', name: 'web', controller: true }] } }, WORKLOADS, 'replicasets.v1.apps.workload', ['Deployment/web']],
   ])('%j: %s is %j', (object, defs, name, values) => {
     expect(valuesOf(object, name as string, paths(defs as Defs))).toEqual(values);
   });
