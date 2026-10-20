@@ -3,7 +3,10 @@ import { type ReadonlySignal, signal } from '@preact/signals';
 /*
  * Where the page is, as a path ('/k/pods.v1'): the window's hash
  * (#/k/pods.v1 — a reload or a link keeps it, Back works), or one held in
- * memory (a test, a story).
+ * memory (a test, a story). A hash's links carry the page's own path and
+ * query before it (/Kubernetes#/k/pods.v1): to the browser the same page,
+ * and to a host that takes a link of #… for another site's (a platform's
+ * web UI may), one of its own.
  */
 
 export interface Router {
@@ -21,6 +24,16 @@ export function pathOf(hash: string): string {
   return path.startsWith('/') ? path : '/';
 }
 
+/**
+ * The page's path a link goes to, if it is the page's own (#/…, or the
+ * page's path and query and then #/…); null: it goes elsewhere.
+ */
+export function linkPath(href: string, here: { pathname: string; search: string } = window.location): string | null {
+  if (href.startsWith('#/')) return href.slice(1);
+  const own = `${here.pathname}${here.search}#/`;
+  return href.startsWith(own) ? href.slice(own.length - 1) : null;
+}
+
 /** The window's hash: followed as it changes, changed to go elsewhere. */
 export function hashRouter(win: Window = window): Router {
   const path = signal(pathOf(win.location.hash));
@@ -36,7 +49,7 @@ export function hashRouter(win: Window = window): Router {
       follow();
     },
     back: () => win.history.back(),
-    href: (to) => `#${to}`,
+    href: (to) => `${win.location.pathname}${win.location.search}#${to}`,
     close: () => win.removeEventListener('hashchange', follow),
   };
 }

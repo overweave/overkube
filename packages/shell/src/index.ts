@@ -11,6 +11,6 @@
 export { Frame, Outlet } from './Frame.tsx';
 export { type Matched, matchPage, matchPath } from './match.ts';
 export { type Notifications, notifications } from './notifications.ts';
-export { hashRouter, memoryRouter, pathOf, type Router } from './router.ts';
+export { hashRouter, linkPath, memoryRouter, pathOf, type Router } from './router.ts';
 export { failureField, type OnFailure, Shell, type ShellOptions, type ShellProps, ShellProvider } from './Shell.tsx';
 export { localStore, memoryStore, merged, type SavedUser, type UserOptions, UserService, type UserStore } from './user.ts';

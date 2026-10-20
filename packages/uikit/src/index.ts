@@ -77,7 +77,7 @@ export { Panel } from './layout/Panel';
 export { Row, type RowProps, Rows } from './layout/Rows';
 export { Section } from './layout/Section';
 export { LEAVE_MS, PEEK_MS, SIDE_RAIL_LABELS, SideRail, type SideRailLabels, type SideRailProps, type SideRailState } from './layout/SideRail';
-export { adoptStyles } from './lib/adopt';
+export { adoptStyles, styleRootOf } from './lib/adopt';
 export { copyText } from './lib/clipboard';
 export { Above, Layer, type LayerProps, type Placing, placeAt, usePlacedBy } from './lib/layers';
 export type { Level } from './lib/level';

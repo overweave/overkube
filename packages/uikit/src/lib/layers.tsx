@@ -34,9 +34,13 @@ interface Entry {
 
 const stack: Entry[] = [];
 
+/** The page's roots layers were drawn in: made inert under a modal one — in a shadow root too, where the document's query does not reach. */
+const roots = new Set<Element>();
+
 /** The host of the layers of the root this is drawn in (made at its end, once). */
 function hostOf(from: Element | null): HTMLElement {
   const root = from?.closest('.uk-root') ?? document.body;
+  if (root !== document.body) roots.add(root);
   const found = [...root.children].find((c) => c.classList.contains('uk-layers'));
   if (found) return found as HTMLElement;
   const host = document.createElement('div');
@@ -78,9 +82,22 @@ function settle() {
     l.el.inert = i < modal;
     if (!l.inPlace) l.el.style.zIndex = String(i + 1);
   }
-  for (const root of document.querySelectorAll('.uk-root'))
+  for (const root of document.querySelectorAll('.uk-root')) roots.add(root);
+  for (const root of roots) {
+    if (!root.isConnected) {
+      roots.delete(root);
+      continue;
+    }
     for (const child of root.children) if (!child.classList.contains('uk-layers')) (child as HTMLElement).inert = modal >= 0;
-  document.documentElement.classList.toggle('uk-locked', modal >= 0);
+  }
+  // Not scrolled: html.uk-locked — and on the element itself, for the kit's styles in a shadow root (from where html is not reached).
+  const html = document.documentElement;
+  const locked = modal >= 0;
+  if (html.classList.contains('uk-locked') !== locked) {
+    html.classList.toggle('uk-locked', locked);
+    html.style.overflow = locked ? 'hidden' : '';
+    html.style.overscrollBehavior = locked ? 'none' : '';
+  }
 }
 
 function join(entry: Entry) {

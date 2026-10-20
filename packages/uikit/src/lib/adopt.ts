@@ -10,6 +10,12 @@ import { css } from '../styles';
 
 const adopted = new WeakSet<Document | ShadowRoot>();
 
+/** Where an element's styles are taken from: the shadow root it is drawn in, or its document. */
+export function styleRootOf(element: Element): Document | ShadowRoot {
+  const root = element.getRootNode();
+  return root.nodeType === Node.DOCUMENT_FRAGMENT_NODE && 'host' in root ? (root as ShadowRoot) : element.ownerDocument;
+}
+
 export function adoptStyles(root: Document | ShadowRoot = document): void {
   if (adopted.has(root)) return;
   adopted.add(root);

@@ -1,7 +1,7 @@
 import type { AuthAnswer } from '@overkube/gateway/protocol';
 import { grantsAny } from '@overkube/query';
 import { defineAddon, slots } from '@overkube/sdk';
-import { adoptStyles, Button, copyText, Logo, Notice, PageHeader } from '@overkube/uikit';
+import { adoptStyles, Button, copyText, Logo, Notice, PageHeader, styleRootOf } from '@overkube/uikit';
 import { fill } from '@overweave/ui/preact';
 import { type ComponentChildren, render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
@@ -56,7 +56,7 @@ const FAILED: Record<string, string> = {
 
 /** The page as one screen: signing in (ended: the session it had is over), or the server not answering (asked again until it does). */
 export function showSignIn(element: HTMLElement, auth: AuthAnswer | 'unreachable', ended = false): void {
-  adoptStyles(element.ownerDocument);
+  adoptStyles(styleRootOf(element));
   element.classList.add('uk-root');
   render(auth === 'unreachable' ? <Unreachable /> : <SignIn auth={auth} ended={ended} />, element);
 }

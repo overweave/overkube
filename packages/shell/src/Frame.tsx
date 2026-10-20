@@ -6,14 +6,15 @@ import { Guarded, slotElement, useDefinition, useDefinitions, useSlotView } from
 import type { RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { matchPage } from './match.ts';
+import { linkPath } from './router.ts';
 
 /**
  * The page's frame, and nothing of its own in it: its header's slots, the
  * navigation's (across the top, down the side), the Page the path names in
  * the middle (a resource opened over it), the overlay over it all. Whatever
  * fills them is the addons' (the core's, or another's in its place). A link
- * to a path of the page (#/…) goes through the router, wherever the path is
- * kept.
+ * to a path of the page (#/…, or the page's own URL and #/…) goes through
+ * the router, wherever the path is kept.
  */
 export function Frame() {
   const page = usePage();
@@ -27,7 +28,7 @@ export function Frame() {
     root.lang = say.locale;
     return () => root.removeAttribute('lang');
   }, [say.locale]);
-  // A link within the page (#/…) goes through the router: the same for a hash's and one in memory (a story, a test) — on the
+  // A link within the page (#/…, /<page>#/…) goes through the router: the same for a hash's and one in memory (a story, a test) — on the
   // page's root, the layers over it too (a picker's, a dialog's: drawn at its end, not in the frame).
   const navigate = useRef(page.navigate);
   navigate.current = page.navigate;
@@ -36,10 +37,12 @@ export function Frame() {
     const follow = (e: Event) => {
       const m = e as MouseEvent;
       if (m.defaultPrevented || m.button !== 0 || m.metaKey || m.ctrlKey || m.shiftKey || m.altKey) return;
-      const link = (m.target as Element | null)?.closest?.('a[href^="#/"]');
+      const link = (m.target as Element | null)?.closest?.('a[href]');
       if (!link || (link as HTMLAnchorElement).target) return;
+      const to = linkPath(link.getAttribute('href') as string);
+      if (to === null) return;
       m.preventDefault();
-      navigate.current((link.getAttribute('href') as string).slice(1));
+      navigate.current(to);
     };
     root?.addEventListener('click', follow);
     return () => root?.removeEventListener('click', follow);

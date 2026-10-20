@@ -1,6 +1,6 @@
 import type { AddonStatus, UserChanges } from '@overkube/sdk';
 import { hashRouter, notifications, Shell } from '@overkube/shell';
-import { adoptStyles, Notice } from '@overkube/uikit';
+import { adoptStyles, Notice, styleRootOf } from '@overkube/uikit';
 import type { Registry } from '@overweave/core';
 import { mountSlotOverlay } from '@overweave/ui/overlay';
 import { slotTrace } from '@overweave/ui/preact';
@@ -42,7 +42,8 @@ function CoreDown({ host }: { host: AddonHost }) {
 export function mount(element: HTMLElement, page: Page, told = notifications()): () => void {
   const doc = element.ownerDocument;
   const win = doc.defaultView as Window;
-  adoptStyles(doc);
+  // The kit's styles where the element is: its document, or the shadow root a host draws the page in.
+  adoptStyles(styleRootOf(element));
   // The kit's root: its tokens' defaults; the shell sets the theme's over them (dark, light, as the system is).
   element.classList.add('uk-root');
   const router = hashRouter(win);

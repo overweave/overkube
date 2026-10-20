@@ -1,5 +1,5 @@
 import { createConnector } from '@overkube/connector';
-import { type AddonChoicesSpec, fieldLayers, knownNamespaces, kubeKinds, type NamespacesSpec } from '@overkube/sdk';
+import { type Addon, type AddonChoicesSpec, fieldLayers, knownNamespaces, kubeKinds, type NamespacesSpec } from '@overkube/sdk';
 import { localStore, notifications, UserService } from '@overkube/shell';
 import { createSource } from '@overkube/source';
 import { createRegistry } from '@overweave/core';
@@ -22,6 +22,12 @@ import { mount } from './shell/mount.tsx';
  * with ?safe); the shell drawn into its element (?debug: the slots over
  * it, what the one signed in may not have marked rather than hidden) —
  * its session over, the sign-in screen in its place. The user's changes saved as the page goes.
+ *
+ * Another host (a platform's plugin) starts it the same way, into an
+ * element of its own page: its gateway where it serves it, its headers on
+ * every request (a CSRF token), and with signIn false the page asks no /auth
+ * — the host has signed the user in already; its own addons (addons) run
+ * beside the page's, as they are (their layer theirs: builtin, always on).
  */
 
 export interface BootOptions {
@@ -29,15 +35,23 @@ export interface BootOptions {
   element: HTMLElement;
   /** The page's query: ?safe, ?debug. */
   asked: URLSearchParams;
+  /** Where the gateway is: /kube (overkube's server), or the host's own path. */
+  gateway?: string;
+  /** Headers every request to the gateway carries (a host's CSRF token, say). */
+  headers?: () => Record<string, string>;
+  /** Whether the page asks how one signs in here (GET /auth): false — the host signs in itself, the page drawn as it is (default true). */
+  signIn?: boolean;
+  /** The host's own addons, run beside the page's (addons.ts): their layer theirs — builtin, always on; addon, the user's to turn on. */
+  addons?: readonly Addon[];
 }
 
-export async function boot({ element, asked }: BootOptions) {
-  const auth = await authOf();
+export async function boot({ element, asked, gateway = '/kube', headers, signIn = true, addons: theirs = [] }: BootOptions) {
+  // No /auth asked: as a host without one (null), its own sign-in.
+  const auth = signIn ? await authOf() : null;
   if (auth === 'unreachable' || (signsIn(auth) && !auth.user)) return showSignIn(element, auth);
   if (signsIn(auth)) returnAfterSignIn();
-  const gateway = '/kube';
   // Signed in with a token of one's own: the API server's 401 (the token ended, taken back) ends the session too.
-  const connector = createConnector({ http: { base: gateway, tokenSession: signsIn(auth) && auth.via === 'token' } });
+  const connector = createConnector({ http: { base: gateway, headers, tokenSession: signsIn(auth) && auth.via === 'token' } });
   const registry = createRegistry({ kinds: kubeKinds });
   // The namespaces one may use without listing them (Namespaces): asked one by one when the cluster's list is refused.
   const known = definitionSignal(registry, 'Namespaces', 'default');
@@ -56,6 +70,14 @@ export async function boot({ element, asked }: BootOptions) {
   const choices = computed(() => chosen.value?.spec as AddonChoicesSpec | undefined);
   const host = new AddonHost({ registry, cluster, choices, notify: (n, from) => told.notify(n, from), safe: asked.has('safe') });
   for (const addon of signsIn(auth) ? [...addons, session(auth)] : addons) host.register(addon);
+  // The host's: one whose id is taken (the page's own, another of the host's) refused and said, the page drawn all the same.
+  for (const addon of theirs) {
+    try {
+      host.register(addon);
+    } catch (error) {
+      console.warn(`[overkube] the host's addon ${addon.id} refused: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   const unmount = mount(element, { registry, host, cluster, user, debug: asked.has('debug') }, told);
   // Turned away (the session ended, its token taken back): the page gives way to signing in again.
   if (signsIn(auth)) {

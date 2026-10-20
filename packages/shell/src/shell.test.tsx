@@ -6,7 +6,7 @@ import { act, cleanup, render } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { matchPage, matchPath } from './match.ts';
 import { notifications } from './notifications.ts';
-import { hashRouter, memoryRouter, pathOf } from './router.ts';
+import { hashRouter, linkPath, memoryRouter, pathOf } from './router.ts';
 import { Shell } from './Shell.tsx';
 import { memoryStore, UserService } from './user.ts';
 
@@ -77,8 +77,21 @@ describe('routers', () => {
     expect([window.location.hash, router.path.value]).toEqual(['#/k/nodes.v1', '/k/nodes.v1']);
     router.navigate('/', { replace: true });
     expect(router.path.value).toBe('/');
-    expect(router.href('/k/x')).toBe('#/k/x');
+    expect(router.href('/k/x')).toBe(`${window.location.pathname}${window.location.search}#/k/x`);
     router.close();
+  });
+
+  it('take a link for the page’s own: #/…, or the page’s path and query and then #/…', () => {
+    const here = { pathname: '/Kubernetes', search: '?debug' };
+    expect(linkPath('#/k/pods.v1', here)).toBe('/k/pods.v1');
+    expect(linkPath('/Kubernetes?debug#/k/pods.v1', here)).toBe('/k/pods.v1');
+    expect(linkPath('/Kubernetes?debug#/', here)).toBe('/');
+    expect([linkPath('/Docker#/k/pods.v1', here), linkPath('/Kubernetes#/k/pods.v1', here), linkPath('#top', here), linkPath('https://example.com/#/x', here)]).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
   });
 
   it('keep a path in memory, and where it went', () => {

@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../display/Icon';
+import { activeElement } from '../lib/focus';
 import { Tip } from '../overlays/Tip';
 
 /*
@@ -84,7 +85,7 @@ export function SideRail({ label, pinned, onPin, labels = SIDE_RAIL_LABELS, hold
     later(function check() {
       const el = panel.current;
       if (held.current || el?.querySelector('[data-sorting], [role="dialog"]')) return later(check, LEAVE_MS);
-      if (!pointed.current && el?.contains(document.activeElement)) return;
+      if (!pointed.current && el?.contains(activeElement())) return;
       setPeek(false);
     }, LEAVE_MS);
   // Let go (a menu closed) with the pointer gone: gone as it would have.
