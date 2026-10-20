@@ -35,10 +35,10 @@
     "preact": "^10.29.8"
   },
   "devDependencies": {
-    "@storybook/preact-vite": "10.6.1",
+    "@storybook/preact-vite": "10.6.2",
     "@tabler/icons": "3.49.0",
     "@testing-library/preact": "3.2.4",
-    "@testing-library/user-event": "14.6.7",
+    "@testing-library/user-event": "14.6.8",
     "happy-dom": "20.14.6",
     "preact": "10.29.8"
   },
