@@ -1,9 +1,14 @@
 {
   "name": "@overkube/gateway",
   "version": "0.1.2",
-  "private": true,
   "description": "overkube's way to a Kubernetes cluster: the API server's paths passed on, several watches over one stream, changes as JSON, a status — one handler over Node's request and response, for any host",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/overweave/overkube.git",
+    "directory": "packages/gateway"
+  },
+  "homepage": "https://github.com/overweave/overkube/tree/main/packages/gateway#readme",
   "type": "module",
   "exports": {
     ".": {
@@ -30,5 +35,8 @@
   },
   "devDependencies": {
     "@types/node": "24.10.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

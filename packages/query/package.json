@@ -1,9 +1,14 @@
 {
   "name": "@overkube/query",
   "version": "0.1.2",
-  "private": true,
   "description": "What overkube asks of a cluster's data, as data: fields, queries, their results — and kubectl's JSONPath; pure, so the page and a server answer them alike",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/overweave/overkube.git",
+    "directory": "packages/query"
+  },
+  "homepage": "https://github.com/overweave/overkube/tree/main/packages/query#readme",
   "type": "module",
   "exports": {
     ".": {
@@ -19,5 +24,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "stress": "node --expose-gc --max-old-space-size=7000 stress/scan.stress.ts"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

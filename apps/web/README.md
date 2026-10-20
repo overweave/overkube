@@ -9,4 +9,15 @@ npm run build -w @overkube/web    # dist/: what the server serves as OVERKUBE_UI
 
 The dev stand (`make dev`) runs the first at [http://localhost:5173](http://localhost:5173); the image copies the second to `/app/ui`. [vite.config.ts](vite.config.ts) reads the workspace's packages and overweave from their sources (the `overkube-source` and `overweave-source` conditions), one Preact.
 
-Private: not published.
+For a host that draws the page into a page of its own (a platform's plugin), it is published as a library, `@overkube/web` ([src/index.ts](src/index.ts)): `boot({ element, asked, gateway, headers, signIn: false, addons })` — its gateway where the host serves it, the host's headers on every request (a CSRF token), no `/auth` asked (the host has signed the user in), the host's own addons beside the page's; it answers the registry and `close()`. Its own packages (the addons, the shell, the runtime, the source, the connector) are bundled in; those a host's addons are written with — `@overkube/sdk`, `@overkube/uikit`, `@overkube/kube-types`, `@overkube/query`, `@overkube/gateway`, overweave, Preact — are dependencies, one of each in the host's bundle. `@overkube/web/styles` is the page around it (the fonts, [src/page.css](src/page.css)), for the host's bundler.
+
+```ts
+import { boot } from '@overkube/web';
+import '@overkube/web/styles';
+
+const page = await boot({ element, asked: new URLSearchParams(location.search), gateway: '/plugins/overkube/kube', signIn: false });
+```
+
+```bash
+npm run build:lib -w @overkube/web   # lib/: the library (vite.lib.config.ts), its types
+```

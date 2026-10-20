@@ -1,9 +1,14 @@
 {
   "name": "@overkube/uikit",
   "version": "0.1.2",
-  "private": true,
   "description": "overkube's UI kit: the components and styles its page and its addons are drawn with",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/overweave/overkube.git",
+    "directory": "packages/uikit"
+  },
+  "homepage": "https://github.com/overweave/overkube/tree/main/packages/uikit#readme",
   "type": "module",
   "exports": {
     ".": {
@@ -36,5 +41,8 @@
     "@testing-library/user-event": "14.6.7",
     "happy-dom": "20.14.6",
     "preact": "10.29.8"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

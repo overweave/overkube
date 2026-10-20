@@ -1,5 +1,5 @@
 import { createConnector } from '@overkube/connector';
-import { type Addon, type AddonChoicesSpec, fieldLayers, knownNamespaces, kubeKinds, type NamespacesSpec } from '@overkube/sdk';
+import { type AddonChoicesSpec, fieldLayers, knownNamespaces, kubeKinds, type NamespacesSpec } from '@overkube/sdk';
 import { localStore, notifications, UserService } from '@overkube/shell';
 import { createSource } from '@overkube/source';
 import { createRegistry } from '@overweave/core';
@@ -8,6 +8,7 @@ import { computed, effect } from '@preact/signals';
 import { addons } from './addons.ts';
 import { AddonHost } from './host/addons.ts';
 import { clusterAccess } from './host/cluster.ts';
+import type { BootOptions } from './options.ts';
 import { authOf, returnAfterSignIn, session, showSignIn, signsIn } from './session.tsx';
 import { mount } from './shell/mount.tsx';
 
@@ -29,21 +30,6 @@ import { mount } from './shell/mount.tsx';
  * — the host has signed the user in already; its own addons (addons) run
  * beside the page's, as they are (their layer theirs: builtin, always on).
  */
-
-export interface BootOptions {
-  /** Where the shell is drawn. */
-  element: HTMLElement;
-  /** The page's query: ?safe, ?debug. */
-  asked: URLSearchParams;
-  /** Where the gateway is: /kube (overkube's server), or the host's own path. */
-  gateway?: string;
-  /** Headers every request to the gateway carries (a host's CSRF token, say). */
-  headers?: () => Record<string, string>;
-  /** Whether the page asks how one signs in here (GET /auth): false — the host signs in itself, the page drawn as it is (default true). */
-  signIn?: boolean;
-  /** The host's own addons, run beside the page's (addons.ts): their layer theirs — builtin, always on; addon, the user's to turn on. */
-  addons?: readonly Addon[];
-}
 
 export async function boot({ element, asked, gateway = '/kube', headers, signIn = true, addons: theirs = [] }: BootOptions) {
   // No /auth asked: as a host without one (null), its own sign-in.
@@ -94,5 +80,13 @@ export async function boot({ element, asked, gateway = '/kube', headers, signIn 
       });
     });
   }
-  return { registry, cluster, host, user };
+  // Ended by the host (its page left): drawn no more, what is waiting saved, every watch let go.
+  const close = () => {
+    unmount();
+    host.close();
+    cluster.close();
+    connector.close();
+    void user.flush();
+  };
+  return { registry, cluster, host, user, close };
 }

@@ -6,7 +6,11 @@
 # its SBOM and provenance with it, and GitHub's attestation of where it was built (once the
 # repository is public). The Helm chart (its version the server's) pushed to oci://ghcr.io/overweave/charts.
 # Then a release on GitHub, the chart drawn as plain manifests attached (overkube.yaml, for kubectl
-# apply); a 0.x version as a pre-release.
+# apply); a 0.x version as a pre-release. Beside the image, the packages a host or an addon's author
+# builds with — @overkube/query, kube-types, gateway, uikit, sdk, and web (the page as a library, its
+# own packages bundled in) — published to npmjs.com by trusted publishing (no token, with provenance;
+# each package's trusted publisher: this workflow, its environment release), under `latest` (`next`
+# for a version with a `-`); run again, only what is not there yet.
 name: release
 
 on:
@@ -23,6 +27,50 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+
+  npm:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: read
+      # npmjs.com's trusted publishing, and the provenance it signs.
+      id-token: write
+    env:
+      # In the order they depend on one another.
+      PACKAGES: packages/query packages/kube-types packages/gateway packages/uikit packages/sdk apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm ci --no-audit --no-fund
+      - name: The tag is each package's version
+        run: |
+          for dir in $PACKAGES; do
+            version="$(node -p "require('./$dir/package.json').version")"
+            [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "the tag $GITHUB_REF_NAME is not $dir's version $version"; exit 1; }
+          done
+      - name: Built (the page as a library)
+        run: |
+          for dir in $PACKAGES; do
+            if [ "$dir" = apps/web ]; then npm run build:lib -w "./$dir"; else npm run build -w "./$dir"; fi
+          done
+      - name: The packages, on npmjs.com
+        run: |
+          tag="latest"
+          case "$GITHUB_REF_NAME" in *-*) tag="next" ;; esac
+          for dir in $PACKAGES; do
+            cp LICENSE "$dir/"
+            name="$(node -p "require('./$dir/package.json').name")"
+            version="$(node -p "require('./$dir/package.json').version")"
+            if npm view "$name@$version" version >/dev/null 2>&1; then echo "$name@$version: on npmjs.com already"
+            else npm publish "./$dir" --access public --provenance --tag "$tag"; fi
+          done
 
   image:
     needs: check

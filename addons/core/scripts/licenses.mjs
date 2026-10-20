@@ -42,7 +42,9 @@ export function collect() {
     }
     // Its peers too (what it runs with), but those it can do without.
     const peers = Object.keys(p.peerDependencies ?? {}).filter((name) => !p.peerDependenciesMeta?.[name]?.optional);
-    for (const name of [...Object.keys(p.dependencies ?? {}), ...peers]) walk(find(name, dir));
+    // An app's own packages it bundles (the page's: its addons, shell, source — dev dependencies of the library it is published as) run too.
+    const bundled = APPS.some((app) => join(ROOT, app) === dir) ? Object.keys(p.devDependencies ?? {}).filter((name) => name.startsWith('@overkube/')) : [];
+    for (const name of [...Object.keys(p.dependencies ?? {}), ...peers, ...bundled]) walk(find(name, dir));
   };
   for (const app of APPS) walk(join(ROOT, app));
   for (const name of EMBEDDED) walk(find(name, join(ROOT, 'packages', 'uikit')));

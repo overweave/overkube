@@ -1,24 +1,55 @@
 {
   "name": "@overkube/web",
   "version": "0.1.2",
-  "private": true,
-  "description": "overkube's page: the registry of the dashboard's kinds, the addons run in it (their lifecycle), the cluster they are given, and the frame that draws what they define",
+  "description": "overkube's page: the registry of the dashboard's kinds, the addons run in it (their lifecycle), the cluster they are given, and the frame that draws what they define — for a host to boot into a page of its own",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/overweave/overkube.git",
+    "directory": "apps/web"
+  },
+  "homepage": "https://github.com/overweave/overkube/tree/main/apps/web#readme",
   "type": "module",
   "exports": {
     ".": {
       "overkube-source": "./src/index.ts",
-      "default": "./src/index.ts"
-    }
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./styles": "./styles.js",
+    "./page.css": "./src/page.css"
   },
+  "files": [
+    "lib",
+    "styles.js",
+    "src/page.css"
+  ],
+  "sideEffects": [
+    "./styles.js",
+    "*.css"
+  ],
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:lib": "vite build -c vite.lib.config.ts && tsc -p tsconfig.lib.json && cp lib-types/index.d.ts lib-types/options.d.ts lib/ && rm -rf lib-types"
   },
   "dependencies": {
     "@fontsource-variable/inter": "5.3.0",
     "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@overkube/gateway": "0.1.2",
+    "@overkube/kube-types": "0.1.2",
+    "@overkube/query": "0.1.2",
+    "@overkube/sdk": "0.1.2",
+    "@overkube/uikit": "0.1.2",
+    "@overweave/core": "0.5.0",
+    "@overweave/ui": "0.5.0"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.3",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
     "@overkube/addon-cert-manager": "0.1.2",
     "@overkube/addon-core": "0.1.2",
     "@overkube/addon-flux": "0.1.2",
@@ -26,22 +57,16 @@
     "@overkube/addon-metrics": "0.1.2",
     "@overkube/addon-trivy": "0.1.2",
     "@overkube/connector": "0.1.2",
-    "@overkube/kube-types": "0.1.2",
-    "@overkube/query": "0.1.2",
     "@overkube/runtime": "0.1.2",
-    "@overkube/sdk": "0.1.2",
     "@overkube/shell": "0.1.2",
     "@overkube/source": "0.1.2",
-    "@overkube/uikit": "0.1.2",
-    "@overweave/core": "0.5.0",
-    "@overweave/ui": "0.5.0",
+    "@preact/preset-vite": "2.10.6",
     "@preact/signals": "2.11.3",
+    "@testing-library/preact": "3.2.4",
+    "happy-dom": "20.14.6",
     "preact": "10.29.8"
   },
-  "devDependencies": {
-    "@overkube/gateway": "0.1.2",
-    "@preact/preset-vite": "2.10.6",
-    "@testing-library/preact": "3.2.4",
-    "happy-dom": "20.14.6"
+  "publishConfig": {
+    "access": "public"
   }
 }

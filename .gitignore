@@ -1,6 +1,9 @@
 # Installed and built
 node_modules/
 dist/
+# @overkube/web built as a library (apps/web: build:lib)
+apps/web/lib/
+apps/web/lib-types/
 *.tsbuildinfo
 storybook-static/
 

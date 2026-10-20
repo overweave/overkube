@@ -1,9 +1,14 @@
 {
   "name": "@overkube/kube-types",
   "version": "0.1.2",
-  "private": true,
   "description": "Kubernetes object types for overkube and its addons, generated from a cluster's OpenAPI schemas",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/overweave/overkube.git",
+    "directory": "packages/kube-types"
+  },
+  "homepage": "https://github.com/overweave/overkube/tree/main/packages/kube-types#readme",
   "type": "module",
   "exports": {
     ".": {
@@ -26,5 +31,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build && cp ../../LICENSE ."
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
