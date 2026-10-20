@@ -9,7 +9,7 @@ export interface Library {
 
 export const OVERKUBE: Library & { version: string } = {
   "name": "overkube",
-  "version": "0.1.2",
+  "version": "0.0.0-dev",
   "license": "MIT",
   "url": "https://github.com/overweave/overkube"
 };

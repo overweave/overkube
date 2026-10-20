@@ -1,6 +1,6 @@
 {
   "name": "@overkube/gateway",
-  "version": "0.1.2",
+  "version": "0.0.0-dev",
   "description": "overkube's way to a Kubernetes cluster: the API server's paths passed on, several watches over one stream, changes as JSON, a status — one handler over Node's request and response, for any host",
   "license": "MIT",
   "repository": {
@@ -30,7 +30,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overkube/query": "0.1.2",
+    "@overkube/query": "0.0.0-dev",
     "yaml": "2.9.1"
   },
   "devDependencies": {

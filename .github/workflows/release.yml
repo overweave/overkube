@@ -1,4 +1,5 @@
-# A release for a tag `v<version>` (the server's version, apps/server/package.json): checked as a push
+# A release for a tag `v<version>`: the version, said nowhere else (the repository's packages and chart are
+# 0.0.0-dev), set from the tag where it is built (scripts/set-version.mjs). Checked as a push
 # is, then the image built for amd64 and arm64 and pushed to GitHub's registry (ghcr.io/overweave/overkube)
 # — and to Docker Hub once it is set up: the repository's variable DOCKERHUB_USERNAME and secret
 # DOCKERHUB_TOKEN (an access token, Read & Write; DOCKERHUB_NAMESPACE, else overweave). Tagged
@@ -49,12 +50,11 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: npm ci --no-audit --no-fund
-      - name: The tag is each package's version
+      # The tag's version, in every package (and in the page's About, the core's, bundled in @overkube/web).
+      - name: The version, the tag's
         run: |
-          for dir in $PACKAGES; do
-            version="$(node -p "require('./$dir/package.json').version")"
-            [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "the tag $GITHUB_REF_NAME is not $dir's version $version"; exit 1; }
-          done
+          node scripts/set-version.mjs "$GITHUB_REF_NAME"
+          npm run licenses -w @overkube/addon-core
       - name: Built (the page as a library)
         run: |
           for dir in $PACKAGES; do
@@ -89,13 +89,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: The tag is the server's version, and the chart's
-        run: |
-          version="$(node -p "require('./apps/server/package.json').version")"
-          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "the tag $GITHUB_REF_NAME is not the server's version $version"; exit 1; }
-          if ! grep -qx "version: $version" charts/overkube/Chart.yaml || ! grep -qx "appVersion: \"$version\"" charts/overkube/Chart.yaml; then
-            echo "charts/overkube/Chart.yaml: its version and appVersion are to be $version"; exit 1
-          fi
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -142,6 +135,9 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v4.3.1
+      # The image set its own (VERSION, in its build); the chart's set here, once it is built.
+      - name: The chart's version, the tag's
+        run: node scripts/set-version.mjs "$GITHUB_REF_NAME"
       - name: The chart, in GitHub's registry; drawn as plain manifests
         env:
           GH_TOKEN: ${{ github.token }}

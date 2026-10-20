@@ -1,6 +1,6 @@
 {
   "name": "@overkube/query",
-  "version": "0.1.2",
+  "version": "0.0.0-dev",
   "description": "What overkube asks of a cluster's data, as data: fields, queries, their results — and kubectl's JSONPath; pure, so the page and a server answer them alike",
   "license": "MIT",
   "repository": {

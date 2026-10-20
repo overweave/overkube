@@ -1,6 +1,6 @@
 {
   "name": "@overkube/shell",
-  "version": "0.1.2",
+  "version": "0.0.0-dev",
   "private": true,
   "description": "overkube's frame, drawn wherever the page is — the page itself, a test, a story: its header, navigation and overlay slots, the Page at the path (a hash's, or one held in memory) and the resource opened over it, the user told things",
   "license": "MIT",
@@ -20,10 +20,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overkube/kube-types": "0.1.2",
-    "@overkube/query": "0.1.2",
-    "@overkube/sdk": "0.1.2",
-    "@overkube/uikit": "0.1.2",
+    "@overkube/kube-types": "0.0.0-dev",
+    "@overkube/query": "0.0.0-dev",
+    "@overkube/sdk": "0.0.0-dev",
+    "@overkube/uikit": "0.0.0-dev",
     "@overweave/core": "0.5.0",
     "@overweave/ui": "0.5.0"
   },

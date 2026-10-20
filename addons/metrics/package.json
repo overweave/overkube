@@ -1,6 +1,6 @@
 {
   "name": "@overkube/addon-metrics",
-  "version": "0.1.2",
+  "version": "0.0.0-dev",
   "private": true,
   "description": "overkube's metrics addon: what pods and nodes use — now (metrics-server), and over time where the cluster keeps it (VictoriaMetrics, Prometheus)",
   "license": "MIT",
@@ -15,17 +15,17 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overkube/cel": "0.1.2",
-    "@overkube/kube-types": "0.1.2",
-    "@overkube/query": "0.1.2",
-    "@overkube/sdk": "0.1.2",
-    "@overkube/uikit": "0.1.2",
+    "@overkube/cel": "0.0.0-dev",
+    "@overkube/kube-types": "0.0.0-dev",
+    "@overkube/query": "0.0.0-dev",
+    "@overkube/sdk": "0.0.0-dev",
+    "@overkube/uikit": "0.0.0-dev",
     "@overweave/ui": "0.5.0"
   },
   "devDependencies": {
-    "@overkube/addon-core": "0.1.2",
-    "@overkube/storybook": "0.1.2",
-    "@overkube/testkit": "0.1.2",
+    "@overkube/addon-core": "0.0.0-dev",
+    "@overkube/storybook": "0.0.0-dev",
+    "@overkube/testkit": "0.0.0-dev",
     "@testing-library/preact": "3.2.4",
     "happy-dom": "20.14.6",
     "preact": "10.29.8"

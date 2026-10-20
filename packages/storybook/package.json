@@ -1,6 +1,6 @@
 {
   "name": "@overkube/storybook",
-  "version": "0.1.2",
+  "version": "0.0.0-dev",
   "private": true,
   "description": "overkube's addons in Storybook: the whole page at a path, the addons beside one another (turned off and on in overweave's panel), a cluster in memory with what the story gives it, the user's own changes",
   "license": "MIT",
@@ -25,11 +25,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overkube/kube-types": "0.1.2",
-    "@overkube/sdk": "0.1.2",
-    "@overkube/shell": "0.1.2",
-    "@overkube/testkit": "0.1.2",
-    "@overkube/uikit": "0.1.2",
+    "@overkube/kube-types": "0.0.0-dev",
+    "@overkube/sdk": "0.0.0-dev",
+    "@overkube/shell": "0.0.0-dev",
+    "@overkube/testkit": "0.0.0-dev",
+    "@overkube/uikit": "0.0.0-dev",
     "@overweave/storybook": "0.5.0"
   },
   "peerDependencies": {
@@ -55,7 +55,7 @@
     }
   },
   "devDependencies": {
-    "@overkube/addon-core": "0.1.2",
+    "@overkube/addon-core": "0.0.0-dev",
     "@testing-library/preact": "3.2.4",
     "happy-dom": "20.14.6",
     "preact": "10.29.8"

@@ -74,7 +74,7 @@ A workload's port is reached as data — for addons that ask what runs in the cl
 
 ## What is in the repository
 
-One npm workspace (`packages/*`, `apps/*`, `addons/*`); every package is ESM, TypeScript, at version 0.1.2 together. What ships is the image and the chart, and on npm what a host or an addon's author builds with: `@overkube/sdk`, `@overkube/uikit`, `@overkube/kube-types`, `@overkube/query`, `@overkube/gateway`, and `@overkube/web` (the page as a library); the rest is private. Each has a README.
+One npm workspace (`packages/*`, `apps/*`, `addons/*`); every package is ESM, TypeScript, one version together — in the repository 0.0.0-dev; a release is a tag `v<version>`, its version set from the tag where it is built (`scripts/set-version.mjs`). What ships is the image and the chart, and on npm what a host or an addon's author builds with: `@overkube/sdk`, `@overkube/uikit`, `@overkube/kube-types`, `@overkube/query`, `@overkube/gateway`, and `@overkube/web` (the page as a library); the rest is private. Each has a README.
 
 | | What |
 |---|---|

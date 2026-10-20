@@ -2,7 +2,10 @@
 #
 # overkube's image: its server (one file) and its page, on Node — built as CI builds it for a tag:
 #
-#   docker build --build-arg VERSION=0.1.2 --build-arg REVISION=$(git rev-parse HEAD) -t overkube:0.1.2 .
+#   docker build --build-arg VERSION=0.1.3 --build-arg REVISION=$(git rev-parse HEAD) -t overkube:0.1.3 .
+#
+# VERSION set in its packages before they are built (scripts/set-version.mjs: the page's About, the
+# server's status); none given, the repository's 0.0.0-dev.
 #
 # Run with OVERKUBE_AUTH (token or oidc; loopback with OVERKUBE_LOCAL_NETWORK, published on 127.0.0.1)
 # and OVERKUBE_HOSTS; HTTPS on 8443, by a certificate of its own unless one is given
@@ -16,6 +19,8 @@ WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund --ignore-scripts
+ARG VERSION=dev
+RUN [ "$VERSION" = dev ] || { node scripts/set-version.mjs "$VERSION" && npm run licenses -w @overkube/addon-core; }
 RUN npm run build -w @overkube/web && npm run build -w @overkube/server
 
 FROM node:24-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS node
