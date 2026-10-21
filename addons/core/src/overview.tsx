@@ -177,17 +177,21 @@ function useStatus(): StatusAnswer | undefined {
     const stop = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     setStatus(undefined);
+    // Why it could not be had: the API server not reachable, as far as the page knows.
+    const notHad = (message: string): StatusAnswer => ({ version: '', kube: { reachable: false, error: { code: 'network' as never, message } } });
     const ask = () => {
       cluster.status(stop.signal).then(
         (answer) => {
           if (stop.signal.aborted) return;
-          setStatus(answer);
-          timer = setTimeout(ask, answer.kube.reachable ? STATUS_UP_MS : STATUS_DOWN_MS);
+          // Not a status (no kube in it): as if nothing had answered.
+          const said = answer?.kube ? answer : notHad('the gateway answered something that is not its status');
+          setStatus(said);
+          timer = setTimeout(ask, said.kube.reachable ? STATUS_UP_MS : STATUS_DOWN_MS);
         },
         (e: unknown) => {
           // Gone (another cluster, the page left): nothing to say.
           if (stop.signal.aborted) return;
-          setStatus({ version: '', kube: { reachable: false, error: { code: 'network' as never, message: e instanceof Error ? e.message : String(e) } } });
+          setStatus(notHad(e instanceof Error ? e.message : String(e)));
           timer = setTimeout(ask, STATUS_DOWN_MS);
         },
       );
