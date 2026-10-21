@@ -165,19 +165,38 @@ export function distroOf(version: string): string | undefined {
   return name && own ? `${name} ${own}` : name;
 }
 
-/** The gateway's status, asked once as the page is drawn (the API server reachable, its version) — or why it could not be had (the gateway not reached: the API server not either, as far as the page knows). */
+/** How often the gateway's status is asked again: while the API server is not reachable (a cluster starting), and while it is. */
+const STATUS_DOWN_MS = 5000;
+const STATUS_UP_MS = 30_000;
+
+/** The gateway's status (the API server reachable, its version) — or why it could not be had (the gateway not reached: the API server not either, as far as the page knows); asked again every few seconds while it is not reachable, now and then while it is. */
 function useStatus(): StatusAnswer | undefined {
   const cluster = useCluster();
   const [status, setStatus] = useState<StatusAnswer>();
   useEffect(() => {
     const stop = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     setStatus(undefined);
-    cluster.status(stop.signal).then(setStatus, (e: unknown) => {
-      // Gone (another cluster, the page left): nothing to say.
-      if (stop.signal.aborted) return;
-      setStatus({ version: '', kube: { reachable: false, error: { code: 'network' as never, message: e instanceof Error ? e.message : String(e) } } });
-    });
-    return () => stop.abort();
+    const ask = () => {
+      cluster.status(stop.signal).then(
+        (answer) => {
+          if (stop.signal.aborted) return;
+          setStatus(answer);
+          timer = setTimeout(ask, answer.kube.reachable ? STATUS_UP_MS : STATUS_DOWN_MS);
+        },
+        (e: unknown) => {
+          // Gone (another cluster, the page left): nothing to say.
+          if (stop.signal.aborted) return;
+          setStatus({ version: '', kube: { reachable: false, error: { code: 'network' as never, message: e instanceof Error ? e.message : String(e) } } });
+          timer = setTimeout(ask, STATUS_DOWN_MS);
+        },
+      );
+    };
+    ask();
+    return () => {
+      stop.abort();
+      clearTimeout(timer);
+    };
   }, [cluster]);
   return status;
 }

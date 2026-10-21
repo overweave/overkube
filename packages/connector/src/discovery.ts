@@ -38,6 +38,9 @@ interface DiscoveryList {
 
 export type DiscoveryState = 'loading' | 'ready' | 'error';
 
+/** The longest wait before discovery is tried again: a cluster starting is seen within it once it answers. */
+const MAX_RETRY_MS = 15_000;
+
 export class Discovery {
   private readonly http: Http;
   private readonly kindsSignal = signal<ReadonlyMap<string, KindInfo> | null>(null);
@@ -123,7 +126,7 @@ export class Discovery {
       this.errorSignal.value = error;
       // What was known stays known; only a first failure leaves nothing.
       if (!this.kindsSignal.value) this.stateSignal.value = 'error';
-      if (error.passing) this.retryTimer = setTimeout(() => void this.load(), Math.min(this.retryMs * 2 ** this.attempt++, 60_000));
+      if (error.passing) this.retryTimer = setTimeout(() => void this.load(), Math.min(this.retryMs * 2 ** this.attempt++, MAX_RETRY_MS));
     }
   }
 }

@@ -60,16 +60,34 @@ export function ask(upstream: UpstreamSource, request: { method: string; path: s
   });
 }
 
-/** Ask the API server its version. */
+/**
+ * Ask the API server its version, and whether it is ready (/readyz): one
+ * that answers but is still starting (its post-start hooks not done: RBAC,
+ * its APIs registered) is not reachable yet. One that does not let /readyz be
+ * asked (403, 404) is taken by its version alone.
+ */
 export async function kubeState(upstream: UpstreamSource, timeoutMs = 3000): Promise<KubeState> {
-  const asked = await ask(upstream, { method: 'GET', path: '/version' }, timeoutMs);
+  const [asked, ready] = await Promise.all([ask(upstream, { method: 'GET', path: '/version' }, timeoutMs), ask(upstream, { method: 'GET', path: '/readyz' }, timeoutMs)]);
   if ('error' in asked) return { reachable: false, error: asked.error };
   if (asked.status !== 200) return { reachable: false, error: { code: 'kube_error', message: `the API server answered ${asked.status}` } };
+  let version: string;
   try {
-    return { reachable: true, version: (JSON.parse(asked.body) as { gitVersion?: string }).gitVersion ?? 'unknown' };
+    version = (JSON.parse(asked.body) as { gitVersion?: string }).gitVersion ?? 'unknown';
   } catch {
     return { reachable: false, error: { code: 'kube_error', message: 'the API server answered something that is not its version' } };
   }
+  if ('error' in ready) return { reachable: false, error: ready.error };
+  if (ready.status !== 200 && ready.status !== 403 && ready.status !== 404) {
+    const failed = ready.body
+      .split('\n')
+      .filter((l) => l.startsWith('[-]'))
+      .map((l) => l.slice(3).split(' ')[0]);
+    return {
+      reachable: false,
+      error: { code: 'kube_error', message: `the API server is not ready yet${failed.length ? `: ${failed.join(', ')}` : ` (it answered ${ready.status})`}` },
+    };
+  }
+  return { reachable: true, version };
 }
 
 /** Answer GET /status. */

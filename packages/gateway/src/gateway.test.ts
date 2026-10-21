@@ -25,6 +25,8 @@ let api: Server;
 let seen: Seen[] = [];
 /** Whom each request acted as (its Impersonate-User and -Group). */
 let acted: { url: string; user?: string[]; groups?: string[]; authorization?: string }[] = [];
+/** What the fake API server's /readyz answers; none: 200, as for anything else. */
+let readyz: { status: number; body: string } | null = null;
 let kubeconfig: string;
 const servers: Server[] = [];
 
@@ -44,6 +46,7 @@ beforeAll(async () => {
     req.on('end', () => {
       seen.push({ method: req.method ?? '', url: req.url ?? '', contentType: req.headers['content-type'], body });
       acted.push({ url: req.url ?? '', user: req.headersDistinct['impersonate-user'], groups: req.headersDistinct['impersonate-group'], authorization: req.headers.authorization });
+      if (req.url?.startsWith('/readyz') && readyz) return res.writeHead(readyz.status, { 'content-type': 'text/plain' }).end(readyz.body);
       // A workload's answers through the API server's proxy: one saying what it should not be taken for, one too large (said, or not), one refusing.
       if (req.url?.includes('/proxy/headers')) {
         res.writeHead(302, {
@@ -105,6 +108,7 @@ afterAll(() => {
 beforeEach(() => {
   seen = [];
   acted = [];
+  readyz = null;
 });
 
 /** A host: the gateway under its options, the rest answered as the host's own (404 "host"); a body given, if any. */
@@ -145,6 +149,24 @@ describe('createGateway', () => {
   it('tells its status, with the version it was given', async () => {
     const res = await fetch(`${await host({ version: '0.1.0' })}/status`);
     expect(await res.json()).toEqual({ version: '0.1.0', kube: { reachable: true, version: 'v1.35.7' } });
+  });
+
+  it('tells an API server still starting (not ready) as not reachable, with what is not done yet', async () => {
+    readyz = {
+      status: 500,
+      body: '[+]ping ok\n[-]poststarthook/rbac/bootstrap-roles failed: reason withheld\n[-]poststarthook/apiservice-registration-controller failed: reason withheld\nreadyz check failed\n',
+    };
+    const res = await fetch(`${await host()}/status`);
+    expect((await res.json()).kube).toEqual({
+      reachable: false,
+      error: { code: 'kube_error', message: 'the API server is not ready yet: poststarthook/rbac/bootstrap-roles, poststarthook/apiservice-registration-controller' },
+    });
+  });
+
+  it('takes an API server that does not let /readyz be asked by its version alone', async () => {
+    readyz = { status: 403, body: 'forbidden' };
+    const res = await fetch(`${await host()}/status`);
+    expect((await res.json()).kube).toEqual({ reachable: true, version: 'v1.35.7' });
   });
 
   it('reads a body off the request: a /patch as JSON, a POST passed on as it came', async () => {
@@ -195,7 +217,7 @@ describe('createGateway', () => {
       const res = await send(`${base}${path}`, { method, body: method === 'DELETE' ? undefined : '{}' });
       expect([method, res.status, (await res.json()).error.code]).toEqual([method, 403, 'read_only']);
     }
-    expect(seen.map((s) => s.method)).toEqual(['GET', 'GET']);
+    expect(seen.map((s) => s.method)).toEqual(['GET', 'GET', 'GET']);
   });
 
   it('never passes on what reaches past the API server, nor PATCH', async () => {
