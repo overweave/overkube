@@ -146,7 +146,7 @@ export class Http {
    */
   remove(
     path: string,
-    options: { uid?: string; propagationPolicy?: 'Foreground' | 'Background' | 'Orphan'; gracePeriodSeconds?: number } = {},
+    options: { uid?: string; propagationPolicy?: 'Foreground' | 'Background' | 'Orphan'; gracePeriodSeconds?: number; dryRun?: 'All' } = {},
     signal?: AbortSignal,
   ): Promise<KubeObject | Status> {
     const { uid, gracePeriodSeconds, ...rest } = options;

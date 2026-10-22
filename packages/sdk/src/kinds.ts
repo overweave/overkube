@@ -475,6 +475,9 @@ export const ResourceTab = defineKind<ResourceTabSpec>()('ResourceTab', {
   patchRights: { target: behaviour, title: configure, icon: configure, order: configure, hidden: configure, when: behaviour, needs: behaviour, access },
 });
 
+/** A reason said: a label, or a label and its parameters ({name}…). */
+export type Reason = Label | { label: Label; params?: Readonly<Record<string, string | number>> };
+
 /** Something done to an object (its view's actions): the page draws its button, asks first when it is dangerous, tells the cluster's refusal. */
 export interface ActionSpec {
   target: Target;
@@ -484,7 +487,10 @@ export interface ActionSpec {
   dangerous?: boolean;
   /** Whether it applies to this object (none: always). */
   when?: (object: KubeObject) => boolean;
-  run: (object: KubeObject) => Promise<unknown> | unknown;
+  /** Why it may not be done to this object now (what manages it: Flux, Helm…): shown, locked, this its tip; none: it may. */
+  locked?: (object: KubeObject, kind: KindInfo) => Reason | undefined;
+  /** Done to it: the object, and its kind (an object as listed says no kind of its own). */
+  run: (object: KubeObject, kind: KindInfo) => Promise<unknown> | unknown;
   /** What it needs of the cluster (each), for the object's kind unless it says. */
   needs?: Need[];
   /** Whether the one signed in may, for an object (the access layer's). */
@@ -499,11 +505,23 @@ export const Action = defineKind<ActionSpec>()('Action', {
     target: [target, 'notATarget'],
     dangerous: [flag, 'notAFlag'],
     when: [fn, 'notAFunction'],
+    locked: [fn, 'notAFunction'],
     run: [fn, 'notAFunction'],
     needs: [needs, 'notNeeds'],
     access: [fn, 'notAFunction'],
   }),
-  patchRights: { target: behaviour, title: configure, icon: configure, order: configure, dangerous: behaviour, when: behaviour, run: behaviour, needs: behaviour, access },
+  patchRights: {
+    target: behaviour,
+    title: configure,
+    icon: configure,
+    order: configure,
+    dangerous: behaviour,
+    when: behaviour,
+    locked: behaviour,
+    run: behaviour,
+    needs: behaviour,
+    access,
+  },
 });
 
 /**

@@ -66,6 +66,70 @@ describe('fakeCluster', () => {
   });
 });
 
+describe('fakeCluster’s writes, as the API server answers them', () => {
+  const { PodDisruptionBudget } = kinds.policy.v1;
+
+  it('replaces at the version read — one changed since refused (409); checked only (dry run), nothing kept', async () => {
+    const cluster = fakeCluster();
+    const read = cluster.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'shop' }, spec: { replicas: 1 } }));
+    await cluster.update(Deployment, { ...read, spec: { replicas: 2 } }, { dryRun: true });
+    expect([cluster.get(Deployment, 'web', 'shop')?.spec?.replicas, cluster.writes.at(-1)?.dryRun]).toEqual([1, true]);
+    cluster.change(Deployment, { ...read, metadata: { ...read.metadata, labels: { a: 'b' } } });
+    await expect(cluster.update(Deployment, { ...read, spec: { replicas: 3 } })).rejects.toMatchObject({ status: 409, code: 'Conflict' });
+  });
+
+  it('deletes by the cascade said; checked only (dry run), kept', async () => {
+    const cluster = fakeCluster();
+    const web = cluster.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'shop' } }));
+    await cluster.remove(Deployment, web, { propagationPolicy: 'Foreground', dryRun: true });
+    expect([cluster.get(Deployment, 'web', 'shop') !== undefined, cluster.writes.at(-1)]).toEqual([
+      true,
+      { op: 'remove', kind: Deployment.id, name: 'web', namespace: 'shop', propagationPolicy: 'Foreground', dryRun: true },
+    ]);
+    await cluster.remove(Deployment, web, { propagationPolicy: 'Orphan' });
+    expect(cluster.get(Deployment, 'web', 'shop')).toBeUndefined();
+  });
+
+  it('evicts a pod as its PodDisruptionBudget allows: each eviction spends one, none left refused (429)', async () => {
+    const cluster = fakeCluster();
+    for (const name of ['a', 'b']) cluster.add(Pod, make(Pod, { metadata: { name, namespace: 'shop', labels: { app: 'api' } } }));
+    cluster.add(
+      PodDisruptionBudget,
+      make(PodDisruptionBudget, { metadata: { name: 'api', namespace: 'shop' }, spec: { selector: { matchLabels: { app: 'api' } } }, status: { disruptionsAllowed: 1 } }),
+    );
+    await cluster.evict({ metadata: { name: 'a', namespace: 'shop' } }, { dryRun: true });
+    expect(cluster.get(Pod, 'a', 'shop')).toBeDefined();
+    await cluster.evict({ metadata: { name: 'a', namespace: 'shop' } });
+    expect(cluster.get(Pod, 'a', 'shop')).toBeUndefined();
+    await expect(cluster.evict({ metadata: { name: 'b', namespace: 'shop' } })).rejects.toMatchObject({ status: 429, code: 'TooManyRequests' });
+    expect(cluster.writes.filter((w) => w.op === 'evict').map((w) => w.name)).toEqual(['a', 'a', 'b']);
+  });
+
+  it('applies (server-side): made if it is not there, merged if it is; checked only (dry run), nothing kept', async () => {
+    const cluster = fakeCluster();
+    const cm = { apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'a', namespace: 'shop' }, data: { x: '1' } };
+    await cluster.patch(kinds.core.v1.ConfigMap, cm, { type: 'apply', patch: cm, dryRun: true });
+    expect(cluster.get(kinds.core.v1.ConfigMap, 'a', 'shop')).toBeUndefined();
+    await cluster.patch(kinds.core.v1.ConfigMap, cm, { type: 'apply', patch: cm });
+    await cluster.patch(kinds.core.v1.ConfigMap, cm, { type: 'apply', patch: { ...cm, data: { y: '2' } } });
+    expect(cluster.get(kinds.core.v1.ConfigMap, 'a', 'shop')?.data).toEqual({ x: '1', y: '2' });
+  });
+
+  it('answers a kind’s schema as given; none given, none', async () => {
+    const cluster = fakeCluster();
+    const schema = { $ref: '#/components/schemas/Deployment', components: { schemas: { Deployment: { type: 'object' } } } };
+    cluster.withSchema(Deployment, schema);
+    expect([await cluster.schema(Deployment), await cluster.schema(Pod)]).toEqual([schema, undefined]);
+  });
+
+  it('refuses as told, with a Status’s causes (an invalid object’s fields)', async () => {
+    const cluster = fakeCluster();
+    const web = cluster.add(Deployment, make(Deployment, { metadata: { name: 'web', namespace: 'shop' } }));
+    cluster.refuse('update', { status: 422, code: 'Invalid', message: 'invalid', details: { causes: [{ field: 'spec.selector', message: 'field is immutable' }] } });
+    await expect(cluster.update(Deployment, web)).rejects.toMatchObject({ status: 422, kubeStatus: { details: { causes: [{ field: 'spec.selector' }] } } });
+  });
+});
+
 describe('kubeWorld', () => {
   const images = defineAddon({
     id: 'images',

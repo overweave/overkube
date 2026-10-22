@@ -137,6 +137,39 @@ export interface Discovery {
   retry(): void;
 }
 
+/** How an object is replaced: its status alone; checked by the cluster only (dry run: what it would keep, nothing changed). */
+export interface UpdateOptions {
+  subresource?: 'status';
+  dryRun?: boolean;
+}
+
+/** How an object is deleted: what of its dependents (kubectl delete --cascade: background, foreground, orphan); checked only (dry run). */
+export interface RemoveOptions {
+  propagationPolicy?: 'Background' | 'Foreground' | 'Orphan';
+  dryRun?: boolean;
+}
+
+/** A kind's OpenAPI schema: a $ref to it among its group version's components (and those components). */
+export interface KindSchema {
+  $ref: string;
+  components: { schemas: Record<string, unknown> };
+}
+
+/** Where a kind's group version's OpenAPI (v3) is: /openapi/v3/api/v1, /openapi/v3/apis/<group>/<version>. */
+export const openapiPath = (kind: Pick<KindInfo, 'group' | 'version'>) => (kind.group ? `/openapi/v3/apis/${kind.group}/${kind.version}` : `/openapi/v3/api/${kind.version}`);
+
+/** A kind's schema in its group version's OpenAPI document: the one its x-kubernetes-group-version-kind names. */
+export function kindSchemaOf(doc: { components?: { schemas?: Record<string, unknown> } } | undefined, kind: Pick<KindInfo, 'group' | 'version' | 'kind'>): KindSchema | undefined {
+  const schemas = doc?.components?.schemas;
+  if (!schemas) return undefined;
+  const name = Object.keys(schemas).find((n) =>
+    ((schemas[n] as { 'x-kubernetes-group-version-kind'?: { group: string; version: string; kind: string }[] })['x-kubernetes-group-version-kind'] ?? []).some(
+      (g) => g.group === kind.group && g.version === kind.version && g.kind === kind.kind,
+    ),
+  );
+  return name ? { $ref: `#/components/schemas/${name}`, components: { schemas } } : undefined;
+}
+
 /** The cluster as components and addons have it (useCluster, ctx.cluster). */
 export interface Cluster {
   readonly discovery: Discovery;
@@ -152,13 +185,25 @@ export interface Cluster {
    * a tool that updates does (cmctl renew: its status; the right to update
    * it asked, not to patch it). In the addon's name.
    */
-  update(kind: KindInfo, object: KubeObject, options?: { subresource?: 'status' }): Promise<KubeObject>;
+  update(kind: KindInfo, object: KubeObject, options?: UpdateOptions): Promise<KubeObject>;
   /**
    * Delete the object seen — by its uid, not another that took its name
    * since: an object with no uid (one not read from the cluster) is refused,
    * nothing sent.
    */
-  remove(kind: KindInfo, object: KubeObject): Promise<void>;
+  remove(kind: KindInfo, object: KubeObject, options?: RemoveOptions): Promise<void>;
+  /**
+   * Evict a pod, as kubectl drain does (the Eviction API: its
+   * PodDisruptionBudget respected — refused, 429, while it allows no
+   * disruption). Dry run: checked, nothing evicted.
+   */
+  evict(pod: KubeObject, options?: { dryRun?: boolean }): Promise<void>;
+  /**
+   * A kind's schema, as the cluster's OpenAPI (v3) says it — its components
+   * beside it ($ref to them): a CRD's too. Asked once a group's version
+   * (kept); none when the cluster serves none for it.
+   */
+  schema(kind: KindInfo): Promise<KindSchema | undefined>;
   /** A Service as looked for (an answer's): where it is (a target to reach), none (false), not known yet (undefined) — followed where read. */
   found(spec: Found): ReachTarget | false | undefined;
   /** A workload's port, as data — an addon's: only one it says it reaches (Addon.reaches), or where a Service its conditions look for is found (found()). */

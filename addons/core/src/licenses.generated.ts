@@ -16,6 +16,46 @@ export const OVERKUBE: Library & { version: string } = {
 
 export const LIBRARIES: readonly Library[] = [
   {
+    "name": "@codemirror/autocomplete",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/codemirror/autocomplete"
+  },
+  {
+    "name": "@codemirror/commands",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/codemirror/commands"
+  },
+  {
+    "name": "@codemirror/lang-json",
+    "license": "MIT",
+    "url": "https://github.com/codemirror/lang-json"
+  },
+  {
+    "name": "@codemirror/lang-yaml",
+    "license": "MIT",
+    "url": "https://github.com/codemirror/lang-yaml"
+  },
+  {
+    "name": "@codemirror/language",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/codemirror/language"
+  },
+  {
+    "name": "@codemirror/lint",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/codemirror/lint"
+  },
+  {
+    "name": "@codemirror/state",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/codemirror/state"
+  },
+  {
+    "name": "@codemirror/view",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/codemirror/view"
+  },
+  {
     "name": "@fontsource-variable/inter",
     "license": "OFL-1.1",
     "url": "https://fontsource.org/fonts/inter"
@@ -26,9 +66,39 @@ export const LIBRARIES: readonly Library[] = [
     "url": "https://fontsource.org/fonts/jetbrains-mono"
   },
   {
+    "name": "@lezer/common",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/lezer/common"
+  },
+  {
+    "name": "@lezer/highlight",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/lezer/highlight"
+  },
+  {
+    "name": "@lezer/json",
+    "license": "MIT",
+    "url": "https://github.com/lezer-parser/json"
+  },
+  {
+    "name": "@lezer/lr",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/lezer/lr"
+  },
+  {
+    "name": "@lezer/yaml",
+    "license": "MIT",
+    "url": "https://github.com/lezer-parser/yaml"
+  },
+  {
     "name": "@marcbachmann/cel-js",
     "license": "MIT",
     "url": "https://github.com/marcbachmann/cel-js#readme"
+  },
+  {
+    "name": "@marijn/find-cluster-break",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/marijn/find-cluster-break"
   },
   {
     "name": "@overweave/core",
@@ -56,6 +126,11 @@ export const LIBRARIES: readonly Library[] = [
     "url": "https://tabler.io/icons"
   },
   {
+    "name": "crelt",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/marijn/crelt"
+  },
+  {
     "name": "elkjs",
     "license": "EPL-2.0 OR GPL-3.0-or-later",
     "url": "https://github.com/kieler/elkjs"
@@ -64,6 +139,16 @@ export const LIBRARIES: readonly Library[] = [
     "name": "preact",
     "license": "MIT",
     "url": "https://preactjs.com"
+  },
+  {
+    "name": "style-mod",
+    "license": "MIT",
+    "url": "https://code.haverbeke.berlin/marijn/style-mod"
+  },
+  {
+    "name": "w3c-keyname",
+    "license": "MIT",
+    "url": "https://github.com/marijnh/w3c-keyname#readme"
   },
   {
     "name": "yaml",

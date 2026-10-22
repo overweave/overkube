@@ -50,7 +50,7 @@ describe('Button: what it is', () => {
     expect(button(render(<Button icon="x">0</Button>)).hasAttribute('data-square')).toBe(false);
   });
 
-  it('an icon only, named by its title (none other given); with words or a name given, its title only its tip', () => {
+  it('an icon only, named by its title (none other given); with words or a name given, its title its tip and its description', () => {
     expect(render(<Button icon="x" title="Close" />).getByRole('button', { name: 'Close' })).toBeTruthy();
     cleanup();
     expect(
@@ -59,11 +59,9 @@ describe('Button: what it is', () => {
         .getAttribute('aria-label'),
     ).toBe('Close the panel');
     cleanup();
-    expect(
-      render(<Button title="Restart the pod">Restart</Button>)
-        .getByRole('button')
-        .hasAttribute('aria-label'),
-    ).toBe(false);
+    const b = render(<Button title="Restart the pod">Restart</Button>).getByRole('button', { name: 'Restart' });
+    expect(b.hasAttribute('aria-label')).toBe(false);
+    expect(document.getElementById(b.getAttribute('aria-describedby') ?? '')?.textContent).toBe('Restart the pod');
   });
 
   it('passes on what else it is given', () => {
@@ -143,7 +141,7 @@ describe('Button: its look', () => {
       "[data-size='sm']",
       '[data-square]',
       '[data-busy]',
-      ':disabled',
+      ":is(:disabled, [aria-disabled='true'])",
     ]) {
       expect(css).toContain(`.uk-button${selector}`);
     }

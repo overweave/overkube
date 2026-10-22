@@ -18,7 +18,13 @@ export default defineConfig({
   // Ours are sources, not dependencies to pre-bundle: seen through node_modules (symlinks preserved), they would be — with React's JSX.
   optimizeDeps: {
     exclude: [
+      '@overkube/addon-cert-manager',
       '@overkube/addon-core',
+      '@overkube/addon-edit',
+      '@overkube/addon-flux',
+      '@overkube/addon-helm',
+      '@overkube/addon-metrics',
+      '@overkube/addon-trivy',
       '@overkube/cel',
       '@overkube/connector',
       '@overkube/gateway',

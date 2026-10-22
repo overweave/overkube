@@ -1,0 +1,37 @@
+{
+  "name": "@overkube/addon-edit",
+  "version": "0.0.0-dev",
+  "private": true,
+  "description": "overkube's Edit addon: changing the cluster from the page, as kubectl does — Edit YAML (its schema, the server's dry run), Delete (its cascade), scale, rollout restart, cordon, uncordon, drain; what Flux or Helm manages, locked",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "overkube-source": "./src/index.tsx",
+      "default": "./src/index.tsx"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@overkube/kube-types": "0.0.0-dev",
+    "@overkube/sdk": "0.0.0-dev",
+    "@overkube/uikit": "0.0.0-dev",
+    "@overweave/ui": "0.5.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@codemirror/view": "6.43.13",
+    "@overkube/addon-core": "0.0.0-dev",
+    "@overkube/storybook": "0.0.0-dev",
+    "@overkube/testkit": "0.0.0-dev",
+    "@testing-library/preact": "3.2.4",
+    "happy-dom": "20.14.6",
+    "preact": "10.29.8"
+  },
+  "peerDependencies": {
+    "@preact/signals": "^2.11.3",
+    "preact": "^10.29.8"
+  }
+}

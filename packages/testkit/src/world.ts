@@ -63,10 +63,15 @@ function scoped(cluster: Cluster, run: ClusterRun): Cluster {
       live();
       return cluster.update(kind, object, options);
     },
-    remove: async (kind, object) => {
+    remove: async (kind, object, options) => {
       live();
-      return cluster.remove(kind, object);
+      return cluster.remove(kind, object, options);
     },
+    evict: async (pod, options) => {
+      live();
+      return cluster.evict(pod, options);
+    },
+    schema: (kind) => cluster.schema(kind),
     proxy: (target) =>
       runReach(
         run,

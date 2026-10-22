@@ -52,6 +52,7 @@
   "devDependencies": {
     "@overkube/addon-cert-manager": "0.0.0-dev",
     "@overkube/addon-core": "0.0.0-dev",
+    "@overkube/addon-edit": "0.0.0-dev",
     "@overkube/addon-flux": "0.0.0-dev",
     "@overkube/addon-helm": "0.0.0-dev",
     "@overkube/addon-metrics": "0.0.0-dev",

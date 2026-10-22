@@ -43,7 +43,23 @@ export {
   type SetupResult,
   standingOf,
 } from './addon.ts';
-export { type Cluster, type Discovery, foundIn, noReach, type ObjectChange, type Reach, reaches, reachOver, runReach, whereOf } from './cluster.ts';
+export {
+  type Cluster,
+  type Discovery,
+  foundIn,
+  type KindSchema,
+  kindSchemaOf,
+  noReach,
+  type ObjectChange,
+  openapiPath,
+  type Reach,
+  type RemoveOptions,
+  reaches,
+  reachOver,
+  runReach,
+  type UpdateOptions,
+  whereOf,
+} from './cluster.ts';
 export { type FieldLayer, fieldLayers } from './fields.ts';
 export { action, addNameMark, column, menuItem, type ObjectOfKind, section, tile, wrap } from './helpers.ts';
 export {
@@ -96,6 +112,7 @@ export {
   Page,
   type PageProps,
   type PageSpec,
+  type Reason,
   type Region,
   type ResourceContext,
   ResourceTab,

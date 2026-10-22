@@ -239,7 +239,7 @@ export function Actions({ kind, object }: { kind: KindInfo; object: KubeObject }
     setRefused(null);
     setBusy(a.name);
     try {
-      await a.spec.run(target);
+      await a.spec.run(target, kind);
     } catch (error) {
       // The cluster's refusal (or the action's own failure): said here, and told.
       const message = error instanceof Error ? error.message : String(error);
@@ -247,6 +247,17 @@ export function Actions({ kind, object }: { kind: KindInfo; object: KubeObject }
       notify({ level: 'error', title: say(a.spec.title), text: message, key: `action:${a.name}` });
     } finally {
       setBusy(null);
+    }
+  };
+  // Why one may not be done now (what manages the object): shown, locked, its tip saying why.
+  const lockOf = (a: Definition<ActionSpec>): string | undefined => {
+    try {
+      const r = a.spec.locked?.(object, kind);
+      if (r === undefined) return undefined;
+      return typeof r === 'object' && 'label' in r ? say(r.label, r.params) : say(r);
+    } catch (error) {
+      page.report(a, 'locked', error);
+      return undefined;
     }
   };
   const press = (a: Definition<ActionSpec>) => {
@@ -263,17 +274,22 @@ export function Actions({ kind, object }: { kind: KindInfo; object: KubeObject }
         </Notice>
       )}
       <div class="uk-bar">
-        {actions.map((a) => (
-          <Button
-            key={a.name}
-            variant={a.spec.dangerous ? 'danger' : undefined}
-            icon={accessOf(a, { kind, object }) === 'marked' ? 'denied' : a.spec.icon}
-            busy={busy === a.name}
-            onClick={() => press(a)}
-          >
-            {asking === a.name ? say(T.resource.view.actions.sure, { action: say(a.spec.title) }) : say(a.spec.title)}
-          </Button>
-        ))}
+        {actions.map((a) => {
+          const lock = lockOf(a);
+          return (
+            <Button
+              key={a.name}
+              variant={a.spec.dangerous ? 'danger' : undefined}
+              icon={accessOf(a, { kind, object }) === 'marked' ? 'denied' : a.spec.icon}
+              busy={busy === a.name}
+              // Locked, not disabled: its tip shown on hover and focus (a disabled button has neither).
+              {...(lock ? { 'aria-disabled': 'true' as const, title: lock } : {})}
+              onClick={() => !lock && press(a)}
+            >
+              {asking === a.name ? say(T.resource.view.actions.sure, { action: say(a.spec.title) }) : say(a.spec.title)}
+            </Button>
+          );
+        })}
       </div>
     </div>
   );

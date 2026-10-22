@@ -9,6 +9,7 @@ export default storybook({
     '../../trivy/src/**/*.stories.tsx',
     '../../helm/src/**/*.stories.tsx',
     '../../flux/src/**/*.stories.tsx',
+    '../../edit/src/**/*.stories.tsx',
     '../../../packages/uikit/src/**/*.stories.tsx',
   ],
   poll: true,

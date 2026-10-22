@@ -112,6 +112,19 @@ describe('layers', () => {
     expect([main.inert, document.documentElement.classList.contains('uk-locked')]).toEqual([false, false]);
   });
 
+  it('makes inert, in a root within a root (a story’s page in the stories’ own), what is beside its layers — not the root holding them', () => {
+    const view = render(
+      <div class="uk-root">
+        <aside>beside</aside>
+        <Page told={[]} />
+      </div>,
+    );
+    fireEvent.click(view.getByText('open'));
+    const inner = view.container.querySelectorAll('.uk-root')[1] as HTMLElement;
+    const main = inner.querySelector('main') as HTMLElement;
+    expect([inner.inert, main.inert, (view.container.querySelector('aside') as HTMLElement).inert]).toEqual([false, true, true]);
+  });
+
   it('keeps Tab inside a modal one', () => {
     const view = render(<Page told={[]} />);
     fireEvent.click(view.getByText('open'));

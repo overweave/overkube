@@ -6,6 +6,7 @@
  */
 export { Button } from './actions/Button';
 export { Segmented, type SegmentedOption } from './actions/Segmented';
+export { CodeEditor, type CodeEditorProps, type CodeProblem, type CodeSchema } from './code/CodeEditor';
 export { Chip, Chips, type ChipsLabels, type ChipsProps } from './data/Chips';
 export { Code } from './data/Code';
 export { Compare, type CompareRow } from './data/Compare';

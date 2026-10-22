@@ -63,7 +63,7 @@ ${scaled(`
 /* An icon alone is the whole button: as large as anywhere else. */
 .uk-button[data-square][data-size='sm'] > .uk-icon { width: 16px; height: 16px; }
 .uk-button[data-square] > .uk-icon { margin: 0; }
-.uk-button:disabled { opacity: .45; cursor: default; }
+.uk-button:is(:disabled, [aria-disabled='true']) { opacity: .45; cursor: default; }
 .uk-button[data-busy] { opacity: .8; cursor: progress; }
 .uk-spinner { width: 13px; height: 13px; flex: none; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: uk-spin .7s linear infinite; }
 @keyframes uk-spin { to { transform: rotate(1turn); } }
@@ -1247,6 +1247,10 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-log-note[data-at='top'] { top: 8px; }
 .uk-log-note[data-at='foot'] { bottom: 10px; cursor: pointer; color: var(--uk-text); }
 .uk-log-note .uk-icon { width: 14px; height: 14px; }
+.uk-code-editor { position: relative; display: flex; flex-direction: column; min-height: 0; height: 100%; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); background: var(--uk-bg); overflow: hidden; }
+.uk-code-editor-host { flex: 1; min-height: 0; }
+.uk-code-editor-host > .cm-editor { height: 100%; }
+.uk-code-editor-wait { position: absolute; inset: 0; margin: 0; padding: 6px 12px 6px 56px; overflow: auto; font: 12px/19px var(--uk-mono); white-space: pre; color: var(--uk-text); }
 .uk-yaml { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--uk-border); border-radius: var(--uk-radius); background: var(--uk-bg); overflow: hidden; }
 .uk-yaml-bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--uk-border); background: var(--uk-panel); }
 .uk-yaml-size { color: var(--uk-muted); font-size: 12px; font-variant-numeric: tabular-nums; }

@@ -28,12 +28,15 @@ const DISCOVERY = {
 
 /** A gateway answering discovery and writes; every request sent, with its body; a write held back while hold is set. */
 function setup(objects: Record<string, KubeObject[]> = {}) {
-  const sent: { request: string; body: unknown }[] = [];
+  const sent: { request: string; body: unknown; query?: string }[] = [];
   const state = { hold: false };
   const fetch = (async (url: string, init?: RequestInit) => {
     const request = `${init?.method ?? 'GET'} ${new URL(url, 'http://page').pathname.replace(/^\/kube/, '')}`;
-    sent.push({ request, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    const query = new URL(url, 'http://page').search;
+    sent.push({ request, body: init?.body ? JSON.parse(String(init.body)) : undefined, ...(query ? { query } : {}) });
     if (request === 'GET /api') return Response.json(DISCOVERY);
+    if (request === 'GET /openapi/v3/api/v1') return Response.json(OPENAPI);
+    if (request === 'GET /openapi/v3/apis/apps/v1') return Response.json({ kind: 'Status', code: 404, reason: 'NotFound', message: 'not found' }, { status: 404 });
     if (request === 'GET /apis') return Response.json({ kind: 'APIGroupDiscoveryList', items: [] });
     if (state.hold) return new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
     return Response.json({ kind: 'Pod', metadata: { name: 'web' } });
@@ -44,6 +47,20 @@ function setup(objects: Record<string, KubeObject[]> = {}) {
   closing.push(() => discovery.close());
   return { sent, state, access: clusterAccess({ http, discovery }, memorySource(signal(objects))) };
 }
+
+/** The core group's OpenAPI (v3), cut short: a Pod's schema, named by its group, version and kind. */
+const OPENAPI = {
+  components: {
+    schemas: {
+      'io.k8s.api.core.v1.Pod': {
+        type: 'object',
+        'x-kubernetes-group-version-kind': [{ group: '', version: 'v1', kind: 'Pod' }],
+        properties: { spec: { $ref: '#/components/schemas/io.k8s.api.core.v1.PodSpec' } },
+      },
+      'io.k8s.api.core.v1.PodSpec': { type: 'object' },
+    },
+  },
+};
 
 const aRun = (id = 'images') => {
   const controller = new AbortController();
@@ -101,6 +118,55 @@ describe('clusterAccess', () => {
       request: 'DELETE /api/v1/namespaces/shop/pods/web',
       body: { apiVersion: 'v1', kind: 'DeleteOptions', preconditions: { uid: 'u1' } },
     });
+  });
+});
+
+describe('writes as kubectl makes them', () => {
+  const pod = { metadata: { name: 'web', namespace: 'shop', uid: 'u1', resourceVersion: '7' } };
+
+  it('replaces checked only (dry run): ?dryRun=All, in the addon’s name', async () => {
+    const { access, sent } = setup();
+    await access.open(aRun('edit')).update(Pod, pod, { dryRun: true });
+    expect(sent.at(-1)).toMatchObject({ request: 'PUT /api/v1/namespaces/shop/pods/web', query: '?fieldManager=overkube-edit&dryRun=All' });
+  });
+
+  it('deletes by the cascade said (propagationPolicy), its uid a precondition; checked only: dryRun', async () => {
+    const { access, sent } = setup();
+    await access.open(aRun('edit')).remove(Pod, pod, { propagationPolicy: 'Orphan', dryRun: true });
+    expect(sent.at(-1)).toMatchObject({
+      request: 'DELETE /api/v1/namespaces/shop/pods/web',
+      query: '?propagationPolicy=Orphan&dryRun=All',
+      body: { preconditions: { uid: 'u1' } },
+    });
+  });
+
+  it('evicts a pod through the Eviction API (policy/v1), checked only by its deleteOptions', async () => {
+    const { access, sent } = setup();
+    await access.open(aRun('edit')).evict(pod);
+    expect(sent.at(-1)).toEqual({
+      request: 'POST /api/v1/namespaces/shop/pods/web/eviction',
+      body: { apiVersion: 'policy/v1', kind: 'Eviction', metadata: { name: 'web', namespace: 'shop' } },
+    });
+    await access.open(aRun('edit')).evict(pod, { dryRun: true });
+    expect(sent.at(-1)?.body).toMatchObject({ deleteOptions: { dryRun: ['All'] } });
+  });
+
+  it('gives a kind’s schema from its group version’s OpenAPI, asked once: a $ref to it, its components beside', async () => {
+    const { access, sent } = setup();
+    const cluster = access.components();
+    const [a, b] = await Promise.all([cluster.schema(Pod), cluster.schema(Pod)]);
+    expect(a).toEqual({ $ref: '#/components/schemas/io.k8s.api.core.v1.Pod', components: OPENAPI.components });
+    expect(b).toEqual(a);
+    expect(sent.filter((x) => x.request === 'GET /openapi/v3/api/v1')).toHaveLength(1);
+    expect(await cluster.schema(kinds.core.v1.ConfigMap)).toBeUndefined();
+  });
+
+  it('keeps a group version with no OpenAPI (404) as none: not asked again', async () => {
+    const { access, sent } = setup();
+    const cluster = access.components();
+    expect(await cluster.schema(kinds.apps.v1.Deployment)).toBeUndefined();
+    expect(await cluster.schema(kinds.apps.v1.Deployment)).toBeUndefined();
+    expect(sent.filter((x) => x.request === 'GET /openapi/v3/apis/apps/v1')).toHaveLength(1);
   });
 });
 

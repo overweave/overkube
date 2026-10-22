@@ -1,7 +1,19 @@
 import type { StatusAnswer } from '@overkube/gateway/protocol';
-import { type KindInfo, type KubeObject, knownKinds } from '@overkube/kube-types';
+import { type KindInfo, type KubeObject, kinds, knownKinds } from '@overkube/kube-types';
 import { ALL_ALLOWED, keyOf, type LogLine, type QueryError, type State } from '@overkube/query';
-import { type Cluster, type FieldLayer, fieldLayers, foundIn, kindRef, type ObjectChange, type ObjectOfKind, type ReachTarget, reachOver } from '@overkube/sdk';
+import {
+  type Cluster,
+  type FieldLayer,
+  fieldLayers,
+  foundIn,
+  type KindSchema,
+  kindRef,
+  type ObjectChange,
+  type ObjectOfKind,
+  type ReachTarget,
+  type RemoveOptions,
+  reachOver,
+} from '@overkube/sdk';
 import { logKey, type MemoryAccess, type MemoryState, memorySource } from '@overkube/source';
 import { batch, computed, type ReadonlySignal, signal } from '@preact/signals';
 
@@ -18,7 +30,7 @@ import { batch, computed, type ReadonlySignal, signal } from '@preact/signals';
 
 /** What an addon wrote. */
 export interface Write {
-  op: 'patch' | 'update' | 'remove';
+  op: 'patch' | 'update' | 'remove' | 'evict';
   /** The kind's id. */
   kind: string;
   name: string;
@@ -27,6 +39,10 @@ export interface Write {
   /** An update's object, as it was sent (its subresource: said). */
   object?: KubeObject;
   subresource?: 'status';
+  /** Checked only, nothing changed. */
+  dryRun?: boolean;
+  /** A remove's cascade. */
+  propagationPolicy?: RemoveOptions['propagationPolicy'];
 }
 
 /** A refusal, as the API server gives it. */
@@ -34,6 +50,8 @@ export interface Refusal {
   status: number;
   code: string;
   message?: string;
+  /** A Status's details (its causes: each a field and what is wrong with it), as the API server sends them (an invalid object's). */
+  details?: { causes?: { reason?: string; message?: string; field?: string }[] };
 }
 
 export interface FakeCluster extends Cluster {
@@ -58,6 +76,8 @@ export interface FakeCluster extends Cluster {
   discover(state: 'loading' | 'ready' | 'error', error?: Refusal): void;
   /** Lines written to a pod's container's log (its time: as given, else a second after its last). */
   log(namespace: string, pod: string, container: string, ...lines: (string | LogLine)[]): void;
+  /** A kind's schema, as the cluster's OpenAPI would say it (schema() answers it; none given: none). */
+  withSchema(kind: KindInfo, schema: KindSchema): void;
   /** What the user may do, as RBAC's rules (the cluster's, a namespace's more); none: anything. Its answers are not refused by it: say so (state). */
   rules(access: MemoryAccess | null): void;
   /** A workload's port answering what proxy() asks of it: a value (as JSON) or a Response; none answering: 503, as the API server says no endpoints. */
@@ -77,6 +97,24 @@ export interface FakeClusterOptions {
   served?: readonly string[];
   /** Kinds the kinds table does not know (a CRD's), served beside its own. */
   kinds?: readonly KindInfo[];
+}
+
+type Selector = { matchLabels?: Record<string, string>; matchExpressions?: { key: string; operator: string; values?: string[] }[] };
+
+/** Whether a label selector picks these labels, as the API server reads it (matchLabels; matchExpressions In, NotIn, Exists, DoesNotExist). */
+function selects(selector: Selector | undefined, labels: Readonly<Record<string, string>>): boolean {
+  if (!selector) return false;
+  return (
+    Object.entries(selector.matchLabels ?? {}).every(([k, v]) => labels[k] === v) &&
+    (selector.matchExpressions ?? []).every((e) => {
+      const has = Object.hasOwn(labels, e.key);
+      if (e.operator === 'In') return has && (e.values ?? []).includes(labels[e.key] as string);
+      if (e.operator === 'NotIn') return !has || !(e.values ?? []).includes(labels[e.key] as string);
+      if (e.operator === 'Exists') return has;
+      if (e.operator === 'DoesNotExist') return !has;
+      return false;
+    })
+  );
 }
 
 /** A merge patch (RFC 7386) applied: null takes a field away, an object merges, anything else replaces. */
@@ -112,6 +150,7 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
   const logs = signal<Readonly<Record<string, readonly LogLine[]>>>({});
   const access = signal<MemoryAccess | undefined>(undefined);
   const answering = new Map<string, (asked: Asked) => unknown>();
+  const schemas = new Map<string, KindSchema>();
   const keyOfTarget = (t: ReachTarget) => `${t.kind}/${t.namespace}/${t.name}:${t.port}`;
   let clock = Date.parse('2026-10-17T09:00:00Z');
   const source = memorySource(objects, {
@@ -148,7 +187,12 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
   };
   const refused = (op: Write['op']) => {
     const r = refusals.get(op)?.shift();
-    if (r) throw Object.assign(new Error(r.message ?? r.code), { status: r.status, code: r.code });
+    if (r)
+      throw Object.assign(new Error(r.message ?? r.code), {
+        status: r.status,
+        code: r.code,
+        ...(r.details ? { kubeStatus: { kind: 'Status', code: r.status, reason: r.code, message: r.message ?? r.code, details: r.details } } : {}),
+      });
   };
 
   return {
@@ -236,30 +280,85 @@ export function fakeCluster(options: FakeClusterOptions = {}): FakeCluster {
       const namespace = object.metadata?.namespace;
       writes.push({ op: 'patch', kind: kind.id, name, ...(namespace ? { namespace } : {}), change });
       refused('patch');
-      const now = (of(kind).get(keyOf(object)) ?? object) as KubeObject;
-      return change.type === 'merge' ? put(kind, merge(now, change.patch) as KubeObject) : now;
+      const had = of(kind).get(keyOf(object));
+      const now = (had ?? object) as KubeObject;
+      // A merge patch, and a server-side apply (made if it is not there: its fields over what is): merged; checked only (dry run): not kept.
+      // Not server-side apply's own merge (its lists by their keys, fields given up by a manager taken away): a merge patch's, enough for what is tested.
+      if (change.type !== 'merge' && change.type !== 'apply') return now;
+      const next = merge(change.type === 'apply' && !had ? {} : now, change.patch) as KubeObject;
+      return change.dryRun ? next : put(kind, next);
     },
     async update(kind, object, options = {}) {
       const name = object.metadata?.name ?? '';
       const namespace = object.metadata?.namespace;
-      writes.push({ op: 'update', kind: kind.id, name, ...(namespace ? { namespace } : {}), object, ...(options.subresource ? { subresource: options.subresource } : {}) });
+      writes.push({
+        op: 'update',
+        kind: kind.id,
+        name,
+        ...(namespace ? { namespace } : {}),
+        object,
+        ...(options.subresource ? { subresource: options.subresource } : {}),
+        ...(options.dryRun ? { dryRun: true } : {}),
+      });
       refused('update');
       // Its status alone: the rest kept as it is now.
       const now = (of(kind).get(keyOf(object)) ?? object) as KubeObject;
-      return put(kind, options.subresource === 'status' ? ({ ...now, status: (object as { status?: unknown }).status } as KubeObject) : object) as never;
+      // Changed since it was read (another resourceVersion): refused, as the API server does.
+      const read = object.metadata?.resourceVersion;
+      if (read && now.metadata?.resourceVersion && read !== now.metadata.resourceVersion)
+        throw Object.assign(
+          new Error(`Operation cannot be fulfilled on ${kind.plural} "${name}": the object has been modified; please apply your changes to the latest version and try again`),
+          {
+            status: 409,
+            code: 'Conflict',
+          },
+        );
+      const next = options.subresource === 'status' ? ({ ...now, status: (object as { status?: unknown }).status } as KubeObject) : object;
+      return (options.dryRun ? { ...next, metadata: { ...next.metadata, resourceVersion: now.metadata?.resourceVersion } } : put(kind, next)) as never;
     },
-    async remove(kind, object) {
+    async evict(pod, options = {}) {
+      const name = pod.metadata?.name ?? '';
+      const namespace = pod.metadata?.namespace ?? '';
+      writes.push({ op: 'evict', kind: kinds.core.v1.Pod.id, name, namespace, ...(options.dryRun ? { dryRun: true } : {}) });
+      refused('evict');
+      const now = of(kinds.core.v1.Pod).get(`${namespace}/${name}`);
+      if (!now) throw Object.assign(new Error(`pods "${name}" not found`), { status: 404, code: 'NotFound' });
+      // Its PodDisruptionBudgets (those selecting it by their matchLabels): one allowing no disruption refuses it, as the API server does (429).
+      type Budget = KubeObject & { spec?: { selector?: Selector }; status?: { disruptionsAllowed?: number } };
+      const labels = now.metadata?.labels ?? {};
+      const budgets = [...of(kinds.policy.v1.PodDisruptionBudget).values()].filter(
+        (b) => b.metadata?.namespace === namespace && selects((b as Budget).spec?.selector, labels),
+      ) as Budget[];
+      if (budgets.some((b) => (b.status?.disruptionsAllowed ?? 0) <= 0))
+        throw Object.assign(new Error("Cannot evict pod as it would violate the pod's disruption budget."), { status: 429, code: 'TooManyRequests' });
+      if (options.dryRun) return;
+      for (const b of budgets)
+        put(kinds.policy.v1.PodDisruptionBudget, { ...b, status: { ...b.status, disruptionsAllowed: (b.status?.disruptionsAllowed ?? 0) - 1 } } as KubeObject);
+      this.take(kinds.core.v1.Pod, name, namespace);
+    },
+    schema: async (kind) => schemas.get(kind.id),
+    withSchema(kind, schema) {
+      schemas.set(kind.id, schema);
+    },
+    async remove(kind, object, options = {}) {
       const name = object.metadata?.name ?? '';
       const namespace = object.metadata?.namespace;
       const uid = object.metadata?.uid;
       // As the page's: no uid, nothing sent.
       if (!uid) throw new Error(`${kind.id} ${name}: no uid — only an object read from the cluster is deleted`);
-      writes.push({ op: 'remove', kind: kind.id, name, ...(namespace ? { namespace } : {}) });
+      writes.push({
+        op: 'remove',
+        kind: kind.id,
+        name,
+        ...(namespace ? { namespace } : {}),
+        ...(options.propagationPolicy ? { propagationPolicy: options.propagationPolicy } : {}),
+        ...(options.dryRun ? { dryRun: true } : {}),
+      });
       refused('remove');
       const now = of(kind).get(keyOf(object));
       if (now?.metadata?.uid !== uid)
         throw Object.assign(new Error(`${kind.id} ${name}: not the object seen (its uid ${uid}, now ${now?.metadata?.uid ?? 'none'})`), { status: 409, code: 'Conflict' });
-      this.take(kind, name, namespace);
+      if (!options.dryRun) this.take(kind, name, namespace);
     },
   };
 }

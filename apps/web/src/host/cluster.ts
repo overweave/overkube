@@ -1,9 +1,11 @@
 import { type Connector, objectPath } from '@overkube/connector';
-import type { KubeObject } from '@overkube/kube-types';
+import { type KindInfo, type KubeObject, kinds } from '@overkube/kube-types';
 import { type GetResult, LIMITS, type ListResult, type Live, type Source } from '@overkube/query';
 import type { ClusterRun } from '@overkube/runtime';
-import { type Cluster, type Found, foundIn, noReach, type ReachTarget, runReach } from '@overkube/sdk';
+import { type Cluster, type Found, foundIn, kindSchemaOf, noReach, openapiPath, type ReachTarget, runReach } from '@overkube/sdk';
 import { computed, untracked } from '@preact/signals';
+
+const POD = kinds.core.v1.Pod;
 
 /*
  * The cluster as addons and components see it, over the connector (what
@@ -72,6 +74,23 @@ export function clusterAccess(connector: Pick<Connector, 'discovery' | 'http'>, 
 
   const path = (kind: Parameters<typeof objectPath>[0], object: KubeObject) => objectPath(kind, object.metadata?.name ?? '', object.metadata?.namespace);
 
+  // Each group version's OpenAPI document, asked once (kept for the page's life: what a kind is does not change as it runs) —
+  // none there (404, or not to be read) kept as none; one that failed otherwise, asked again next time.
+  const documents = new Map<string, Promise<{ components?: { schemas?: Record<string, unknown> } } | undefined>>();
+  const schemaOf = async (kind: KindInfo) => {
+    const at = openapiPath(kind);
+    let doc = documents.get(at);
+    if (!doc) {
+      doc = http.get<{ components?: { schemas?: Record<string, unknown> } }>(at).catch((error: unknown) => {
+        const status = (error as { status?: number })?.status;
+        if (status !== 404 && status !== 403) documents.delete(at);
+        return undefined;
+      });
+      documents.set(at, doc);
+    }
+    return kindSchemaOf(await doc, kind);
+  };
+
   /** Reading and writing: a run's own (its signal, its name, what it reaches) given by open(). */
   const of = (run?: ClusterRun): Cluster => {
     const signal = run?.signal;
@@ -93,15 +112,30 @@ export function clusterAccess(connector: Pick<Connector, 'discovery' | 'http'>, 
       async update(kind, object, options = {}) {
         live();
         const at = `${path(kind, object)}${options.subresource ? `/${options.subresource}` : ''}`;
-        return http.request<KubeObject>('PUT', at, { body: object, ...(fieldManager ? { query: { fieldManager } } : {}), ...(signal ? { signal } : {}) });
+        const query = { ...(fieldManager ? { fieldManager } : {}), ...(options.dryRun ? { dryRun: 'All' } : {}) };
+        return http.request<KubeObject>('PUT', at, { body: object, query, ...(signal ? { signal } : {}) });
       },
-      async remove(kind, object) {
+      async remove(kind, object, options = {}) {
         live();
         const uid = object.metadata?.uid;
         // This object, not one made anew under its name since it was seen: one with no uid is not sent at all.
         if (!uid) throw new Error(`${kind.id} ${object.metadata?.name ?? ''}: no uid — only an object read from the cluster is deleted`);
-        await http.remove(path(kind, object), { uid }, signal);
+        await http.remove(
+          path(kind, object),
+          { uid, ...(options.propagationPolicy ? { propagationPolicy: options.propagationPolicy } : {}), ...(options.dryRun ? { dryRun: 'All' as const } : {}) },
+          signal,
+        );
       },
+      async evict(pod, options = {}) {
+        live();
+        const name = pod.metadata?.name ?? '';
+        const namespace = pod.metadata?.namespace ?? '';
+        await http.request('POST', `${objectPath(POD, name, namespace)}/eviction`, {
+          body: { apiVersion: 'policy/v1', kind: 'Eviction', metadata: { name, namespace }, ...(options.dryRun ? { deleteOptions: { dryRun: ['All'] } } : {}) },
+          ...(signal ? { signal } : {}),
+        });
+      },
+      schema: (kind) => schemaOf(kind),
       // An addon's alone (what it says it reaches): the page's components reach no workload.
       proxy: (target) => (run ? runReach(run, target, (method, p, init) => http.reach(target, p, { method, ...init }), found) : noReach()),
     };

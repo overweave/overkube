@@ -88,7 +88,12 @@ function settle() {
       roots.delete(root);
       continue;
     }
-    for (const child of root.children) if (!child.classList.contains('uk-layers')) (child as HTMLElement).inert = modal >= 0;
+    // Its children inert under a modal layer — its layers' host aside, and a root within it holding layers (a story's page in the stories'
+    // root): that one's own children made inert, its layers not.
+    for (const child of root.children) {
+      if (child.classList.contains('uk-layers')) continue;
+      (child as HTMLElement).inert = modal >= 0 && !stack.some((l) => child.contains(l.el));
+    }
   }
   // Not scrolled: html.uk-locked — and on the element itself, for the kit's styles in a shadow root (from where html is not reached).
   const html = document.documentElement;
