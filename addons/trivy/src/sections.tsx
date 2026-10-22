@@ -1,7 +1,7 @@
 import { kinds } from '@overkube/kube-types';
 import { humanDuration, type KubeContributor, type ResourceProps, section } from '@overkube/sdk';
 import { useList, useSay } from '@overkube/sdk/preact';
-import { Accordion, AccordionItem, Badge, Button, SEVERITIES, Section, SeverityMatrix, type SeverityRow, SeverityStatus } from '@overkube/uikit';
+import { Accordion, AccordionItem, Badge, SEVERITIES, Section, SeverityMatrix, type SeverityRow, SeverityStatus } from '@overkube/uikit';
 import { useState } from 'preact/hooks';
 import { F, REF, WORKLOADS } from './kinds.ts';
 import { type AuditReportObject, type Check, countsOf, imageOf, type Line, NONE, StateMark, severityOf, useScan, useWords } from './reports.tsx';
@@ -114,25 +114,28 @@ export function Checks({ title, part, reports }: { title: string; part: string; 
     <Section title={title} part={part}>
       <SeverityMatrix words={words} rows={[{ key: 'failed', lead: <b>{say(T.audit.failed)}</b>, counts }]} />
       {shown.length > 0 && (
-        <Accordion>
-          {shown.map((c) => (
-            <AccordionItem
-              key={c.checkID}
-              title={c.title ?? c.checkID}
-              end={<SeverityStatus severity={severityOf(c.severity)}>{say(T.severities[severityOf(c.severity)])}</SeverityStatus>}
-            >
-              {(c.messages?.length ? [...new Set(c.messages)] : c.description ? [c.description] : []).map((m) => (
-                <p key={m}>{m}</p>
-              ))}
-              <p class="uk-quiet">{[c.remediation, c.checkID].filter(Boolean).join(' · ')}</p>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        // Apart from the counts above, and from Show all under it.
+        <div style={{ marginTop: '12px' }}>
+          <Accordion>
+            {shown.map((c) => (
+              <AccordionItem
+                key={c.checkID}
+                title={c.title ?? c.checkID}
+                end={<SeverityStatus severity={severityOf(c.severity)}>{say(T.severities[severityOf(c.severity)])}</SeverityStatus>}
+              >
+                {(c.messages?.length ? [...new Set(c.messages)] : c.description ? [c.description] : []).map((m) => (
+                  <p key={m}>{m}</p>
+                ))}
+                <p class="uk-quiet">{[c.remediation, c.checkID].filter(Boolean).join(' · ')}</p>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </div>
       )}
       {!all && sorted.length > shown.length && (
-        <Button variant="ghost" size="sm" onClick={() => setAll(true)}>
+        <button type="button" class="uk-link" style={{ display: 'inline-block', marginTop: '12px' }} onClick={() => setAll(true)}>
           {say(T.audit.showAll, { count: sorted.length })}
-        </Button>
+        </button>
       )}
     </Section>
   );

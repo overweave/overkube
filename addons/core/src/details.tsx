@@ -20,7 +20,7 @@ import {
   TableView,
 } from '@overkube/sdk';
 import { ObjectRef, StatusOf, useList, usePage, useSay } from '@overkube/sdk/preact';
-import { Chip, Chips, type ChipsLabels, Clamped, Nothing, Notice, Row, Rows, Section, Tip } from '@overkube/uikit';
+import { Chip, Chips, type ChipsLabels, Field, Fields, Nothing, Notice, Row, Rows, Section, Tip } from '@overkube/uikit';
 import type { Definition } from '@overweave/core';
 import type { SlotRef } from '@overweave/ui';
 import { slotElement, useDefinition } from '@overweave/ui/preact';
@@ -76,15 +76,22 @@ export function Deleting({ object }: ResourceProps) {
 
 /** A field whole (the core's, resource.view.summary.field's and resource.view.metadata.field's last): its label, its value — a row of a list, or (apart) one of a grid of them. */
 export function field(label: SlotRef<ResourceFieldProps>, value: SlotRef<ResourceFieldProps>, apart = false) {
-  return function Field(props: ResourceFieldProps) {
-    const pair = (
+  return function WholeField(props: ResourceFieldProps) {
+    if (apart) return <Field label={slotElement(label, props)}>{slotElement(value, props)}</Field>;
+    return (
       <>
         <dt>{slotElement(label, props)}</dt>
         <dd>{slotElement(value, props)}</dd>
       </>
     );
-    return apart ? <div class="uk-field">{pair}</div> : pair;
   };
+}
+
+/** What a field's Show all and Show less say (Fields). */
+export function useFieldsLabels() {
+  const say = useSay();
+  const c = T.resource.view.clamped;
+  return { more: say(c.more), less: say(c.less) };
 }
 
 /** A field's label (the core's): what it is called. */
@@ -114,6 +121,7 @@ export function SummaryFields({ kind, object }: ResourceProps) {
   });
   const values = answer.items[0]?.values;
   const say = useSay();
+  const labels = useFieldsLabels();
   if (!columns.length) return null;
   return (
     <section class="uk-section" data-part="summary">
@@ -122,7 +130,7 @@ export function SummaryFields({ kind, object }: ResourceProps) {
           <Tip content={() => answer.error?.message}>{say(T.kind.refused, { kind: kind.plural, code: answer.error?.code ?? '' })}</Tip>
         </Notice>
       )}
-      <dl class="uk-fields">
+      <Fields labels={labels}>
         {columns.map(({ definition, fields }) => (
           <SummaryField
             key={definition.name}
@@ -135,7 +143,7 @@ export function SummaryFields({ kind, object }: ResourceProps) {
             failed={failed}
           />
         ))}
-      </dl>
+      </Fields>
     </section>
   );
 }
@@ -178,14 +186,7 @@ function SummaryField({
 
 /** A summary field's value (the core's): what its column draws. */
 export function SummaryValue({ drawn }: ResourceFieldProps) {
-  return <Long>{drawn}</Long>;
-}
-
-/** A long value (a selector, a command…): its first two lines, all of it a click away; in code's letters when mono. */
-export function Long({ mono = false, children }: { mono?: boolean; children: ComponentChildren }) {
-  const say = useSay();
-  const c = T.resource.view.clamped;
-  return <Clamped labels={{ more: say(c.more), less: say(c.less) }}>{mono ? <span class="uk-mono">{children}</span> : children}</Clamped>;
+  return <>{drawn}</>;
 }
 
 type Condition = ResourceConditionProps['condition'];

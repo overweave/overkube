@@ -1,7 +1,7 @@
 import { kinds, type ObjectOf } from '@overkube/kube-types';
 import { forKinds, type KubeContributor, kindRef, type ResourceProps, section, slots } from '@overkube/sdk';
 import { KindTable, useCount, useList, useSay } from '@overkube/sdk/preact';
-import { KeyValue, Meter, Nothing, Notice, Section, Table } from '@overkube/uikit';
+import { Fields, KeyValue, Meter, Nothing, Notice, Section, Table } from '@overkube/uikit';
 import { fill } from '@overweave/ui/preact';
 import type { ComponentChildren } from 'preact';
 import { useMemo } from 'preact/hooks';
@@ -85,7 +85,7 @@ export function Allocated({ object }: ResourceProps) {
           {say(T.kind.table.partial, { namespaces: answer.coverage.denied.join(', ') })}
         </Notice>
       )}
-      <dl class="uk-fields">
+      <Fields>
         <Meter label={say(t.cpu)} value={asked.cpu} of={cpu}>
           {say(t.of, { value: cores(asked.cpu), all: Number.isNaN(cpu) ? '—' : cores(cpu) })}
         </Meter>
@@ -95,7 +95,7 @@ export function Allocated({ object }: ResourceProps) {
         <Meter label={say(t.pods)} value={pods.length} of={most}>
           {say(t.of, { value: String(pods.length), all: Number.isNaN(most) ? '—' : String(most) })}
         </Meter>
-      </dl>
+      </Fields>
     </Section>
   );
 }

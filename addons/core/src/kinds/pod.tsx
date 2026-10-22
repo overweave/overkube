@@ -1,11 +1,11 @@
 import { type KubeObject, kinds, type ObjectOf } from '@overkube/kube-types';
 import { forKinds, humanDuration, type KubeContributor, type ResourceContainerProps, type ResourceProps, section, slots } from '@overkube/sdk';
 import { ObjectRef, StatusOf, useSay } from '@overkube/sdk/preact';
-import { Badge, Card, Chips, Image, KeyValue, Nothing, Ref, Section, Status, Table } from '@overkube/uikit';
+import { Badge, Card, Chips, Field, Fields, Image, KeyValue, Nothing, Ref, Section, Status, Table } from '@overkube/uikit';
 import { fill, slotElement } from '@overweave/ui/preact';
 import { type ComponentChildren, Fragment } from 'preact';
 import { useMemo } from 'preact/hooks';
-import { Long, relatedField, Since, useChipLabels } from '../details.tsx';
+import { relatedField, Since, useChipLabels, useFieldsLabels } from '../details.tsx';
 import { T } from '../texts.ts';
 import { type Selector, said } from './shared.tsx';
 
@@ -222,6 +222,7 @@ function Env({ container, namespace }: { container: Container; namespace: string
  */
 export function ContainerCard(props: ResourceContainerProps) {
   const say = useSay();
+  const labels = useFieldsLabels();
   const t = T.resource.view.pod;
   const { container: c, kind, object } = props;
   const s = c.status;
@@ -235,7 +236,7 @@ export function ContainerCard(props: ResourceContainerProps) {
   const command = commandOf(c.spec);
   const hooks = (['postStart', 'preStop'] as const).flatMap((hook) => {
     const h = c.spec.lifecycle?.[hook];
-    return h ? [[hook, <Long mono>{handlerOf(h)}</Long>] as [string, ComponentChildren]] : [];
+    return h ? [[hook, <span class="uk-mono">{handlerOf(h)}</span>] as [string, ComponentChildren]] : [];
   });
   const fields: [string, ComponentChildren][] = [
     [
@@ -250,8 +251,8 @@ export function ContainerCard(props: ResourceContainerProps) {
       <span class="uk-mono">{text}</span>,
     ]),
     ...(last ? [[say(t.lastEnded), <Ended reason={last.reason ?? 'Terminated'} code={last.exitCode} at={last.finishedAt} />] as [string, ComponentChildren]] : []),
-    ...(ports.length ? [[say(t.ports), <Long mono>{ports.join(', ')}</Long>] as [string, ComponentChildren]] : []),
-    ...(command ? [[say(t.command), <Long mono>{command}</Long>] as [string, ComponentChildren]] : []),
+    ...(ports.length ? [[say(t.ports), <span class="uk-mono">{ports.join(', ')}</span>] as [string, ComponentChildren]] : []),
+    ...(command ? [[say(t.command), <span class="uk-mono">{command}</span>] as [string, ComponentChildren]] : []),
     ...hooks,
   ];
   return (
@@ -271,14 +272,13 @@ export function ContainerCard(props: ResourceContainerProps) {
         )
       }
     >
-      <dl class="uk-fields">
+      <Fields labels={labels}>
         {fields.map(([label, value]) => (
-          <div key={label} class="uk-field">
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
+          <Field key={label} label={label}>
+            {value}
+          </Field>
         ))}
-      </dl>
+      </Fields>
       <Env container={c} namespace={object.metadata?.namespace} />
       {c.role !== 'init' && c.role !== 'ephemeral' && <Probes container={c} />}
     </Card>

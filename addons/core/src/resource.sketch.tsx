@@ -7,6 +7,8 @@ import {
   Icon,
   Image,
   KeyValue,
+  Field as KitField,
+  Fields as KitFields,
   Meter as KitMeter,
   Row as KitRow,
   Table as KitTable,
@@ -151,14 +153,13 @@ export { Nothing };
 
 export function Fields({ fields }: { fields: Field[] }) {
   return (
-    <dl class="uk-fields">
+    <KitFields>
       {fields.map(([label, value]) => (
-        <div key={label} class="uk-field">
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
+        <KitField key={label} label={label}>
+          {value}
+        </KitField>
       ))}
-    </dl>
+    </KitFields>
   );
 }
 
@@ -362,10 +363,10 @@ export function ResourceSketch({ view }: { view: View }) {
         {tab === 'metrics' && (
           <Ext slot="resource.view.tabs" by="metrics addon">
             <Section title="Usage, last hour">
-              <dl class="uk-fields">
+              <KitFields>
                 <Meter label="CPU" said="12m of 100m requested" part={12} />
                 <Meter label="Memory" said="41Mi of 70Mi requested, 170Mi limit" part={58} />
-              </dl>
+              </KitFields>
             </Section>
           </Ext>
         )}

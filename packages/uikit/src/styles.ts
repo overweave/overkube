@@ -576,6 +576,8 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-sev-toggle[aria-pressed='false'] b { color: inherit; }
 .uk-sev-toggle:focus-visible { box-shadow: 0 0 0 2px var(--uk-focus); }
 /* A meter (Meter): a field, its bar filled as far (nearly all: a warning; more than all: an error), what that is in words under it. */
+/* A meter's bar some length at least: measured among fields (Fields), as wide as its words otherwise. */
+.uk-meter { min-width: 160px; }
 .uk-meter > dd { display: grid; gap: 4px; }
 .uk-meter-track { display: block; height: 6px; border-radius: 3px; background: var(--uk-panel-2); overflow: hidden; }
 .uk-meter-track > i { display: block; height: 100%; border-radius: 3px; background: var(--uk-ok); transition: width .3s cubic-bezier(.2, 0, 0, 1); }
@@ -657,20 +659,27 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
   .uk-details > :is([data-part='summary'], .uk-notice) { grid-column: 1 / -1; }
   .uk-details > [data-part='metadata'] { grid-column: 2; grid-row: 2 / -1; }
 }
-/* Fields at a glance: a grid of them, each its name (small, quiet) over its value. */
+/* Fields at a glance (Fields): as many columns as fit, each as wide as its widest field — set as they are measured; till then, as many of 120px as fit. One wider than half of them: a row of its own, after the rest. */
 .uk-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px 20px; margin: 0; }
+.uk-fields > .uk-field[data-wide] { grid-column: 1 / -1; order: 1; }
 .uk-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.uk-field > dt { color: var(--uk-muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
-.uk-field > dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.uk-field > dt { color: var(--uk-muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uk-field > dd { margin: 0; font-weight: 500; min-width: 0; }
+/* A field's value (Field) on one line: what does not fit, an ellipsis, Show all at the line's end; opened, on as many lines as it takes. */
+.uk-field-line { display: flex; align-items: baseline; gap: 8px; }
+.uk-field-value { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uk-field[data-open] > .uk-field-line { display: block; }
+.uk-field[data-open] .uk-field-value { display: inline; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+/* On its line's end, whole (.uk-link unsets all: this after it). */
+.uk-field-line > .uk-field-more { flex-shrink: 0; white-space: nowrap; }
+.uk-field[data-open] .uk-field-more { margin-left: 8px; }
+/* Measured (Fields): each field its natural width — its value on one line, its Show all aside. */
+.uk-fields[data-measure] .uk-field { width: max-content; }
+.uk-fields[data-measure] .uk-field-line { display: flex; }
+.uk-fields[data-measure] .uk-field-value { display: block; white-space: nowrap; }
+.uk-fields[data-measure] .uk-field-more { display: none; }
 /* A line of parts in a field: as wide as the field at most (an image's name cut short in it, not over the next field). */
 .uk-field > dd .uk-line { max-width: 100%; }
-/* A long text kept to its first lines (Clamped), all of it when opened. */
-.uk-clamped { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
-.uk-clamped-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--uk-clamp, 2); overflow: hidden; max-width: 100%; }
-.uk-clamped-text[data-open] { display: block; -webkit-line-clamp: none; }
-/* A state among fields: its words wrap (a long one, NotReady,SchedulingDisabled), not cut short — after a colon or a comma (Status), inside a word only when it has no room. */
-.uk-field > dd .uk-status { white-space: normal; }
-.uk-field > dd .uk-status-text { overflow: visible; overflow-wrap: break-word; }
 
 /* Things dragged into another order (useSortable): the one held lifted (a little larger, leaning as it moves, following the pointer a moment behind), the others moving aside on springs; dropped, it settles where it lands. */
 [data-sorting] { user-select: none; cursor: grabbing; --uk-sort-ease: linear(0, 0.104, 0.314, 0.533, 0.715, 0.847, 0.934, 0.984, 1.009, 1.019, 1.02, 1.016, 1.012, 1.008, 1.004, 1.002, 1.001, 1); --uk-sort-follow: 70ms; --uk-lift: 1.03; }

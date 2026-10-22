@@ -1,4 +1,4 @@
-import { Badge, Button, Chips, Ratio, Section } from '@overkube/uikit';
+import { Badge, Button, Chips, Fields as KitFields, Ratio, Section } from '@overkube/uikit';
 import type { ComponentChildren } from 'preact';
 import {
   Containers,
@@ -549,11 +549,11 @@ export const Node = () => (
         own: (
           <>
             <Section title="Allocated" part="capacity">
-              <dl class="uk-fields">
+              <KitFields>
                 <Meter label="CPU requested" said="1.2 of 4 cores" part={30} />
                 <Meter label="Memory requested" said="2.1 of 7.6 GiB" part={28} />
                 <Meter label="Pods" said="18 of 110" part={16} />
-              </dl>
+              </KitFields>
             </Section>
             <Section title="Capacity" part="capacity">
               <Table
@@ -1061,10 +1061,10 @@ export const HPA = () => (
         own: (
           <>
             <Section title="Metrics" part="metrics">
-              <dl class="uk-fields">
+              <KitFields>
                 <Meter label="CPU (of requests)" said="42% now, target 70%" part={60} />
                 <Meter label="Memory (of requests)" said="88% now, target 80%" part={110} />
-              </dl>
+              </KitFields>
             </Section>
             <Section title="Behaviour" part="behaviour">
               <Table
@@ -1292,11 +1292,11 @@ export const Namespace = () => (
               />
             </Section>
             <Section title="Quota" part="quota">
-              <dl class="uk-fields">
+              <KitFields>
                 <Meter label="CPU requested" said="2.4 of 8" part={30} />
                 <Meter label="Memory requested" said="5Gi of 16Gi" part={31} />
                 <Meter label="Pods" said="12 of 50" part={24} />
-              </dl>
+              </KitFields>
             </Section>
             <Section title="Limit ranges" part="limits">
               <Table
@@ -1369,11 +1369,11 @@ export const NodeNotReady = () => (
         own: (
           <>
             <Section title="Allocated" part="capacity">
-              <dl class="uk-fields">
+              <KitFields>
                 <Meter label="CPU requested" said="0 of 4 cores" part={0} />
                 <Meter label="Memory requested" said="0 of 7.6 GiB" part={0} />
                 <Meter label="Pods" said="0 of 110" part={0} />
-              </dl>
+              </KitFields>
             </Section>
             <Section title="Taints" part="taints">
               <Nothing icon="shield">No taints: any pod may be scheduled here (once it takes pods again).</Nothing>
@@ -1642,12 +1642,12 @@ export const ResourceQuota = () => (
         ],
         own: (
           <Section title="Used of allowed" part="quota">
-            <dl class="uk-fields">
+            <KitFields>
               <Meter label="requests.cpu" said="2.4 of 8" part={30} />
               <Meter label="requests.memory" said="5Gi of 16Gi" part={31} />
               <Meter label="pods" said="46 of 50" part={92} />
               <Meter label="services.loadbalancers" said="1 of 1" part={100} />
-            </dl>
+            </KitFields>
           </Section>
         ),
         events: [],

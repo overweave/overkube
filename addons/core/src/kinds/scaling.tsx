@@ -1,7 +1,7 @@
 import { kinds, type ObjectOf } from '@overkube/kube-types';
 import { type KubeContributor, kindRef, type ResourceProps, section } from '@overkube/sdk';
 import { ObjectRef, useList, useSay } from '@overkube/sdk/preact';
-import { Badge, KeyValue, Meter, Nothing, Section, Table } from '@overkube/uikit';
+import { Badge, Fields, KeyValue, Meter, Nothing, Section, Table } from '@overkube/uikit';
 import type { ComponentChildren } from 'preact';
 import { quantity } from '../format.ts';
 import { Refused, refused } from '../refused.tsx';
@@ -75,7 +75,7 @@ export function Metrics({ object }: ResourceProps) {
       {metrics.length ? (
         <>
           {metrics.some((m) => m.share) && (
-            <dl class="uk-fields">
+            <Fields>
               {metrics
                 .filter((m) => m.share)
                 .map((m) => (
@@ -83,7 +83,7 @@ export function Metrics({ object }: ResourceProps) {
                     {words(m)}
                   </Meter>
                 ))}
-            </dl>
+            </Fields>
           )}
           {metrics.some((m) => !m.share) && <KeyValue rows={metrics.filter((m) => !m.share).map((m): [string, ComponentChildren] => [m.name, words(m)])} />}
         </>
@@ -180,13 +180,13 @@ function QuotaMeters({ quotas }: { quotas: QuotaObject[] }) {
     })),
   );
   return (
-    <dl class="uk-fields">
+    <Fields>
       {rows.map((r) => (
         <Meter key={r.key} label={r.label} value={quantity(r.used)} of={quantity(r.hard)}>
           {say(T.resource.view.scaling.used, { used: r.used, hard: r.hard })}
         </Meter>
       ))}
-    </dl>
+    </Fields>
   );
 }
 
