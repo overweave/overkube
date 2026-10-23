@@ -4,8 +4,27 @@ import { assertContributions, assertResult, assertSays, cleanup, uiWorld } from 
 import { mount, renderSlot } from '@overweave/testkit/preact';
 import { signal } from '@preact/signals';
 import { h } from 'preact';
-import { afterEach, describe, expect, it } from 'vitest';
-import { accessOf, action, type Cluster, column, defineAddon, kindMatcher, kubeOwnKinds, reachOver, section, slots, standingOf, takes, tile, ui, wrap } from './index.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  accessOf,
+  action,
+  type Cluster,
+  type Ctx,
+  column,
+  defineAddon,
+  kindMatcher,
+  kubeOwnKinds,
+  lazySetup,
+  loadOf,
+  reachOver,
+  section,
+  slots,
+  standingOf,
+  takes,
+  tile,
+  ui,
+  wrap,
+} from './index.ts';
 import { KubeProvider, useList } from './preact/index.ts';
 
 /*
@@ -202,6 +221,20 @@ describe('reaching a workload', () => {
 });
 
 describe('an addon', () => {
+  it('keeps its setup in a module of its own (lazySetup): loaded once, again only after it failed; once there, set up at once', async () => {
+    const ran = vi.fn();
+    const load = vi.fn<() => Promise<{ default: (ctx: Ctx) => void }>>().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ default: ran });
+    const addon = defineAddon({ id: 'a', title: 'x', setup: lazySetup(load) });
+    const ctx = {} as Ctx;
+    await expect(loadOf(addon)?.()).rejects.toThrow('offline');
+    await Promise.all([loadOf(addon)?.(), loadOf(addon)?.()]);
+    expect(load).toHaveBeenCalledTimes(2);
+    // Its module there: its setup run now, not a promise of it.
+    expect(addon.setup(ctx)).toBeUndefined();
+    expect(ran).toHaveBeenCalledWith(ctx);
+    expect(loadOf(defineAddon({ id: 'b', title: 'x', setup() {} }))).toBeUndefined();
+  });
+
   it('is checked when defined, and stands at its layer', () => {
     expect(() => defineAddon({ id: 'Bad Id', title: 'x', setup() {} })).toThrow(/lower-case/);
     expect(() => defineAddon({ id: 'user', title: 'x', setup() {} })).toThrow(/the page's own/);

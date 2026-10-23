@@ -1,4 +1,4 @@
-import { type Addon, type AddonChoicesSpec, column, defineAddon, type Found, kubeKinds, type ReachTarget } from '@overkube/sdk';
+import { type Addon, type AddonChoicesSpec, column, defineAddon, type Found, kubeKinds, lazySetup, type ReachTarget } from '@overkube/sdk';
 import { createRegistry } from '@overweave/core';
 import { signal } from '@preact/signals';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -262,6 +262,64 @@ describe('the host', () => {
     );
     await expect(later()).resolves.toBeUndefined();
     expect(host.status('cb')).toMatchObject({ state: 'degraded', errors: 1, error: 'rejected' });
+  });
+
+  it('loads a setup in a module of its own once the addon is on — never while it is off; starting till its module is there, then set up', async () => {
+    const { host, registry, choices, served } = setup({ choices: {} });
+    served.value = null;
+    let give: () => void = () => {};
+    const load = vi.fn(
+      () =>
+        new Promise<{ default: Addon['setup'] }>((done) => {
+          give = () => done({ default: ({ contributor }) => void contributor.add('Column', 'lazy.c', col('Lazy')) });
+        }),
+    );
+    host.register(named('lazy', 'addon', lazySetup(load), { requires: { served: 'example.com' } }));
+    expect(load).not.toHaveBeenCalled();
+    // On: its module asked for at once, while what it requires is not known yet (discovery to come).
+    choices.value = { on: { lazy: true } };
+    expect([load.mock.calls.length, host.status('lazy')?.state]).toEqual([1, 'unavailable']);
+    served.value = new Set(['', 'example.com']);
+    expect(host.status('lazy')?.state).toBe('starting');
+    give();
+    await expect.poll(() => host.status('lazy')?.state).toBe('running');
+    expect([registry.get('Column', 'lazy.c') !== undefined, load.mock.calls.length]).toEqual([true, 1]);
+    // Off and on again: its module not loaded again — set up at once.
+    choices.value = { on: {} };
+    choices.value = { on: { lazy: true } };
+    expect([host.status('lazy')?.state, load.mock.calls.length]).toEqual(['running', 1]);
+  });
+
+  it('says a module that could not be loaded so, failed at once (a browser does not load it again till the page is reloaded); restarted, asks again', async () => {
+    const { host, registry } = setup();
+    const load = vi
+      .fn<() => Promise<{ default: Addon['setup'] }>>()
+      .mockRejectedValueOnce(new Error('Failed to fetch dynamically imported module'))
+      .mockResolvedValue({ default: ({ contributor }) => void contributor.add('Column', 'lazy.c', col('Lazy')) });
+    host.register(named('lazy', 'addon', lazySetup(load)));
+    await expect.poll(() => host.status('lazy')?.state).toBe('failed');
+    expect([host.status('lazy')?.reason, host.status('lazy')?.error, host.status('lazy')?.restarts]).toEqual([
+      'its module could not be loaded: reload the page',
+      'Failed to fetch dynamically imported module',
+      0,
+    ]);
+    // Not tried again by itself; one preload only, though what it requires was asked again meanwhile.
+    expect(load).toHaveBeenCalledOnce();
+    host.restart('lazy');
+    await expect.poll(() => host.status('lazy')?.state).toBe('running');
+    expect(registry.get('Column', 'lazy.c')).toBeDefined();
+  });
+
+  it('runs a setup whose module its preload has loaded at once, as what it requires comes — not starting for a moment', async () => {
+    const { host, choices, served } = setup({ choices: {} });
+    const load = vi.fn(async () => ({ default: (() => undefined) as Addon['setup'] }));
+    host.register(named('lazy', 'addon', lazySetup(load), { requires: { served: 'example.com' } }));
+    choices.value = { on: { lazy: true } };
+    await new Promise((done) => setTimeout(done, 0));
+    expect(host.status('lazy')?.state).toBe('unavailable');
+    served.value = new Set(['', 'example.com']);
+    expect(host.status('lazy')?.state).toBe('running');
+    expect(load).toHaveBeenCalledOnce();
   });
 
   it('waits for an async setup: starting until it has finished, what it gives back kept', async () => {

@@ -1,4 +1,5 @@
 import core from '@overkube/addon-core';
+import { loadOf } from '@overkube/sdk';
 import { cleanup, fakeCluster, kubeWorld } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +20,9 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date().setUTCHours(12, 0, 0, 0));
 });
+// Its setup's module loaded first (its own chunk, as the page loads it before it starts it): set up at once, as it is drawn.
+await loadOf(certManager)?.();
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();

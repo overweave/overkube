@@ -1,8 +1,8 @@
 import { kinds } from '@overkube/kube-types';
 import { type CellValue, type ColumnContext, column, type KubeContributor, type Label } from '@overkube/sdk';
 import { Usage } from '@overkube/uikit';
-import type { Metrics } from './index.tsx';
 import { F } from './kinds.ts';
+import type { Metrics } from './setup.tsx';
 import { T } from './texts.ts';
 import { inScale, type Resource, said, scaleOf } from './units.ts';
 

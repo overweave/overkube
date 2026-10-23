@@ -1,6 +1,7 @@
 import core from '@overkube/addon-core';
 import helm from '@overkube/addon-helm';
 import { kinds } from '@overkube/kube-types';
+import { loadOf } from '@overkube/sdk';
 import { assertNothingRefused, cleanup, fakeCluster, kubeWorld } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +18,9 @@ import { FLUX } from './kinds.ts';
  * flux CLI does them; the start's panel; what Flux applied marked — its
  * pods and replica sets too — and Managed By in its view.
  */
+
+// Its setup's module loaded first (its own chunk, as the page loads it before it starts it): set up at once, as it is drawn.
+await loadOf(flux)?.();
 
 afterEach(cleanup);
 

@@ -16,6 +16,8 @@ export default defineAddon({
 });
 ```
 
+Its setup may be kept out of the page's bundle — in a module of its own, loaded once the addon is turned on (one turned off is never loaded): `setup: lazySetup(() => import('./setup.tsx'))`, the module's default export the setup. Its index then holds what the page needs while it is off — its id, title, description, `requires`, `answers` — and imports nothing else of it; the host loads the module as soon as the addon is on (alongside discovery), then starts it.
+
 `ctx.contributor` is overweave's contributor for this addon (`add`, `patch`, with its priority and rights); `ctx.cluster` the cluster; `ctx.notify`, `ctx.effect`, `ctx.onDispose`, `ctx.signal` its lifetime; `ctx.using('VictoriaMetrics over time')` what it uses now, said in Settings.
 
 When it runs, and where it belongs: `requires` — a condition that must hold for it to run (a group served, an APIService available, a service another addon provides, a Service `found` in the cluster); `answers` — what it answers to, each a title and such a condition, checked as the one signed in sees the cluster and listed in Settings (found where, not, not known yet). An addon's or a plugin's is off until the user turns it on (`AddonChoices`, theirs, kept in their browser); off, with one of its answers found, the overview suggests it. The core's and the built-in ones are always on.

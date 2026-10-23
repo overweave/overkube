@@ -1,5 +1,6 @@
 import preact from '@preact/preset-vite';
 import { defaultClientConditions, defineConfig } from 'vite';
+import { chunkName } from './chunks.ts';
 
 /*
  * The page, built (dist/: what overkube's server serves, OVERKUBE_UI) or
@@ -54,5 +55,6 @@ export default defineConfig({
     emptyOutDir: true,
     // Fonts as files of their own, however small: the page's CSP takes no data: font.
     assetsInlineLimit: (file) => (file.endsWith('.woff2') ? false : undefined),
+    rolldownOptions: { output: { chunkFileNames: chunkName('assets/') } },
   },
 });

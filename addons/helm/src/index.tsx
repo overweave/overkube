@@ -1,8 +1,4 @@
-import { defineAddon } from '@overkube/sdk';
-import { FIELDS } from './kinds.ts';
-import { addMark } from './mark.tsx';
-import { addOverview } from './overview.tsx';
-import { addPage } from './page.tsx';
+import { defineAddon, lazySetup } from '@overkube/sdk';
 
 /*
  * Helm: what helm deployed, as its releases' Secrets hold it (helm's own
@@ -23,11 +19,5 @@ export default defineAddon({
   id: 'helm',
   title: 'Helm',
   description: 'What helm deployed: each release’s chart, state, values, manifest and history; what helm made, marked in the tables.',
-  setup({ contributor: c }) {
-    for (const [name, spec] of Object.entries(FIELDS)) c.add('Field', name, spec);
-    c.add('Messages', 'en:helm', { messages: {} }, { fallback: true });
-    addPage(c);
-    addOverview(c);
-    addMark(c);
-  },
+  setup: lazySetup(() => import('./setup.tsx')),
 });

@@ -1,4 +1,4 @@
-import { type AddonState, type AddonStatus, Appearance, builtIn, Language, Messages, messagesName, NavView, RIGHTS_OF, Theme } from '@overkube/sdk';
+import { type AddonState, type AddonStatus, Appearance, builtIn, Language, Messages, messagesName, NavView, PRIORITY, RIGHTS_OF, Theme } from '@overkube/sdk';
 import { useAddons, usePage, useSay, useUser } from '@overkube/sdk/preact';
 import {
   Accordion,
@@ -346,14 +346,15 @@ function Changes({ changes }: { changes: readonly Change[] }) {
 }
 
 /** Each state as the page tells it: its tone, its icon. */
-const STATES: Record<AddonState, { tone: 'ok' | 'progress' | 'waiting' | 'warn' | 'error' | 'gone'; icon: string }> = {
+const STATES: Record<AddonState, { tone: 'ok' | 'progress' | 'waiting' | 'warn' | 'error' | 'unknown'; icon: string }> = {
   running: { tone: 'ok', icon: 'circle-check' },
   starting: { tone: 'progress', icon: 'spinner' },
   unavailable: { tone: 'waiting', icon: 'hourglass' },
   degraded: { tone: 'warn', icon: 'warning' },
   crashloop: { tone: 'error', icon: 'crash-loop' },
   failed: { tone: 'error', icon: 'circle-x' },
-  disabled: { tone: 'gone', icon: 'circle-dashed' },
+  // Off: quiet, still (gone's fades in and out — something on its way away, not one turned off).
+  disabled: { tone: 'unknown', icon: 'circle-dashed' },
 };
 
 /** Those that are always on: the core's and the built-in ones. */
@@ -361,7 +362,8 @@ const STATES: Record<AddonState, { tone: 'ok' | 'progress' | 'waiting' | 'warn' 
 /**
  * An addon: a line (how it is doing, its name, its id and layer; at its end,
  * built in — always on — or its switch, and started again if it failed; off,
- * one of what it answers to found, said so), opened: why, what it is, what
+ * one of what it answers to found: its mark a warning's colour, said so to
+ * who cannot see it), opened: why, what it is, what
  * it answers to (found where, not, not known yet), what it uses, what it may do.
  */
 function AddonLine({ addon, onRestart }: { addon: AddonStatus; onRestart: () => void }) {
@@ -371,16 +373,17 @@ function AddonLine({ addon, onRestart }: { addon: AddonStatus; onRestart: () => 
   const state = say(t.states[addon.state]);
   const failing = addon.state === 'crashloop' || addon.state === 'failed' || addon.state === 'degraded';
   const found = !addon.enabled && addon.answers.some((a) => a.found === true);
+  // Off, what it answers to found here: worth turning on — its mark said so (in the warning's colour).
+  const tone = found ? 'warn' : look.tone;
   return (
     <AccordionItem
-      mark={<Status tone={look.tone} icon={look.icon} title={state} />}
+      mark={<Status tone={tone} icon={look.icon} title={found ? `${state} · ${say(t.foundHere)}` : state} />}
       title={
         <>
           <span>{addon.title}</span>
           <span>
             {addon.id} · {addon.layer}
           </span>
-          {found && <Badge level="ok">{say(t.foundHere)}</Badge>}
         </>
       }
       end={
@@ -405,8 +408,8 @@ function AddonLine({ addon, onRestart }: { addon: AddonStatus; onRestart: () => 
       <dl class="uk-board-facts">
         <dt>{say(t.state)}</dt>
         <dd>
-          <Status tone={look.tone} icon={look.icon}>
-            {state}
+          <Status tone={tone} icon={look.icon}>
+            {found ? `${state} · ${say(t.foundHere)}` : state}
           </Status>
           {addon.reason && <span class="uk-muted"> · {addon.reason}</span>}
         </dd>
@@ -434,7 +437,7 @@ function AddonLine({ addon, onRestart }: { addon: AddonStatus; onRestart: () => 
             <dd>
               <ul class="uk-marks">
                 {addon.answers.map((a) => (
-                  <li key={a.title} data-off={a.found ? undefined : ''}>
+                  <li key={a.title} data-found={a.found ? '' : undefined} data-off={a.found ? undefined : ''}>
                     <Icon name={a.found ? 'check' : a.found === false ? 'circle-dashed' : 'hourglass'} />
                     <span>{a.title}</span>
                     <span>{a.found ? (a.where ?? '') : say(a.found === false ? t.notHere : t.notKnown)}</span>
@@ -463,10 +466,13 @@ function AddonLine({ addon, onRestart }: { addon: AddonStatus; onRestart: () => 
   );
 }
 
+/** The addons by their layer — those always on first (the core's, the built-in ones), then the addons, then the plugins — each layer's in the order they came. */
+export const byLayer = (statuses: readonly AddonStatus[]) => [...statuses].sort((a, b) => PRIORITY[a.layer] - PRIORITY[b.layer]);
+
 function AddonsPart() {
   const say = useSay();
   const addons = useAddons();
-  const statuses = addons?.statuses.value ?? [];
+  const statuses = byLayer(addons?.statuses.value ?? []);
   return (
     <Part title={say(t.addons)} {...(addons ? { count: statuses.length } : {})}>
       {addons ? (

@@ -1,6 +1,6 @@
 import { type AddonRun, type RunEnv, runAddon } from '@overkube/runtime';
 import type { Addon, AddonChoicesSpec, AddonStatus, Addons, AnswerStatus, KubeContributor, Layer, Notification } from '@overkube/sdk';
-import { builtIn, standingOf, whereOf } from '@overkube/sdk';
+import { builtIn, loadOf, standingOf, whereOf } from '@overkube/sdk';
 import type { Registry } from '@overweave/core';
 import { computed, effect, type ReadonlySignal, type Signal, signal, untracked } from '@preact/signals';
 import type { ClusterAccess } from './cluster.ts';
@@ -16,11 +16,13 @@ import { type Facts, holds } from './conditions.ts';
  *   disabled      off: an addon's or a plugin's until the user turns it on (AddonChoices) — the core's and
  *                 the built-in ones always on — or, in safe mode, every one but those
  *   unavailable   on, but what it requires does not hold (or is not known yet); starts by itself once it does
- *   starting      its setup runs
+ *   starting      its setup's module loads (one of its own: lazySetup — not in the page's bundle), then its setup runs
  *   running
  *   degraded      running, but something it drew or gave failed
  *   crashloop     its setup failed: started again after a wait that grows
- *   failed        its setup failed maxCrashes times in a row: left alone until restarted
+ *   failed        its setup failed maxCrashes times in a row, or its module could not be loaded (a browser
+ *                 keeps a module that failed to load as failed: none tried again till the page is reloaded) —
+ *                 left alone until restarted
  */
 
 // biome-ignore lint/suspicious/noExplicitAny: a registry of the dashboard's kinds, whatever their types.
@@ -61,6 +63,10 @@ interface Runtime {
   /** Each start; a setup given up on (stopped, timed out) can no longer move it. */
   generation: number;
   run: AddonRun | null;
+  /** Its setup's module loaded (lazySetup): its setup run at once from now on. */
+  loaded: boolean;
+  /** Its module asked for as it was turned on (once: what follows is its start's). */
+  preloaded: boolean;
   crashes: number;
   retry?: ReturnType<typeof setTimeout>;
   drive?: () => void;
@@ -161,11 +167,23 @@ export class AddonHost implements Addons {
       status: signal({ id: addon.id, title: addon.title, ...(addon.description ? { description: addon.description } : {}), layer, state: 'disabled', restarts: 0, errors: 0 }),
       generation: 0,
       run: null,
+      loaded: !loadOf(addon),
+      preloaded: false,
       crashes: 0,
     };
     this.runtimes.value = new Map([...this.runtimes.peek(), [addon.id, rt]]);
     rt.drive = effect(() => {
       const on = this.runs(rt);
+      // On: its module asked for at once, once (what it requires may be known later) — failed, its start says so.
+      if (on && !rt.loaded && !rt.preloaded) {
+        rt.preloaded = true;
+        loadOf(addon)?.().then(
+          () => {
+            rt.loaded = true;
+          },
+          () => {},
+        );
+      }
       const requires = on ? this.holds(rt, addon.requires) : false;
       untracked(() => this.reconcile(rt, on, requires));
     });
@@ -264,8 +282,25 @@ export class AddonHost implements Addons {
   private start(rt: Runtime): void {
     clearTimeout(rt.retry);
     const generation = ++rt.generation;
-    const id = rt.addon.id;
     this.update(rt, { state: 'starting', reason: undefined, errors: 0, error: undefined });
+    const load = loadOf(rt.addon);
+    if (load && !rt.loaded) {
+      // Its module first (not timed: how long its download takes is the network's), then its setup.
+      load().then(
+        () => {
+          rt.loaded = true;
+          if (generation === rt.generation) this.run(rt, generation);
+        },
+        (error: unknown) => this.unloaded(rt, generation, error),
+      );
+      return;
+    }
+    this.run(rt, generation);
+  }
+
+  /** Its setup run (its module there): running once it has finished, given up on if it takes too long. */
+  private run(rt: Runtime, generation: number): void {
+    const id = rt.addon.id;
     let run: AddonRun;
     try {
       const contributor = this.options.registry.contributor(id, standingOf(rt.layer)) as unknown as KubeContributor;
@@ -305,6 +340,18 @@ export class AddonHost implements Addons {
     const run = rt.run;
     rt.run = null;
     run?.stop();
+  }
+
+  /**
+   * Its module could not be loaded: failed at once, said why — not tried again
+   * after a wait (a browser keeps a module that failed to load as failed: each
+   * import of it refused till the page is reloaded); restarted, asked again.
+   */
+  private unloaded(rt: Runtime, generation: number, error: unknown): void {
+    if (generation !== rt.generation) return;
+    this.stop(rt);
+    this.update(rt, { state: 'failed', reason: 'its module could not be loaded: reload the page', error: message(error) });
+    this.log(`${rt.addon.id}: its module could not be loaded: ${message(error)}`);
   }
 
   /** Setup failed: started again after a wait, or, after maxCrashes in a row, left failed. */

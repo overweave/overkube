@@ -1,4 +1,5 @@
 import core from '@overkube/addon-core';
+import { loadOf } from '@overkube/sdk';
 import { cleanup, fakeCluster, kubeWorld } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,9 @@ import trivy from './index.tsx';
  * assessment; the workloads' column (sorted, filtered by it); the Images
  * page; Rescan — what it deletes, shown only to one who may.
  */
+
+// Its setup's module loaded first (its own chunk, as the page loads it before it starts it): set up at once, as it is drawn.
+await loadOf(trivy)?.();
 
 afterEach(cleanup);
 

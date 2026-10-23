@@ -1,4 +1,5 @@
 import core from '@overkube/addon-core';
+import { loadOf } from '@overkube/sdk';
 import { cleanup, fakeCluster, kubeWorld } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +16,9 @@ import { merged, releaseOf, resourcesOf } from './release.ts';
  * compared), the start's panel (only those not well), what helm made
  * marked beside its name.
  */
+
+// Its setup's module loaded first (its own chunk, as the page loads it before it starts it): set up at once, as it is drawn.
+await loadOf(helm)?.();
 
 afterEach(cleanup);
 

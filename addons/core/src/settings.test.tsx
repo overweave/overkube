@@ -93,6 +93,33 @@ describe('the settings', () => {
     expect([w.addons.statuses.value.find((s) => s.id === 'nord')?.state, said(page.container, 'Restart')]).toEqual(['running', undefined]);
   });
 
+  it('lists those always on first (the core’s, the built-in ones), then the addons, then the plugins — each layer’s in the order they came', () => {
+    const w = world();
+    const base = w.addons.statuses.value[0] as (typeof w.addons.statuses.value)[number];
+    const of = (id: string, layer: typeof base.layer) => ({ ...base, id, title: id, layer, enabled: layer === 'core' || layer === 'builtin' });
+    w.addons.statuses.value = [
+      of('theirs', 'plugin'),
+      of('metrics', 'addon'),
+      of('session', 'builtin'),
+      of('core', 'core'),
+      of('flux', 'addon'),
+      of('mine', 'plugin'),
+      of('host', 'builtin'),
+    ];
+    const page = renderPage(w, '/settings');
+    fireEvent.click([...page.container.querySelectorAll('a')].find((a) => a.textContent?.startsWith('Addons')) as HTMLAnchorElement);
+    // Each its title (its id here), its id and its layer.
+    expect([...page.container.querySelectorAll('.uk-accordion-head')].map((h) => h.textContent)).toEqual([
+      'corecore · core',
+      'sessionsession · builtin',
+      'hosthost · builtin',
+      'metricsmetrics · addon',
+      'fluxflux · addon',
+      'theirstheirs · plugin',
+      'minemine · plugin',
+    ]);
+  });
+
   it('keeps the core’s on always; turns another on and off, the user’s; says what it answers to — found where, not here, not known — and what it uses', () => {
     const w = world();
     w.addons.statuses.value = w.addons.statuses.value.map((s) =>
@@ -113,10 +140,16 @@ describe('the settings', () => {
     fireEvent.click([...page.container.querySelectorAll('a')].find((a) => a.textContent?.startsWith('Addons')) as HTMLAnchorElement);
     const items = [...page.container.querySelectorAll('.uk-accordion-item')] as HTMLElement[];
     expect([items[0].querySelector('.uk-accordion-end')?.textContent, items[0].querySelector('[role="switch"]')]).toEqual(['built in', null]);
-    expect(items[1].querySelector('.uk-accordion-head')?.textContent).toBe('Nordnord · addonfound here');
+    // Off, one of what it answers to found: its mark a warning's, said so.
+    expect(items[1].querySelector('.uk-accordion-head')?.textContent).toBe('Nordnord · addon');
+    expect([items[1].querySelector('.uk-status')?.getAttribute('data-tone'), items[1].querySelector('.uk-status')?.getAttribute('aria-label')]).toEqual([
+      'warn',
+      'Disabled · found here',
+    ]);
     page.act(() => (items[1].querySelector('[role="switch"]') as HTMLButtonElement).click());
     expect(w.user.saved().patches).toEqual([{ kind: 'AddonChoices', name: 'default', fields: { on: { nord: true } } }]);
     fireEvent.click(items[1].querySelector('.uk-accordion-head') as HTMLButtonElement);
+    expect([...items[1].querySelectorAll('.uk-marks li')].map((li) => li.hasAttribute('data-found'))).toEqual([true, false, false]);
     expect([...items[1].querySelectorAll('.uk-marks li')].map((li) => li.textContent)).toEqual([
       'VictoriaMetricsmonitoring/vmsingle-main:8428',
       'Prometheusnot in this cluster',

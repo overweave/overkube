@@ -136,10 +136,48 @@ export interface Addon {
   /**
    * Its definitions; what it gives back is done when it stops. It may take a
    * while (async: what it needs first, fetched) — it is starting until it
-   * has finished, given up on if it takes too long.
+   * has finished, given up on if it takes too long. In a module of its own
+   * (lazySetup): not in the page's bundle — loaded once it is turned on.
    */
   setup(ctx: Ctx): SetupResult | Promise<SetupResult>;
 }
+
+/** A setup in a module of its own (its default export), loaded when first asked for — by its host as soon as it is on, before it starts. */
+export interface LazySetup {
+  /** Its module's setup: at once once its module is there (as a setup written in place), after it is loaded otherwise. */
+  (ctx: Ctx): SetupResult | Promise<SetupResult>;
+  /** Its module, loaded (once; failed, tried again next time). */
+  readonly load: () => Promise<unknown>;
+}
+
+type SetupModule = { default: (ctx: Ctx) => SetupResult | Promise<SetupResult> };
+
+/**
+ * An addon's setup kept out of the page's bundle: setup: lazySetup(() =>
+ * import('./setup.tsx')) — its module (and what only it imports) a chunk of
+ * its own, loaded once it is turned on; one turned off is never loaded.
+ */
+export function lazySetup(load: () => Promise<SetupModule>): LazySetup {
+  let module: Promise<SetupModule> | undefined;
+  let there: SetupModule | undefined;
+  const loaded = () => {
+    module ??= load().then(
+      (m) => {
+        there = m;
+        return m;
+      },
+      (error: unknown) => {
+        module = undefined;
+        throw error;
+      },
+    );
+    return module;
+  };
+  return Object.assign((ctx: Ctx) => (there ? there.default(ctx) : loaded().then((m) => m.default(ctx))), { load: loaded });
+}
+
+/** Its setup's module to load first, if it is in one of its own (lazySetup). */
+export const loadOf = (addon: Addon): (() => Promise<unknown>) | undefined => (addon.setup as Partial<LazySetup>).load;
 
 /** How an addon is doing, as the page tells it. */
 export type AddonState = 'disabled' | 'unavailable' | 'starting' | 'running' | 'degraded' | 'crashloop' | 'failed';

@@ -1,4 +1,5 @@
 import core from '@overkube/addon-core';
+import { loadOf } from '@overkube/sdk';
 import { cleanup, fakeCluster, kubeWorld } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { waitFor } from '@testing-library/preact';
@@ -14,6 +15,9 @@ import metrics from './index.tsx';
  * most, a pod's and a node's Metrics tab — and what it asks of where
  * history is kept.
  */
+
+// Its setup's module loaded first (its own chunk, as the page loads it before it starts it): set up at once, as it is drawn.
+await loadOf(metrics)?.();
 
 afterEach(cleanup);
 

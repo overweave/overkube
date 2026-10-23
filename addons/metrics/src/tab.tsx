@@ -5,8 +5,8 @@ import { useGet, useList, useSay } from '@overkube/sdk/preact';
 import { Gauge, Notice, Section, Segmented, Skeleton, Table, TimeChart, type TimeChartMark, Usage } from '@overkube/uikit';
 import { useEffect, useState } from 'preact/hooks';
 import { type Keeper, type Metric, type Of, promql, range } from './history.ts';
-import type { Metrics } from './index.tsx';
 import { NODE_METRICS, POD_METRICS } from './kinds.ts';
+import type { Metrics } from './setup.tsx';
 import { T } from './texts.ts';
 import { inScale, percent, type Resource, said, scaleOf } from './units.ts';
 

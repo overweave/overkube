@@ -450,6 +450,8 @@ html.uk-locked { overflow: hidden; overscroll-behavior: none; }
 .uk-marks { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .uk-marks > li { display: grid; grid-template-columns: 16px max-content minmax(0, 1fr); gap: 8px; align-items: center; }
 .uk-marks > li[data-off] > :nth-child(2) { color: var(--uk-muted); }
+/* One found (an addon's answer here): its mark in ok's colour. */
+.uk-marks > li[data-found] > .uk-icon { color: var(--uk-ok); }
 .uk-marks > li > :nth-child(3) { color: var(--uk-muted); font-size: 12px; margin-left: 4px; overflow-wrap: anywhere; }
 /* A chain (a controller's controllers, to the root): the root first, a › between, those after it quiet. */
 .uk-chain { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; min-width: 0; }

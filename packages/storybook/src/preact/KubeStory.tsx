@@ -1,5 +1,5 @@
 import type { KindInfo } from '@overkube/kube-types';
-import { type Addon, type AddonStatus, type Addons, defineAddon, kindMatcher, kubeOwnKinds, PRIORITY, slots, type UserChanges, ui } from '@overkube/sdk';
+import { type Addon, type AddonStatus, type Addons, defineAddon, kindMatcher, kubeOwnKinds, loadOf, PRIORITY, slots, type UserChanges, ui } from '@overkube/sdk';
 import { AddonsProvider, fill, KubeProvider, UserProvider, usePage } from '@overkube/sdk/preact';
 import { Frame, memoryRouter, memoryStore, ShellProvider, UserService } from '@overkube/shell';
 import { type AddonEnv, addonEnv, addonRun, type FakeCluster, fakeCluster } from '@overkube/testkit';
@@ -127,12 +127,25 @@ function Story({ addons, path = '/', cluster, served, kinds, user, theme, locale
     return made;
   };
   useEffect(() => adoptStyles(document), []);
+  // Its addons' modules of their own (lazySetup) loaded first, as the page loads them before it starts them: each set up at once, drawn whole from the first.
+  const [loaded, setLoaded] = useState(() => !addons.some((a) => loadOf(a)));
+  useEffect(() => {
+    if (loaded) return;
+    let gone = false;
+    // Failed: drawn all the same (its setup tried as it runs, its failure the story's).
+    const done = () => !gone && setLoaded(true);
+    void Promise.all(addons.map((a) => loadOf(a)?.())).then(done, done);
+    return () => {
+      gone = true;
+    };
+  }, []);
   // A definition's function failing as the page is drawn (a column's value): listed under the story, each once.
   const [failures, setFailures] = useState<readonly string[]>([]);
   const onFailure = (definition: { kind: string; name: string }, field: string, error: unknown) => {
     const said = `${definition.kind}/${definition.name} (${field}): ${error instanceof Error ? error.message : String(error)}`;
     setFailures((now) => (now.includes(said) ? now : [...now, said]));
   };
+  if (!loaded) return <div class="uk-root" style={{ padding: '16px', background: 'var(--uk-bg)', minHeight: '100%' }} />;
   return (
     <div class="uk-root" style={{ padding: '16px', background: 'var(--uk-bg)', minHeight: '100%' }}>
       <WorldStory

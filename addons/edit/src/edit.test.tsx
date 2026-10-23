@@ -1,6 +1,7 @@
 import { EditorView } from '@codemirror/view';
 import core from '@overkube/addon-core';
 import { kinds } from '@overkube/kube-types';
+import { loadOf } from '@overkube/sdk';
 import { cleanup, kubeWorld, make } from '@overkube/testkit';
 import { renderPage } from '@overkube/testkit/preact';
 import { fireEvent } from '@testing-library/preact';
@@ -21,6 +22,9 @@ import { editedIn, editIn } from './links.ts';
  * node's Cordon, Uncordon, Drain — the Eviction API, its budgets. Each
  * dialog in the page's path (&edit=). Each action shown to one who may.
  */
+
+// Its setup's module loaded first (its own chunk, as the page loads it before it starts it): set up at once, as it is drawn.
+await loadOf(edit)?.();
 
 afterEach(cleanup);
 

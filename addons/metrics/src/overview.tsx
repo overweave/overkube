@@ -4,8 +4,8 @@ import { type KubeContributor, openIn, TableView, tile } from '@overkube/sdk';
 import { useCount, useList, usePage, useSay, useUser } from '@overkube/sdk/preact';
 import { Gauge, Nothing, Panel, PanelBody, PanelHead, Table, type TableColumn, type TableSort, Usage } from '@overkube/uikit';
 import { useDefinition } from '@overweave/ui/preact';
-import type { Metrics } from './index.tsx';
 import { F, NODE_METRICS, POD_METRICS } from './kinds.ts';
+import type { Metrics } from './setup.tsx';
 import { T } from './texts.ts';
 import { inScale, percent, said, scaleOf } from './units.ts';
 

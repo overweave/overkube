@@ -1,5 +1,6 @@
 import preact from '@preact/preset-vite';
 import { defaultClientConditions, defineConfig } from 'vite';
+import { chunkName } from './chunks.ts';
 
 /*
  * The page as a library (lib/: @overkube/web, for a host's bundle): its
@@ -24,6 +25,6 @@ export default defineConfig({
     copyPublicDir: false,
     sourcemap: true,
     lib: { entry: 'src/index.ts', formats: ['es'], fileName: 'index' },
-    rolldownOptions: { external: (id) => SHARED.test(id) },
+    rolldownOptions: { external: (id) => SHARED.test(id), output: { chunkFileNames: chunkName('') } },
   },
 });
