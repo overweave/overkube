@@ -29,7 +29,7 @@
     "@overkube/storybook": "0.0.0-dev",
     "@overkube/testkit": "0.0.0-dev",
     "@testing-library/preact": "3.2.4",
-    "happy-dom": "20.14.6",
+    "happy-dom": "21.0.4",
     "preact": "10.29.8"
   },
   "peerDependencies": {
