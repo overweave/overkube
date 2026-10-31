@@ -63,7 +63,7 @@
     "@overkube/source": "0.0.0-dev",
     "@preact/preset-vite": "2.10.6",
     "@preact/signals": "2.11.3",
-    "@testing-library/preact": "3.2.4",
+    "@testing-library/preact": "3.2.6",
     "happy-dom": "20.14.6",
     "preact": "10.29.8"
   },
