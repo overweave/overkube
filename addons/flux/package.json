@@ -26,12 +26,12 @@
     "@overkube/addon-helm": "0.0.0-dev",
     "@overkube/storybook": "0.0.0-dev",
     "@overkube/testkit": "0.0.0-dev",
-    "@testing-library/preact": "3.2.4",
+    "@testing-library/preact": "3.2.6",
     "happy-dom": "20.14.6",
     "preact": "10.29.8"
   },
   "peerDependencies": {
-    "@preact/signals": "^2.11.3",
+    "@preact/signals": "^2.11.4",
     "preact": "^10.29.8"
   }
 }
